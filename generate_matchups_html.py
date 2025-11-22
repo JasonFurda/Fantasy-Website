@@ -158,6 +158,127 @@ def collect_running_backs(league):
     
     return rbs
 
+def collect_wide_receivers(league):
+    """Collect all wide receivers from all teams and free agents"""
+    wrs = []
+    
+    # Get WRs from all teams
+    for team in league.teams:
+        for player in team.roster:
+            if hasattr(player, 'position') and player.position == 'WR':
+                wr_data = {
+                    'name': player.name,
+                    'team': get_team_name_for_player(player, league),
+                    'proTeam': player.proTeam,
+                    'total_points': player.total_points,
+                    'avg_points': player.avg_points,
+                    'targets': 0,
+                    'receptions': 0,
+                    'receiving_yards': 0,
+                    'receiving_tds': 0,
+                    'fumbles_lost': 0,
+                    'games_played': 0,
+                    'injury_status': getattr(player, 'injuryStatus', ''),
+                    'injured': getattr(player, 'injured', False)
+                }
+                
+                # Try to get season totals from week 0 first
+                season_stats = player.stats.get(0, {})
+                season_breakdown = season_stats.get('breakdown', {})
+                
+                if season_breakdown:
+                    # Use season totals if available
+                    wr_data['targets'] = season_breakdown.get('receivingTargets', 0)
+                    wr_data['receptions'] = season_breakdown.get('receivingReceptions', 0)
+                    wr_data['receiving_yards'] = season_breakdown.get('receivingYards', 0)
+                    wr_data['receiving_tds'] = season_breakdown.get('receivingTouchdowns', 0)
+                    wr_data['fumbles_lost'] = season_breakdown.get('lostFumbles', 0)
+                    
+                    # Count games played by counting weeks with stats
+                    for week in range(1, league.current_week + 1):
+                        week_stats = player.stats.get(week, {})
+                        if week_stats and week_stats.get('breakdown'):
+                            wr_data['games_played'] += 1
+                else:
+                    # Fallback: Aggregate stats across all weeks
+                    for week in range(1, league.current_week + 1):
+                        week_stats = player.stats.get(week, {})
+                        if week_stats:
+                            breakdown = week_stats.get('breakdown', {})
+                            if breakdown:  # Player played this week
+                                wr_data['games_played'] += 1
+                                wr_data['targets'] += breakdown.get('receivingTargets', 0)
+                                wr_data['receptions'] += breakdown.get('receivingReceptions', 0)
+                                wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
+                                wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
+                                wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                
+                wrs.append(wr_data)
+    
+    # Get free agent WRs
+    try:
+        free_agent_wrs = league.free_agents(week=league.current_week, position='WR', size=100)
+        for player in free_agent_wrs:
+            if hasattr(player, 'position') and player.position == 'WR':
+                # Check if we already have this player (avoid duplicates)
+                if not any(wr['name'] == player.name for wr in wrs):
+                    wr_data = {
+                        'name': player.name,
+                        'team': 'Free Agent',
+                        'proTeam': player.proTeam,
+                        'total_points': getattr(player, 'total_points', 0),
+                        'avg_points': getattr(player, 'avg_points', 0),
+                        'targets': 0,
+                        'receptions': 0,
+                        'receiving_yards': 0,
+                        'receiving_tds': 0,
+                        'fumbles_lost': 0,
+                        'games_played': 0,
+                        'injury_status': getattr(player, 'injuryStatus', ''),
+                        'injured': getattr(player, 'injured', False)
+                    }
+                    
+                    # For free agents, try to get season totals from week 0 first
+                    if hasattr(player, 'stats'):
+                        season_stats = player.stats.get(0, {})
+                        season_breakdown = season_stats.get('breakdown', {})
+                        
+                        if season_breakdown:
+                            # Use season totals if available
+                            wr_data['targets'] = season_breakdown.get('receivingTargets', 0)
+                            wr_data['receptions'] = season_breakdown.get('receivingReceptions', 0)
+                            wr_data['receiving_yards'] = season_breakdown.get('receivingYards', 0)
+                            wr_data['receiving_tds'] = season_breakdown.get('receivingTouchdowns', 0)
+                            wr_data['fumbles_lost'] = season_breakdown.get('lostFumbles', 0)
+                            
+                            # Count games played
+                            for week in range(1, league.current_week + 1):
+                                week_stats = player.stats.get(week, {})
+                                if week_stats and week_stats.get('breakdown'):
+                                    wr_data['games_played'] += 1
+                        else:
+                            # Fallback: Aggregate stats across all weeks
+                            for week in range(1, league.current_week + 1):
+                                week_stats = player.stats.get(week, {})
+                                if week_stats:
+                                    breakdown = week_stats.get('breakdown', {})
+                                    if breakdown:
+                                        wr_data['games_played'] += 1
+                                        wr_data['targets'] += breakdown.get('receivingTargets', 0)
+                                        wr_data['receptions'] += breakdown.get('receivingReceptions', 0)
+                                        wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
+                                        wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
+                                        wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                    
+                    wrs.append(wr_data)
+    except Exception as e:
+        print(f"  Note: Could not fetch free agent WRs: {e}")
+    
+    # Sort by total points descending
+    wrs.sort(key=lambda x: x['total_points'], reverse=True)
+    
+    return wrs
+
 def get_position_sort_order(slot_position):
     """Get sort order for positions: QB, RBs, WRs, TE, FLEX, D/ST, K, Bench"""
     position_order = {
@@ -223,18 +344,19 @@ def format_player_row(player):
                 <td class="projected">{player.projected_points:.2f}</td>
             </tr>"""
 
-def generate_week_content(league, box_scores, week, week_idx):
+def generate_week_content(league, box_scores, week, week_idx, year=None):
     """Generate HTML content for a specific week"""
     
     # Generate matchup tabs HTML
     matchup_tabs_html = ""
     matchup_content_html = ""
+    year_suffix = f"-{year}" if year else ""
     
     for matchup_idx, matchup in enumerate(box_scores):
         if not matchup.home_team:
             continue
             
-        matchup_id = f"week-{week}-matchup-{matchup_idx}"
+        matchup_id = f"week-{week}{year_suffix}-matchup-{matchup_idx}"
         tab_label = f"{matchup.away_team.team_name} @ {matchup.home_team.team_name}"
         
         # Determine winner
@@ -257,11 +379,12 @@ def generate_week_content(league, box_scores, week, week_idx):
         home_players_html = "".join([format_player_row(player) for player in home_lineup_sorted])
         
         # Matchup tab button
-        matchup_tabs_html += f'<button class="matchup-tab-button" onclick="showMatchup({week}, {matchup_idx})">{tab_label}</button>\n'
+        year_param = year if year else YEAR
+        matchup_tabs_html += f'<button class="matchup-tab-button" onclick="showMatchup({week}, {matchup_idx}, {year_param})">{tab_label}</button>\n'
         
         # Matchup content
         matchup_content_html += f"""
-        <div id="week-{week}-matchup-{matchup_idx}" class="matchup-content" style="display: {'block' if matchup_idx == 0 else 'none'};">
+        <div id="week-{week}{year_suffix}-matchup-{matchup_idx}" class="matchup-content" style="display: {'block' if matchup_idx == 0 else 'none'};">
             <div class="teams-container">
                 <!-- Away Team -->
                 <div class="team-box away-team {away_class}">
@@ -355,6 +478,41 @@ def calculate_vulture_percentage(team_rbs):
             'vulture_pct': vulture_pct,
             'touches': touches,
             'points': rb['total_points']
+        })
+    
+    return results
+
+def group_wrs_by_nfl_team(wrs):
+    """Group wide receivers by their NFL team"""
+    teams = {}
+    for wr in wrs:
+        team = wr['proTeam']
+        if team not in teams:
+            teams[team] = []
+        teams[team].append(wr)
+    return teams
+
+def calculate_wr_targets_percentage(team_wrs):
+    """Calculate target percentage and points percentage for WRs on a team"""
+    # Calculate totals for the team
+    total_targets = sum(wr['targets'] for wr in team_wrs)
+    total_points = sum(wr['total_points'] for wr in team_wrs)
+    
+    if total_targets == 0 or total_points == 0:
+        return []
+    
+    results = []
+    for wr in team_wrs:
+        targets = wr['targets']
+        targets_pct = (targets / total_targets * 100) if total_targets > 0 else 0
+        points_pct = (wr['total_points'] / total_points * 100) if total_points > 0 else 0
+        
+        results.append({
+            'wr': wr,
+            'targets': targets,
+            'targets_pct': targets_pct,
+            'points': wr['total_points'],
+            'points_pct': points_pct
         })
     
     return results
@@ -504,6 +662,138 @@ def generate_rb_comparison_html(rbs):
     </div>
     """
 
+def generate_wr_comparison_html(wrs):
+    """Generate HTML for wide receiver comparison table"""
+    
+    if not wrs:
+        return "<div class='rb-content'><p>No wide receivers found.</p></div>"
+    
+    # Group WRs by NFL team for target percentage
+    teams_dict = group_wrs_by_nfl_team(wrs)
+    
+    # Generate table rows
+    rows_html = ""
+    for idx, wr in enumerate(wrs):
+        injury_class = "rb-injured" if wr['injured'] else ""
+        fa_class = "rb-fa" if wr['team'] == 'Free Agent' else ""
+        
+        ypr = wr['receiving_yards'] / wr['receptions'] if wr['receptions'] > 0 else 0
+        catch_rate = (wr['receptions'] / wr['targets'] * 100) if wr['targets'] > 0 else 0
+        
+        # Make player name clickable
+        rows_html += f"""
+        <tr class="{injury_class} {fa_class}">
+            <td>{idx + 1}</td>
+            <td class="player-name clickable-wr" onclick="showWRTargetsPercentage('{wr['proTeam']}')" title="Click to view target percentage for {wr['proTeam']} WRs">{wr['name']}</td>
+            <td>{wr['team']}</td>
+            <td>{wr['proTeam']}</td>
+            <td class="points">{wr['total_points']:.2f}</td>
+            <td>{wr['avg_points']:.2f}</td>
+            <td>{wr['games_played']}</td>
+            <td>{wr['targets']}</td>
+            <td>{wr['receptions']}</td>
+            <td>{catch_rate:.1f}%</td>
+            <td>{wr['receiving_yards']}</td>
+            <td>{ypr:.1f}</td>
+            <td>{wr['receiving_tds']}</td>
+            <td>{wr['fumbles_lost']}</td>
+            <td class="injury-status">{wr['injury_status'] if wr['injury_status'] else '-'}</td>
+        </tr>
+        """
+    
+    # Generate target percentage modals for each NFL team
+    targets_modals_html = ""
+    for team, team_wrs in teams_dict.items():
+        if len(team_wrs) < 2:  # Need at least 2 WRs to compare
+            continue
+        
+        targets_data = calculate_wr_targets_percentage(team_wrs)
+        targets_data.sort(key=lambda x: x['targets'], reverse=True)
+        
+        targets_rows = ""
+        for data in targets_data:
+            wr = data['wr']
+            
+            targets_rows += f"""
+            <tr>
+                <td class="player-name">{wr['name']}</td>
+                <td>{data['targets']}</td>
+                <td>{data['targets_pct']:.1f}%</td>
+                <td class="points">{data['points']:.2f}</td>
+                <td>{data['points_pct']:.1f}%</td>
+            </tr>
+            """
+        
+        total_targets = sum(wr['targets'] for wr in team_wrs)
+        total_points = sum(wr['total_points'] for wr in team_wrs)
+        
+        targets_modals_html += f"""
+        <div id="wr-targets-modal-{team}" class="vulture-modal">
+            <div class="vulture-modal-content">
+                <div class="vulture-modal-header">
+                    <h2>{team} Wide Receivers - Target & Points Distribution</h2>
+                    <span class="vulture-close" onclick="closeWRTargetsModal('{team}')">&times;</span>
+                </div>
+                <div class="vulture-info">
+                    <p><strong>Total Team Targets:</strong> {total_targets} | <strong>Total Team Points:</strong> {total_points:.2f}</p>
+                    <p class="vulture-explanation">Shows the percentage of targets and points for each WR on the team.</p>
+                </div>
+                <div class="vulture-table-wrapper">
+                    <table class="vulture-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Total Targets</th>
+                                <th>Target %</th>
+                                <th>Total Points</th>
+                                <th>Points %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {targets_rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        """
+    
+    return f"""
+    <div id="wr-comparison-content" class="rb-content" style="display: none;">
+        <div class="rb-header">
+            <h2>Wide Receiver Comparison</h2>
+            <p>All wide receivers in the league, sorted by total fantasy points. Click a player name to view target and points percentage for their NFL team.</p>
+        </div>
+        <div class="rb-table-wrapper">
+            <table class="rb-comparison-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Fantasy Team</th>
+                        <th>NFL Team</th>
+                        <th>Total Pts</th>
+                        <th>Avg Pts</th>
+                        <th>Games</th>
+                        <th>Targets</th>
+                        <th>Rec</th>
+                        <th>Catch %</th>
+                        <th>Rec Yds</th>
+                        <th>YPR</th>
+                        <th>Rec TD</th>
+                        <th>Fum Lost</th>
+                        <th>Injury</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+        {targets_modals_html}
+    </div>
+    """
+
 def calculate_fraud_watch(league):
     """Calculate fraud watch rankings for teams"""
     teams_data = []
@@ -558,6 +848,234 @@ def calculate_fraud_watch(league):
     teams_data.sort(key=lambda x: x['fraud_score'], reverse=True)
     
     return teams_data
+
+def get_team_year_stats(league):
+    """Get team statistics for a specific year including record, playoff placement, and top 3 players"""
+    teams_data = []
+    
+    for team in league.teams:
+        # Get team record
+        wins = team.wins
+        losses = team.losses
+        ties = team.ties if hasattr(team, 'ties') else 0
+        record = f"{wins}-{losses}" + (f"-{ties}" if ties > 0 else "")
+        
+        # Get playoff placement
+        playoff_placement = "Unknown"
+        standing = None
+        
+        if hasattr(team, 'final_standing') and team.final_standing:
+            if team.final_standing == 1:
+                playoff_placement = "Champion"
+            elif team.final_standing == 2:
+                playoff_placement = "Runner-up"
+            elif team.final_standing > 0:
+                playoff_teams = getattr(league.settings, 'playoff_teams', 6)
+                if team.final_standing <= playoff_teams:
+                    playoff_placement = f"{team.final_standing}th Place"
+                else:
+                    playoff_placement = "Did not make playoffs"
+        elif hasattr(team, 'standing_seed') and team.standing_seed:
+            playoff_placement = f"#{team.standing_seed} Seed"
+        elif hasattr(team, 'standing') and team.standing:
+            standing = team.standing
+            playoff_teams = getattr(league.settings, 'playoff_teams', 6)
+            if standing <= playoff_teams:
+                playoff_placement = f"#{standing} Seed"
+            else:
+                playoff_placement = "Did not make playoffs"
+        
+        # Get top 3 players by total points
+        roster_players = []
+        if hasattr(team, 'roster') and team.roster:
+            for player in team.roster:
+                if hasattr(player, 'total_points') and player.total_points:
+                    roster_players.append({
+                        'name': player.name,
+                        'position': getattr(player, 'position', 'N/A'),
+                        'total_points': player.total_points,
+                        'avg_points': getattr(player, 'avg_points', 0),
+                        'proTeam': getattr(player, 'proTeam', 'N/A')
+                    })
+        
+        # Sort by total points and get top 3
+        roster_players.sort(key=lambda x: x['total_points'], reverse=True)
+        top_3_players = roster_players[:3]
+        
+        # Get owner name
+        owner = get_owner_name(team)
+        
+        teams_data.append({
+            'team_id': team.team_id,
+            'team_name': team.team_name,
+            'owner': owner,
+            'wins': wins,
+            'losses': losses,
+            'ties': ties,
+            'record': record,
+            'playoff_placement': playoff_placement,
+            'points_for': team.points_for if hasattr(team, 'points_for') else 0,
+            'points_against': team.points_against if hasattr(team, 'points_against') else 0,
+            'top_3_players': top_3_players,
+            'standing': standing
+        })
+    
+    # Sort teams by wins (descending), then by points for (descending)
+    teams_data.sort(key=lambda x: (x['wins'], x['points_for']), reverse=True)
+    
+    return teams_data
+
+def generate_team_pages_html(teams_2024_data, teams_2025_data):
+    """Generate HTML for team pages with tabs for teams and years"""
+    
+    # Get unique team names and IDs across both years
+    all_teams = {}
+    for team in teams_2024_data:
+        all_teams[team['team_id']] = {
+            'team_name': team['team_name'],
+            'owner': team['owner']
+        }
+    for team in teams_2025_data:
+        all_teams[team['team_id']] = {
+            'team_name': team['team_name'],
+            'owner': team['owner']
+        }
+    
+    # Create team tabs
+    team_tabs_html = ""
+    team_content_html = ""
+    
+    # Create a mapping of team_id to data for each year
+    teams_2024_dict = {team['team_id']: team for team in teams_2024_data}
+    teams_2025_dict = {team['team_id']: team for team in teams_2025_data}
+    
+    # Generate tabs and content for each team
+    for idx, (team_id, team_info) in enumerate(all_teams.items()):
+        # Team tab button
+        team_tabs_html += f'<button class="team-tab-button" onclick="showTeam({team_id})" id="team-tab-{team_id}">{team_info["team_name"]}</button>\n'
+        
+        # Team content section with year tabs
+        year_tabs_html = ""
+        year_content_html = ""
+        
+        # 2025 data
+        team_2025 = teams_2025_dict.get(team_id)
+        year_tabs_html += f'<button class="year-tab-button" onclick="showTeamYear({team_id}, 2025)" id="team-{team_id}-year-2025-tab">2025</button>\n'
+        
+        if team_2025:
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2025-content" class="team-year-content" style="display: block;">
+                <div class="team-stats-header">
+                    <h2>{team_2025['team_name']} - 2025</h2>
+                    <p class="team-owner">Owner: {team_2025['owner']}</p>
+                </div>
+                <div class="team-record-info">
+                    <div class="record-box">
+                        <h3>Record</h3>
+                        <p class="record-text">{team_2025['record']}</p>
+                        <p class="points-text">Points For: {team_2025['points_for']:.2f}</p>
+                        <p class="points-text">Points Against: {team_2025['points_against']:.2f}</p>
+                    </div>
+                    <div class="playoff-box">
+                        <h3>Playoff Result</h3>
+                        <p class="playoff-text">{team_2025['playoff_placement']}</p>
+                    </div>
+                </div>
+                <div class="top-players-section">
+                    <h3>Top 3 Players</h3>
+                    <div class="top-players-grid">
+                        {''.join([f'''
+                        <div class="player-card">
+                            <div class="player-name">{player['name']}</div>
+                            <div class="player-position">{player['position']} - {player['proTeam']}</div>
+                            <div class="player-points">Total: {player['total_points']:.2f} pts</div>
+                            <div class="player-avg">Avg: {player['avg_points']:.2f} pts</div>
+                        </div>
+                        ''' for player in team_2025['top_3_players']])}
+                    </div>
+                </div>
+            </div>
+            """
+        else:
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2025-content" class="team-year-content" style="display: block;">
+                <p>No data available for 2025</p>
+            </div>
+            """
+        
+        # 2024 data
+        team_2024 = teams_2024_dict.get(team_id)
+        year_tabs_html += f'<button class="year-tab-button" onclick="showTeamYear({team_id}, 2024)" id="team-{team_id}-year-2024-tab">2024</button>\n'
+        
+        if team_2024:
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2024-content" class="team-year-content" style="display: none;">
+                <div class="team-stats-header">
+                    <h2>{team_2024['team_name']} - 2024</h2>
+                    <p class="team-owner">Owner: {team_2024['owner']}</p>
+                </div>
+                <div class="team-record-info">
+                    <div class="record-box">
+                        <h3>Record</h3>
+                        <p class="record-text">{team_2024['record']}</p>
+                        <p class="points-text">Points For: {team_2024['points_for']:.2f}</p>
+                        <p class="points-text">Points Against: {team_2024['points_against']:.2f}</p>
+                    </div>
+                    <div class="playoff-box">
+                        <h3>Playoff Result</h3>
+                        <p class="playoff-text">{team_2024['playoff_placement']}</p>
+                    </div>
+                </div>
+                <div class="top-players-section">
+                    <h3>Top 3 Players</h3>
+                    <div class="top-players-grid">
+                        {''.join([f'''
+                        <div class="player-card">
+                            <div class="player-name">{player['name']}</div>
+                            <div class="player-position">{player['position']} - {player['proTeam']}</div>
+                            <div class="player-points">Total: {player['total_points']:.2f} pts</div>
+                            <div class="player-avg">Avg: {player['avg_points']:.2f} pts</div>
+                        </div>
+                        ''' for player in team_2024['top_3_players']])}
+                    </div>
+                </div>
+            </div>
+            """
+        else:
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2024-content" class="team-year-content" style="display: none;">
+                <p>No data available for 2024</p>
+            </div>
+            """
+        
+        # Team content wrapper
+        team_content_html += f"""
+        <div id="team-{team_id}-content" class="team-content" style="display: {'block' if idx == 0 else 'none'};">
+            <div class="team-year-tabs">
+                {year_tabs_html}
+            </div>
+            <div class="team-year-content-wrapper">
+                {year_content_html}
+            </div>
+        </div>
+        """
+    
+    return f"""
+    <div id="team-pages-content" class="rb-content" style="display: none;">
+        <div class="rb-header">
+            <h2>Team Pages</h2>
+            <p>View statistics and top players for each team by year. Click a team name to view their page, then switch between years.</p>
+        </div>
+        <div class="team-tabs-wrapper">
+            <div class="team-tabs">
+                {team_tabs_html}
+            </div>
+        </div>
+        <div class="team-content-wrapper">
+            {team_content_html}
+        </div>
+    </div>
+    """
 
 def find_club_performances(league, all_weeks_data):
     """Find teams that scored 200+ or sub-100 in any week"""
@@ -767,12 +1285,13 @@ def generate_fraud_watch_html(league, all_weeks_data):
     </div>
     """
 
-def generate_html(league, all_weeks_data, current_week, rbs):
-    """Generate HTML content with week navigation and matchup tabs"""
+def generate_html(league, all_weeks_data, current_week, rbs, wrs, year=YEAR):
+    """Generate HTML content with week navigation and matchup tabs for a specific year"""
     
     # Generate week navigation
     week_nav_html = ""
     week_content_html = ""
+    year_suffix = f"-{year}"
     
     for week in sorted(all_weeks_data.keys()):
         week_idx = week - 1
@@ -780,16 +1299,16 @@ def generate_html(league, all_weeks_data, current_week, rbs):
         is_current = week == current_week
         
         # Week navigation button
-        week_nav_html += f'<button class="week-button" onclick="showWeek({week})" {"data-current='true'" if is_current else ""}>Week {week}</button>\n'
+        week_nav_html += f'<button class="week-button" onclick="showWeek({week}, {year})" {"data-current='true'" if is_current else ""}>Week {week}</button>\n'
         
         # Get matchup tabs and content for this week
-        matchup_tabs, matchup_content = generate_week_content(league, box_scores, week, week_idx)
+        matchup_tabs, matchup_content = generate_week_content(league, box_scores, week, week_idx, year)
         
         # Week content section
         week_content_html += f"""
-        <div id="week-{week}-content" class="week-content" style="display: {'block' if is_current else 'none'};">
+        <div id="week-{week}{year_suffix}-content" class="week-content" style="display: {'block' if is_current else 'none'};">
             <div class="week-header">
-                <h2>Week {week} Matchups</h2>
+                <h2>Week {week} Matchups - {year}</h2>
             </div>
             <div class="matchup-tabs">
                 {matchup_tabs}
@@ -800,20 +1319,45 @@ def generate_html(league, all_weeks_data, current_week, rbs):
         </div>
         """
     
-    # Add RB comparison content
-    rb_comparison_html = generate_rb_comparison_html(rbs)
-    week_content_html += rb_comparison_html
+    # Wrap content in year section
+    year_section_html = f"""
+    <div id="year-{year}-section" class="year-section" style="display: {'block' if year == YEAR else 'none'};">
+        <div class="week-navigation">
+            <div class="week-nav-label">Weeks:</div>
+            {week_nav_html}
+        </div>
+        {week_content_html}
+    </div>
+    """
     
-    # Add Total Year Stats content
-    year_stats_html = generate_fraud_watch_html(league, all_weeks_data)
-    week_content_html += year_stats_html
+    return year_section_html
+
+def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, teams_2024_data, teams_2025_data):
+    """Generate HTML content shared across years (RB comparison, WR comparison, Year Stats, Team Pages)"""
+    
+    # Add RB comparison content (using 2025 data)
+    rb_comparison_html = generate_rb_comparison_html(rbs)
+    
+    # Add WR comparison content (using 2025 data)
+    wr_comparison_html = generate_wr_comparison_html(wrs)
+    
+    # Add Total Year Stats content (using 2025 data)
+    year_stats_html = generate_fraud_watch_html(league_2025, all_weeks_data_2025)
+    
+    # Add Team Pages content
+    team_pages_html = generate_team_pages_html(teams_2024_data, teams_2025_data)
+    
+    return rb_comparison_html + wr_comparison_html + year_stats_html + team_pages_html
+
+def generate_full_html(year_sections_html, shared_content_html, league_2025):
+    """Generate complete HTML with all year sections"""
     
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{league.settings.name} - All Weeks Matchups</title>
+    <title>{league_2025.settings.name if league_2025 else 'Fantasy League'} - All Weeks Matchups</title>
     <style>
         * {{
             margin: 0;
@@ -1196,6 +1740,16 @@ def generate_html(league, all_weeks_data, current_week, rbs):
         
         .clickable-rb:hover {{
             color: #764ba2 !important;
+            background: #f0f0f0;
+        }}
+        
+        .clickable-wr {{
+            cursor: pointer;
+            color: #667eea;
+        }}
+        
+        .clickable-wr:hover {{
+            color: #f5576c !important;
             background: #f0f0f0;
         }}
         
@@ -1683,6 +2237,197 @@ def generate_html(league, all_weeks_data, current_week, rbs):
             color: #999;
         }}
         
+        /* Team Pages Styles */
+        .team-tabs-wrapper {{
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 2px solid #e0e0e0;
+            overflow-x: auto;
+        }}
+        
+        .team-tabs {{
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }}
+        
+        .team-tab-button {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1em;
+            font-weight: 600;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }}
+        
+        .team-tab-button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }}
+        
+        .team-tab-button.active {{
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+        }}
+        
+        .team-content-wrapper {{
+            padding: 30px;
+        }}
+        
+        .team-year-tabs {{
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 15px;
+        }}
+        
+        .year-tab-button {{
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 0.95em;
+            font-weight: 600;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(17, 153, 142, 0.3);
+        }}
+        
+        .year-tab-button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(17, 153, 142, 0.4);
+        }}
+        
+        .year-tab-button.active {{
+            background: linear-gradient(135deg, #38ef7d 0%, #11998e 100%);
+            box-shadow: 0 4px 12px rgba(17, 153, 142, 0.5);
+        }}
+        
+        .team-year-content {{
+            display: none;
+        }}
+        
+        .team-year-content-wrapper {{
+            min-height: 400px;
+        }}
+        
+        .team-stats-header {{
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }}
+        
+        .team-stats-header h2 {{
+            color: #667eea;
+            margin-bottom: 5px;
+        }}
+        
+        .team-owner {{
+            color: #666;
+            font-size: 1.1em;
+        }}
+        
+        .team-record-info {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }}
+        
+        .record-box, .playoff-box {{
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }}
+        
+        .record-box h3, .playoff-box h3 {{
+            color: #495057;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }}
+        
+        .record-text {{
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }}
+        
+        .points-text {{
+            color: #666;
+            font-size: 1em;
+            margin: 5px 0;
+        }}
+        
+        .playoff-text {{
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4caf50;
+        }}
+        
+        .top-players-section {{
+            margin-top: 30px;
+        }}
+        
+        .top-players-section h3 {{
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+        }}
+        
+        .top-players-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }}
+        
+        .player-card {{
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 20px;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        
+        .player-card:hover {{
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+        }}
+        
+        .player-name {{
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 8px;
+        }}
+        
+        .player-position {{
+            color: #666;
+            font-size: 0.95em;
+            margin-bottom: 10px;
+        }}
+        
+        .player-points {{
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+        }}
+        
+        .player-avg {{
+            color: #999;
+            font-size: 0.9em;
+        }}
+        
         @media (max-width: 968px) {{
             .teams-container {{
                 grid-template-columns: 1fr;
@@ -1691,13 +2436,21 @@ def generate_html(league, all_weeks_data, current_week, rbs):
             .header h1 {{
                 font-size: 1.8em;
             }}
+            
+            .team-record-info {{
+                grid-template-columns: 1fr;
+            }}
+            
+            .top-players-grid {{
+                grid-template-columns: 1fr;
+            }}
         }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>{league.settings.name}</h1>
+            <h1>{league_2025.settings.name if league_2025 else 'Fantasy League'}</h1>
             <p>All Weeks Matchups</p>
         </div>
         
@@ -1706,78 +2459,148 @@ def generate_html(league, all_weeks_data, current_week, rbs):
                 <span class="btn-icon">📊</span>
                 <span class="btn-text">Running Back Comparison</span>
             </button>
+            <button class="rb-comparison-main-btn" onclick="showWRComparison()" id="wr-comparison-btn" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3);">
+                <span class="btn-icon">🤾</span>
+                <span class="btn-text">Wide Receiver Comparison</span>
+            </button>
             <button class="rb-comparison-main-btn" onclick="showTotalYearStats()" id="year-stats-btn" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);">
                 <span class="btn-icon">📈</span>
                 <span class="btn-text">Total Year Stats</span>
             </button>
+            <button class="rb-comparison-main-btn" onclick="showTeamPages()" id="team-pages-btn" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); box-shadow: 0 4px 15px rgba(250, 112, 154, 0.3);">
+                <span class="btn-icon">👥</span>
+                <span class="btn-text">Team Pages</span>
+            </button>
         </div>
         
-        <div class="week-navigation">
-            <div class="week-nav-label">Weeks:</div>
-            {week_nav_html}
+        <div class="year-selector" style="background: #f8f9fa; padding: 15px 30px; border-bottom: 2px solid #e0e0e0; text-align: center;">
+            <div style="display: inline-flex; gap: 10px; align-items: center;">
+                <span style="font-weight: 600; margin-right: 10px;">Year:</span>
+                <button class="rb-comparison-main-btn" onclick="switchYear(2024)" id="year-2024-btn" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); box-shadow: 0 4px 15px rgba(17, 153, 142, 0.3);">
+                    <span class="btn-icon">📅</span>
+                    <span class="btn-text">2024</span>
+                </button>
+                <button class="rb-comparison-main-btn" onclick="switchYear(2025)" id="year-2025-btn" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); box-shadow: 0 4px 15px rgba(17, 153, 142, 0.3);">
+                    <span class="btn-icon">📅</span>
+                    <span class="btn-text">2025</span>
+                </button>
+            </div>
         </div>
         
-        {week_content_html}
+        {year_sections_html}
+        {shared_content_html}
     </div>
     
     <script>
-        function showWeek(week) {{
+        function showWeek(week, year) {{
             // Hide RB comparison
             const rbContent = document.getElementById('rb-comparison-content');
             if (rbContent) rbContent.style.display = 'none';
+            
+            // Hide WR comparison
+            const wrContent = document.getElementById('wr-comparison-content');
+            if (wrContent) wrContent.style.display = 'none';
             
             // Hide year stats
             const yearStatsContent = document.getElementById('total-year-stats-content');
             if (yearStatsContent) yearStatsContent.style.display = 'none';
             
+            // Hide team pages
+            const teamPagesContent = document.getElementById('team-pages-content');
+            if (teamPagesContent) teamPagesContent.style.display = 'none';
+            
+            // Hide all year sections
+            const yearSections = document.querySelectorAll('.year-section');
+            yearSections.forEach(section => {{
+                section.style.display = 'none';
+            }});
+            
+            // Show selected year section
+            const selectedYearSection = document.getElementById('year-' + year + '-section');
+            if (selectedYearSection) {{
+                selectedYearSection.style.display = 'block';
+            }}
+            
             // Remove active class from RB button
             const rbButton = document.getElementById('rb-comparison-btn');
             if (rbButton) rbButton.classList.remove('active');
+            
+            // Remove active class from WR button
+            const wrButton = document.getElementById('wr-comparison-btn');
+            if (wrButton) wrButton.classList.remove('active');
             
             // Remove active class from year stats button
             const yearStatsBtn = document.getElementById('year-stats-btn');
             if (yearStatsBtn) yearStatsBtn.classList.remove('active');
             
-            // Hide all week contents
-            const weekContents = document.querySelectorAll('.week-content');
+            // Remove active class from team pages button
+            const teamPagesBtn = document.getElementById('team-pages-btn');
+            if (teamPagesBtn) teamPagesBtn.classList.remove('active');
+            
+            // Update active year button
+            const yearButtons = document.querySelectorAll('[id^="year-"][id$="-btn"]');
+            yearButtons.forEach(btn => {{
+                btn.classList.remove('active');
+            }});
+            const selectedYearBtn = document.getElementById('year-' + year + '-btn');
+            if (selectedYearBtn) {{
+                selectedYearBtn.classList.add('active');
+            }}
+            
+            // Hide all week contents for this year
+            const weekContents = selectedYearSection.querySelectorAll('.week-content');
             weekContents.forEach(content => {{
                 content.style.display = 'none';
             }});
             
-            // Remove active class from all week buttons
-            const weekButtons = document.querySelectorAll('.week-button');
+            // Remove active class from all week buttons for this year
+            const weekButtons = selectedYearSection.querySelectorAll('.week-button');
             weekButtons.forEach(button => {{
                 button.classList.remove('active');
             }});
             
             // Show selected week content
-            document.getElementById('week-' + week + '-content').style.display = 'block';
+            const weekContentId = 'week-' + week + '-' + year + '-content';
+            const selectedWeek = document.getElementById(weekContentId);
+            if (selectedWeek) {{
+                selectedWeek.style.display = 'block';
+            }}
             
             // Add active class to clicked week button
-            event.target.classList.add('active');
+            if (event && event.target) {{
+                event.target.classList.add('active');
+            }}
             
             // Reset to first matchup of the selected week
-            const firstMatchup = document.querySelector('#week-' + week + '-content .matchup-tab-button');
+            const firstMatchup = selectedWeek ? selectedWeek.querySelector('.matchup-tab-button') : null;
             if (firstMatchup) {{
                 const matchupIndex = 0;
-                showMatchup(week, matchupIndex);
+                showMatchup(week, matchupIndex, year);
                 // Set first matchup tab as active
-                const matchupButtons = document.querySelectorAll('#week-' + week + '-content .matchup-tab-button');
+                const matchupButtons = selectedWeek.querySelectorAll('.matchup-tab-button');
                 matchupButtons.forEach(btn => btn.classList.remove('active'));
                 firstMatchup.classList.add('active');
             }}
         }}
         
         function showRBComparison() {{
-            // Hide all week contents
-            const weekContents = document.querySelectorAll('.week-content');
-            weekContents.forEach(content => {{
-                content.style.display = 'none';
+            // Hide all year sections
+            const yearSections = document.querySelectorAll('.year-section');
+            yearSections.forEach(section => {{
+                section.style.display = 'none';
             }});
             
             // Hide year stats
             const yearStatsContent = document.getElementById('total-year-stats-content');
             if (yearStatsContent) yearStatsContent.style.display = 'none';
+            
+            // Hide WR comparison
+            const wrContent = document.getElementById('wr-comparison-content');
+            if (wrContent) wrContent.style.display = 'none';
+            
+            // Hide team pages
+            const teamPagesContent = document.getElementById('team-pages-content');
+            if (teamPagesContent) teamPagesContent.style.display = 'none';
             
             // Remove active class from all week buttons
             const weekButtons = document.querySelectorAll('.week-button');
@@ -1788,6 +2611,20 @@ def generate_html(league, all_weeks_data, current_week, rbs):
             // Remove active from year stats button
             const yearStatsBtn = document.getElementById('year-stats-btn');
             if (yearStatsBtn) yearStatsBtn.classList.remove('active');
+            
+            // Remove active from team pages button
+            const teamPagesBtn = document.getElementById('team-pages-btn');
+            if (teamPagesBtn) teamPagesBtn.classList.remove('active');
+            
+            // Remove active from WR button
+            const wrButton = document.getElementById('wr-comparison-btn');
+            if (wrButton) wrButton.classList.remove('active');
+            
+            // Remove active from year buttons
+            const yearButtons = document.querySelectorAll('[id^="year-"][id$="-btn"]');
+            yearButtons.forEach(btn => {{
+                btn.classList.remove('active');
+            }});
             
             // Show RB comparison
             const rbContent = document.getElementById('rb-comparison-content');
@@ -1801,15 +2638,23 @@ def generate_html(league, all_weeks_data, current_week, rbs):
         }}
         
         function showTotalYearStats() {{
-            // Hide all week contents
-            const weekContents = document.querySelectorAll('.week-content');
-            weekContents.forEach(content => {{
-                content.style.display = 'none';
+            // Hide all year sections
+            const yearSections = document.querySelectorAll('.year-section');
+            yearSections.forEach(section => {{
+                section.style.display = 'none';
             }});
             
             // Hide RB comparison
             const rbContent = document.getElementById('rb-comparison-content');
             if (rbContent) rbContent.style.display = 'none';
+            
+            // Hide WR comparison
+            const wrContent = document.getElementById('wr-comparison-content');
+            if (wrContent) wrContent.style.display = 'none';
+            
+            // Hide team pages
+            const teamPagesContent = document.getElementById('team-pages-content');
+            if (teamPagesContent) teamPagesContent.style.display = 'none';
             
             // Remove active class from all week buttons
             const weekButtons = document.querySelectorAll('.week-button');
@@ -1820,6 +2665,20 @@ def generate_html(league, all_weeks_data, current_week, rbs):
             // Remove active from RB button
             const rbButton = document.getElementById('rb-comparison-btn');
             if (rbButton) rbButton.classList.remove('active');
+            
+            // Remove active from WR button
+            const wrButton = document.getElementById('wr-comparison-btn');
+            if (wrButton) wrButton.classList.remove('active');
+            
+            // Remove active from team pages button
+            const teamPagesBtn = document.getElementById('team-pages-btn');
+            if (teamPagesBtn) teamPagesBtn.classList.remove('active');
+            
+            // Remove active from year buttons
+            const yearButtons = document.querySelectorAll('[id^="year-"][id$="-btn"]');
+            yearButtons.forEach(btn => {{
+                btn.classList.remove('active');
+            }});
             
             // Show year stats
             const yearStatsContent = document.getElementById('total-year-stats-content');
@@ -1857,28 +2716,38 @@ def generate_html(league, all_weeks_data, current_week, rbs):
             }}
         }}
         
-        function showMatchup(week, matchupIndex) {{
+        function showMatchup(week, matchupIndex, year) {{
+            // Get the year section first
+            const yearSection = document.getElementById('year-' + year + '-section');
+            if (!yearSection) return;
+            
             // Hide all matchup contents for this week
-            const matchupContents = document.querySelectorAll('#week-' + week + '-content .matchup-content');
+            const weekContentId = 'week-' + week + '-' + year + '-content';
+            const weekContent = document.getElementById(weekContentId);
+            if (!weekContent) return;
+            
+            const matchupContents = weekContent.querySelectorAll('.matchup-content');
             matchupContents.forEach(content => {{
                 content.style.display = 'none';
             }});
             
             // Remove active class from all matchup buttons for this week
-            const matchupButtons = document.querySelectorAll('#week-' + week + '-content .matchup-tab-button');
+            const matchupButtons = weekContent.querySelectorAll('.matchup-tab-button');
             matchupButtons.forEach(button => {{
                 button.classList.remove('active');
             }});
             
             // Show selected matchup content
-            const matchupId = 'week-' + week + '-matchup-' + matchupIndex;
+            const matchupId = 'week-' + week + '-' + year + '-matchup-' + matchupIndex;
             const matchupElement = document.getElementById(matchupId);
             if (matchupElement) {{
                 matchupElement.style.display = 'block';
             }}
             
             // Add active class to clicked matchup button
-            event.target.classList.add('active');
+            if (event && event.target) {{
+                event.target.classList.add('active');
+            }}
         }}
         
         function showVulturePercentage(team) {{
@@ -1895,22 +2764,276 @@ def generate_html(league, all_weeks_data, current_week, rbs):
             }}
         }}
         
+        function showWRComparison() {{
+            // Hide all year sections
+            const yearSections = document.querySelectorAll('.year-section');
+            yearSections.forEach(section => {{
+                section.style.display = 'none';
+            }});
+            
+            // Hide year stats
+            const yearStatsContent = document.getElementById('total-year-stats-content');
+            if (yearStatsContent) yearStatsContent.style.display = 'none';
+            
+            // Hide RB comparison
+            const rbContent = document.getElementById('rb-comparison-content');
+            if (rbContent) rbContent.style.display = 'none';
+            
+            // Hide team pages
+            const teamPagesContent = document.getElementById('team-pages-content');
+            if (teamPagesContent) teamPagesContent.style.display = 'none';
+            
+            // Remove active class from all week buttons
+            const weekButtons = document.querySelectorAll('.week-button');
+            weekButtons.forEach(button => {{
+                button.classList.remove('active');
+            }});
+            
+            // Remove active from year stats button
+            const yearStatsBtn = document.getElementById('year-stats-btn');
+            if (yearStatsBtn) yearStatsBtn.classList.remove('active');
+            
+            // Remove active from team pages button
+            const teamPagesBtn = document.getElementById('team-pages-btn');
+            if (teamPagesBtn) teamPagesBtn.classList.remove('active');
+            
+            // Remove active from RB button
+            const rbButton = document.getElementById('rb-comparison-btn');
+            if (rbButton) rbButton.classList.remove('active');
+            
+            // Remove active from year buttons
+            const yearButtons = document.querySelectorAll('[id^="year-"][id$="-btn"]');
+            yearButtons.forEach(btn => {{
+                btn.classList.remove('active');
+            }});
+            
+            // Show WR comparison
+            const wrContent = document.getElementById('wr-comparison-content');
+            if (wrContent) {{
+                wrContent.style.display = 'block';
+            }}
+            
+            // Add active class to WR button
+            const wrButton = document.getElementById('wr-comparison-btn');
+            if (wrButton) wrButton.classList.add('active');
+        }}
+        
+        function switchYear(year) {{
+            // Hide all year sections
+            const yearSections = document.querySelectorAll('.year-section');
+            yearSections.forEach(section => {{
+                section.style.display = 'none';
+            }});
+            
+            // Show selected year section
+            const selectedYearSection = document.getElementById('year-' + year + '-section');
+            if (selectedYearSection) {{
+                selectedYearSection.style.display = 'block';
+            }}
+            
+            // Update active year button
+            const yearButtons = document.querySelectorAll('[id^="year-"][id$="-btn"]');
+            yearButtons.forEach(btn => {{
+                btn.classList.remove('active');
+            }});
+            const selectedYearBtn = document.getElementById('year-' + year + '-btn');
+            if (selectedYearBtn) {{
+                selectedYearBtn.classList.add('active');
+            }}
+            
+            // Hide RB comparison, WR comparison, and year stats when switching years
+            const rbContent = document.getElementById('rb-comparison-content');
+            if (rbContent) rbContent.style.display = 'none';
+            
+            const wrContent = document.getElementById('wr-comparison-content');
+            if (wrContent) wrContent.style.display = 'none';
+            
+            const yearStatsContent = document.getElementById('total-year-stats-content');
+            if (yearStatsContent) yearStatsContent.style.display = 'none';
+            
+            const teamPagesContent = document.getElementById('team-pages-content');
+            if (teamPagesContent) teamPagesContent.style.display = 'none';
+            
+            // Remove active from comparison buttons
+            const rbButton = document.getElementById('rb-comparison-btn');
+            if (rbButton) rbButton.classList.remove('active');
+            
+            const wrButton = document.getElementById('wr-comparison-btn');
+            if (wrButton) wrButton.classList.remove('active');
+            
+            const yearStatsBtn = document.getElementById('year-stats-btn');
+            if (yearStatsBtn) yearStatsBtn.classList.remove('active');
+            
+            const teamPagesBtn = document.getElementById('team-pages-btn');
+            if (teamPagesBtn) teamPagesBtn.classList.remove('active');
+        }}
+        
+        function showTeamPages() {{
+            // Hide all year sections
+            const yearSections = document.querySelectorAll('.year-section');
+            yearSections.forEach(section => {{
+                section.style.display = 'none';
+            }});
+            
+            // Hide other content
+            const rbContent = document.getElementById('rb-comparison-content');
+            if (rbContent) rbContent.style.display = 'none';
+            
+            const wrContent = document.getElementById('wr-comparison-content');
+            if (wrContent) wrContent.style.display = 'none';
+            
+            const yearStatsContent = document.getElementById('total-year-stats-content');
+            if (yearStatsContent) yearStatsContent.style.display = 'none';
+            
+            // Remove active from year buttons
+            const yearButtons = document.querySelectorAll('[id^="year-"][id$="-btn"]');
+            yearButtons.forEach(btn => {{
+                btn.classList.remove('active');
+            }});
+            
+            // Remove active from all week buttons
+            const weekButtons = document.querySelectorAll('.week-button');
+            weekButtons.forEach(button => {{
+                button.classList.remove('active');
+            }});
+            
+            // Remove active from other buttons
+            const rbButton = document.getElementById('rb-comparison-btn');
+            if (rbButton) rbButton.classList.remove('active');
+            
+            const wrButton = document.getElementById('wr-comparison-btn');
+            if (wrButton) wrButton.classList.remove('active');
+            
+            const yearStatsBtn = document.getElementById('year-stats-btn');
+            if (yearStatsBtn) yearStatsBtn.classList.remove('active');
+            
+            // Show team pages
+            const teamPagesContent = document.getElementById('team-pages-content');
+            if (teamPagesContent) {{
+                teamPagesContent.style.display = 'block';
+                
+                // Show first team by default
+                const firstTeamContent = teamPagesContent.querySelector('.team-content');
+                if (firstTeamContent) {{
+                    firstTeamContent.style.display = 'block';
+                    const firstTeamTab = document.querySelector('.team-tab-button');
+                    if (firstTeamTab) {{
+                        firstTeamTab.classList.add('active');
+                    }}
+                    // Show 2025 year for first team
+                    const firstTeamId = firstTeamContent.id.replace('team-', '').replace('-content', '');
+                    showTeamYear(parseInt(firstTeamId), 2025);
+                }}
+            }}
+            
+            // Add active to team pages button
+            const teamPagesBtn = document.getElementById('team-pages-btn');
+            if (teamPagesBtn) teamPagesBtn.classList.add('active');
+        }}
+        
+        function showTeam(teamId) {{
+            // Hide all team contents
+            const teamContents = document.querySelectorAll('.team-content');
+            teamContents.forEach(content => {{
+                content.style.display = 'none';
+            }});
+            
+            // Remove active from all team tab buttons
+            const teamTabButtons = document.querySelectorAll('.team-tab-button');
+            teamTabButtons.forEach(button => {{
+                button.classList.remove('active');
+            }});
+            
+            // Show selected team content
+            const selectedTeamContent = document.getElementById('team-' + teamId + '-content');
+            if (selectedTeamContent) {{
+                selectedTeamContent.style.display = 'block';
+            }}
+            
+            // Add active to clicked team tab button
+            const teamTabBtn = document.getElementById('team-tab-' + teamId);
+            if (teamTabBtn) {{
+                teamTabBtn.classList.add('active');
+            }}
+            
+            // Show 2025 year by default for this team
+            showTeamYear(teamId, 2025);
+        }}
+        
+        function showTeamYear(teamId, year) {{
+            // Hide all year contents for this team
+            const teamContent = document.getElementById('team-' + teamId + '-content');
+            if (!teamContent) return;
+            
+            const yearContents = teamContent.querySelectorAll('.team-year-content');
+            yearContents.forEach(content => {{
+                content.style.display = 'none';
+            }});
+            
+            // Remove active from all year tab buttons for this team
+            const yearTabButtons = teamContent.querySelectorAll('.year-tab-button');
+            yearTabButtons.forEach(button => {{
+                button.classList.remove('active');
+            }});
+            
+            // Show selected year content
+            const selectedYearContent = document.getElementById('team-' + teamId + '-year-' + year + '-content');
+            if (selectedYearContent) {{
+                selectedYearContent.style.display = 'block';
+            }}
+            
+            // Add active to clicked year tab button
+            const yearTabBtn = document.getElementById('team-' + teamId + '-year-' + year + '-tab');
+            if (yearTabBtn) {{
+                yearTabBtn.classList.add('active');
+            }}
+        }}
+        
+        function showWRTargetsPercentage(team) {{
+            const modal = document.getElementById('wr-targets-modal-' + team);
+            if (modal) {{
+                modal.style.display = 'block';
+            }}
+        }}
+        
+        function closeWRTargetsModal(team) {{
+            const modal = document.getElementById('wr-targets-modal-' + team);
+            if (modal) {{
+                modal.style.display = 'none';
+            }}
+        }}
+        
         // Close modal when clicking outside of it
         window.onclick = function(event) {{
             if (event.target.classList.contains('vulture-modal')) {{
                 event.target.style.display = 'none';
             }}
+            if (event.target.id && event.target.id.startsWith('wr-targets-modal-')) {{
+                event.target.style.display = 'none';
+            }}
         }}
         
-        // Set current week as active on load
+        // Set current week as active on load and activate 2025 year button
         document.addEventListener('DOMContentLoaded', function() {{
-            const currentWeekButton = document.querySelector('.week-button[data-current="true"]');
-            if (currentWeekButton) {{
-                currentWeekButton.classList.add('active');
-                const week = currentWeekButton.textContent.replace('Week ', '');
-                const firstMatchup = document.querySelector('#week-' + week + '-content .matchup-tab-button');
-                if (firstMatchup) {{
-                    firstMatchup.classList.add('active');
+            // Activate 2025 year button by default
+            const year2025Btn = document.getElementById('year-2025-btn');
+            if (year2025Btn) {{
+                year2025Btn.classList.add('active');
+            }}
+            
+            // Set current week as active in the visible year section
+            const year2025Section = document.getElementById('year-2025-section');
+            if (year2025Section) {{
+                const currentWeekButton = year2025Section.querySelector('.week-button[data-current="true"]');
+                if (currentWeekButton) {{
+                    currentWeekButton.classList.add('active');
+                    const week = currentWeekButton.textContent.replace('Week ', '');
+                    const firstMatchup = year2025Section.querySelector('#week-' + week + '-2025-content .matchup-tab-button');
+                    if (firstMatchup) {{
+                        firstMatchup.classList.add('active');
+                        const matchupIndex = 0;
+                        showMatchup(parseInt(week), matchupIndex, 2025);
+                    }}
                 }}
             }}
         }});
@@ -1922,40 +3045,98 @@ def generate_html(league, all_weeks_data, current_week, rbs):
 
 def main():
     try:
-        print("Connecting to league...")
-        league = League(league_id=LEAGUE_ID, year=YEAR, espn_s2=ESPN_S2, swid=SWID)
+        year_sections_html = ""
+        league_2025 = None
+        league_2024 = None
+        all_weeks_data_2025 = None
+        rbs_2025 = None
+        wrs_2025 = None
         
-        current_week = league.current_week
-        print(f"Current week: {current_week}")
-        print(f"Fetching matchups for all weeks (1-{current_week})...")
-        
-        # Fetch all weeks' matchups
-        all_weeks_data = {}
-        for week in range(1, current_week + 1):
+        # Fetch data for both 2024 and 2025
+        for year in [2025, 2024]:
+            print(f"\n{'='*60}")
+            print(f"Processing Year {year}")
+            print(f"{'='*60}")
+            
             try:
-                print(f"  Fetching Week {week}...", end=" ")
-                box_scores = league.box_scores(week=week)
-                all_weeks_data[week] = box_scores
-                print(f"OK ({len(box_scores)} matchups)")
+                print("Connecting to league...")
+                league = League(league_id=LEAGUE_ID, year=year, espn_s2=ESPN_S2, swid=SWID)
+                
+                if year == 2025:
+                    league_2025 = league
+                elif year == 2024:
+                    league_2024 = league
+                
+                current_week = league.current_week
+                print(f"Current week: {current_week}")
+                print(f"Fetching matchups for all weeks (1-{current_week})...")
+                
+                # Fetch all weeks' matchups
+                all_weeks_data = {}
+                for week in range(1, current_week + 1):
+                    try:
+                        print(f"  Fetching Week {week}...", end=" ")
+                        box_scores = league.box_scores(week=week)
+                        all_weeks_data[week] = box_scores
+                        print(f"OK ({len(box_scores)} matchups)")
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        # Continue with other weeks even if one fails
+                        continue
+                
+                if year == 2025:
+                    all_weeks_data_2025 = all_weeks_data
+                
+                print("Generating HTML for year...")
+                year_section_html = generate_html(league, all_weeks_data, current_week, None, None, year)
+                year_sections_html += year_section_html
+                
+                print(f"✓ Year {year} HTML generated")
+                
             except Exception as e:
-                print(f"Error: {e}")
-                # Continue with other weeks even if one fails
+                print(f"Error processing year {year}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue with other year even if one fails
                 continue
         
-        print("Collecting running backs...")
-        rbs = collect_running_backs(league)
-        print(f"  Found {len(rbs)} running backs")
+        # Collect RB and WR data for 2025 only (for comparison pages)
+        if league_2025:
+            print("\nCollecting running backs for 2025...")
+            rbs_2025 = collect_running_backs(league_2025)
+            print(f"  Found {len(rbs_2025)} running backs")
+            
+            print("Collecting wide receivers for 2025...")
+            wrs_2025 = collect_wide_receivers(league_2025)
+            print(f"  Found {len(wrs_2025)} wide receivers")
+            
+            # Collect team data for both years
+            print("\nCollecting team data for 2024...")
+            teams_2024_data = get_team_year_stats(league_2024) if league_2024 else []
+            print(f"  Found {len(teams_2024_data)} teams for 2024")
+            
+            print("Collecting team data for 2025...")
+            teams_2025_data = get_team_year_stats(league_2025) if league_2025 else []
+            print(f"  Found {len(teams_2025_data)} teams for 2025")
+            
+            print("Generating shared content (RB/WR comparisons, stats, team pages)...")
+            shared_content_html = generate_shared_content_html(rbs_2025, wrs_2025, league_2025, all_weeks_data_2025, teams_2024_data, teams_2025_data)
+        else:
+            print("Warning: Could not get 2025 league data for comparisons")
+            shared_content_html = ""
         
-        print("Generating HTML...")
-        html_content = generate_html(league, all_weeks_data, current_week, rbs)
+        print("\nGenerating full HTML...")
+        html_content = generate_full_html(year_sections_html, shared_content_html, league_2025)
         
         filename = "index.html"
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
-        print(f"\nSuccess! HTML file created: {filename}")
+        print(f"\n{'='*60}")
+        print(f"Success! HTML file created: {filename}")
         print(f"Open {filename} in your browser to view all weeks' matchups.")
-        print(f"Use the week buttons at the top to navigate between weeks.")
+        print(f"Use the year and week buttons to navigate.")
+        print(f"{'='*60}")
         
     except Exception as e:
         print(f"Error: {e}")
