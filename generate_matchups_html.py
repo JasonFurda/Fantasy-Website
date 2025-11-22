@@ -1949,7 +1949,7 @@ def main():
         print("Generating HTML...")
         html_content = generate_html(league, all_weeks_data, current_week, rbs)
         
-        filename = "all_weeks_matchups.html"
+        filename = "index.html"
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
         
