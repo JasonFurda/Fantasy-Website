@@ -157,6 +157,11 @@ def generate_index_shell_html(shared_content_html, league_name="Fantasy League")
         <span class="btn-icon">👥</span>
         <span class="btn-text">Team Pages</span>
       </button>
+      <button class="rb-comparison-main-btn" onclick="showDefenseRankings()" id="defense-rankings-btn"
+        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <span class="btn-icon">🛡️</span>
+        <span class="btn-text">Defense Rankings</span>
+      </button>
     </div>
 
     <!-- Year selector (same ids as before) -->
@@ -544,7 +549,7 @@ def calculate_wr_targets_percentage(team_wrs):
     
     return results
 
-def get_team_year_stats(league):
+def get_team_year_stats(league, all_weeks_data=None):
     """Get team statistics for a specific year including record, playoff placement, and top 3 players"""
     teams_data = []
     
@@ -580,16 +585,76 @@ def get_team_year_stats(league):
             else:
                 playoff_placement = "Did not make playoffs"
         
-        # Get top 3 players by total points
+        # Get top 3 players by points earned while on this team
         roster_players = []
         if hasattr(team, 'roster') and team.roster:
             for player in team.roster:
-                if hasattr(player, 'total_points') and player.total_points:
+                # Calculate points earned while on this team
+                points_on_team = 0.0
+                games_on_team = 0
+                
+                if all_weeks_data:
+                    # Look through all weeks to find when this player was on this team
+                    for week in sorted(all_weeks_data.keys()):
+                        player_found_this_week = False
+                        
+                        for matchup in all_weeks_data[week]:
+                            if not matchup or not hasattr(matchup, 'home_team') or not matchup.home_team:
+                                continue
+                            
+                            # Check away team lineup
+                            if matchup.away_team and matchup.away_team.team_id == team.team_id:
+                                away_lineup = getattr(matchup, 'away_lineup', []) or []
+                                for p in away_lineup:
+                                    if hasattr(p, 'name') and p.name == player.name:
+                                        # Check if player is in starting lineup (not bench)
+                                        slot = getattr(p, 'slot_position', '') or getattr(p, 'lineupSlot', '')
+                                        if slot in ['BE', 'IR']:
+                                            # Skip bench players
+                                            player_found_this_week = True
+                                            break
+                                        
+                                        points = getattr(p, 'points', 0.0) or 0.0
+                                        points_on_team += points
+                                        if points > 0:
+                                            games_on_team += 1
+                                        player_found_this_week = True
+                                        break
+                                if player_found_this_week:
+                                    break
+                            
+                            # Check home team lineup
+                            if not player_found_this_week and matchup.home_team and matchup.home_team.team_id == team.team_id:
+                                home_lineup = getattr(matchup, 'home_lineup', []) or []
+                                for p in home_lineup:
+                                    if hasattr(p, 'name') and p.name == player.name:
+                                        # Check if player is in starting lineup (not bench)
+                                        slot = getattr(p, 'slot_position', '') or getattr(p, 'lineupSlot', '')
+                                        if slot in ['BE', 'IR']:
+                                            # Skip bench players
+                                            player_found_this_week = True
+                                            break
+                                        
+                                        points = getattr(p, 'points', 0.0) or 0.0
+                                        points_on_team += points
+                                        if points > 0:
+                                            games_on_team += 1
+                                        player_found_this_week = True
+                                        break
+                                if player_found_this_week:
+                                    break
+                else:
+                    # Fallback: use total_points if no matchup data available
+                    points_on_team = getattr(player, 'total_points', 0.0) or 0.0
+                    games_on_team = getattr(player, 'games_played', 0) or 0
+                
+                if points_on_team > 0:
+                    avg_points = points_on_team / games_on_team if games_on_team > 0 else 0
                     roster_players.append({
                         'name': player.name,
                         'position': getattr(player, 'position', 'N/A'),
-                        'total_points': player.total_points,
-                        'avg_points': getattr(player, 'avg_points', 0),
+                        'total_points': round(points_on_team, 2),
+                        'avg_points': round(avg_points, 2),
                         'proTeam': getattr(player, 'proTeam', 'N/A')
                     })
         
@@ -1008,10 +1073,424 @@ def generate_wr_comparison_html(wrs):
     </div>
     """
 
+def generate_mismanagement_rows(mismanagement_data):
+    """Generate HTML rows for mismanagement leaderboard"""
+    if not mismanagement_data:
+        return '<tr><td colspan="8" style="text-align: center; padding: 20px;">No mismanagement data available</td></tr>'
+    
+    rows_html = ""
+    for idx, data in enumerate(mismanagement_data):
+        team = data['team']
+        mismanagement_class = "fraud-high" if data['total_mismanagement'] > 100 else "fraud-medium" if data['total_mismanagement'] > 50 else "fraud-low"
+        
+        rows_html += f"""
+        <tr class="{mismanagement_class}">
+            <td>{idx + 1}</td>
+            <td class="team-name">{team.team_name}</td>
+            <td>{data['owner']}</td>
+            <td class="fraud-score">{data['total_mismanagement']:.2f}</td>
+            <td class="points">{data['total_optimal_points']:.2f}</td>
+            <td class="points">{data['total_actual_points']:.2f}</td>
+            <td>{data['avg_mismanagement']:.2f}</td>
+            <td>{team.wins}-{team.losses}-{team.ties}</td>
+        </tr>
+        """
+    
+    return rows_html
+
+def calculate_mismanagement_leaderboard(league, all_weeks_data):
+    """Calculate mismanagement scores - difference between optimal and actual lineups"""
+    team_mismanagement = {}
+    
+    # Initialize teams
+    for team in league.teams:
+        team_mismanagement[team.team_id] = {
+            'team': team,
+            'owner': get_owner_name(team),
+            'total_mismanagement': 0.0,
+            'total_optimal_points': 0.0,
+            'total_actual_points': 0.0,
+            'weeks': []
+        }
+    
+    # Process each week
+    for week in sorted(all_weeks_data.keys()):
+        for matchup in all_weeks_data[week]:
+            if not matchup or not hasattr(matchup, 'home_team') or not matchup.home_team:
+                continue
+            
+            # Process away team
+            if matchup.away_team:
+                process_team_mismanagement(
+                    matchup.away_team, 
+                    getattr(matchup, 'away_lineup', []) or [],
+                    week,
+                    team_mismanagement
+                )
+            
+            # Process home team
+            if matchup.home_team:
+                process_team_mismanagement(
+                    matchup.home_team,
+                    getattr(matchup, 'home_lineup', []) or [],
+                    week,
+                    team_mismanagement
+                )
+    
+    # Convert to list and sort by total mismanagement (descending - worst first)
+    mismanagement_list = []
+    for team_id, data in team_mismanagement.items():
+        mismanagement_list.append({
+            'team': data['team'],
+            'owner': data['owner'],
+            'total_mismanagement': round(data['total_mismanagement'], 2),
+            'total_optimal_points': round(data['total_optimal_points'], 2),
+            'total_actual_points': round(data['total_actual_points'], 2),
+            'avg_mismanagement': round(data['total_mismanagement'] / len(data['weeks']) if data['weeks'] else 0, 2),
+            'weeks': data['weeks']
+        })
+    
+    mismanagement_list.sort(key=lambda x: x['total_mismanagement'], reverse=True)
+    return mismanagement_list
+
+def process_team_mismanagement(team, lineup, week, team_mismanagement):
+    """Calculate optimal vs actual lineup for a team in a given week"""
+    if team.team_id not in team_mismanagement:
+        return
+    
+    # Get all players (both starting and bench)
+    all_players = []
+    actual_starting_score = 0.0
+    
+    for player in lineup:
+        slot = getattr(player, 'slot_position', '') or getattr(player, 'lineupSlot', '')
+        points = getattr(player, 'points', 0.0) or 0.0
+        position = getattr(player, 'position', '')
+        
+        # Store player info
+        all_players.append({
+            'name': getattr(player, 'name', 'Unknown'),
+            'position': position,
+            'slot': slot,
+            'points': points
+        })
+        
+        # Count actual starting lineup points (exclude bench)
+        if slot not in ['BE', 'IR']:
+            actual_starting_score += points
+    
+    # Calculate optimal lineup
+    optimal_score = calculate_optimal_lineup_score(all_players)
+    
+    # Calculate mismanagement (difference)
+    mismanagement = optimal_score - actual_starting_score
+    
+    # Store the data
+    team_mismanagement[team.team_id]['total_mismanagement'] += mismanagement
+    team_mismanagement[team.team_id]['total_optimal_points'] += optimal_score
+    team_mismanagement[team.team_id]['total_actual_points'] += actual_starting_score
+    team_mismanagement[team.team_id]['weeks'].append({
+        'week': week,
+        'optimal': round(optimal_score, 2),
+        'actual': round(actual_starting_score, 2),
+        'mismanagement': round(mismanagement, 2)
+    })
+
+def calculate_optimal_lineup_score(all_players):
+    """Calculate the best possible lineup score from available players"""
+    # Group players by position
+    qbs = []
+    rbs = []
+    wrs = []
+    tes = []
+    dsts = []
+    ks = []
+    
+    for p in all_players:
+        pos = p['position']
+        if pos == 'QB':
+            qbs.append(p)
+        elif pos == 'RB':
+            rbs.append(p)
+        elif pos == 'WR':
+            wrs.append(p)
+        elif pos == 'TE':
+            tes.append(p)
+        elif pos == 'DST' or pos == 'D/ST':
+            dsts.append(p)
+        elif pos == 'K':
+            ks.append(p)
+    
+    # Sort by points descending
+    qbs.sort(key=lambda x: x['points'], reverse=True)
+    rbs.sort(key=lambda x: x['points'], reverse=True)
+    wrs.sort(key=lambda x: x['points'], reverse=True)
+    tes.sort(key=lambda x: x['points'], reverse=True)
+    dsts.sort(key=lambda x: x['points'], reverse=True)
+    ks.sort(key=lambda x: x['points'], reverse=True)
+    
+    # Build optimal lineup (standard: 1 QB, 2 RB, 2 WR, 1 TE, 1 FLEX, 1 D/ST, 1 K)
+    optimal_score = 0.0
+    
+    # QB
+    if qbs:
+        optimal_score += qbs[0]['points']
+    
+    # RBs (2)
+    for i in range(min(2, len(rbs))):
+        optimal_score += rbs[i]['points']
+    
+    # WRs (2)
+    for i in range(min(2, len(wrs))):
+        optimal_score += wrs[i]['points']
+    
+    # TE
+    if tes:
+        optimal_score += tes[0]['points']
+    
+    # FLEX (best remaining RB/WR/TE)
+    flex_candidates = []
+    if len(rbs) > 2:
+        flex_candidates.extend(rbs[2:])
+    if len(wrs) > 2:
+        flex_candidates.extend(wrs[2:])
+    if len(tes) > 1:
+        flex_candidates.extend(tes[1:])
+    
+    flex_candidates.sort(key=lambda x: x['points'], reverse=True)
+    if flex_candidates:
+        optimal_score += flex_candidates[0]['points']
+    
+    # D/ST
+    if dsts:
+        optimal_score += dsts[0]['points']
+    
+    # K
+    if ks:
+        optimal_score += ks[0]['points']
+    
+    return optimal_score
+
+def collect_defense_rankings(league, all_weeks_data):
+    """Collect defense rankings based on RB and WR points scored against them"""
+    defense_stats = {}
+    
+    # Process each week
+    for week in sorted(all_weeks_data.keys()):
+        # Process players from matchups (lineups include starters and bench)
+        for matchup in all_weeks_data[week]:
+            if not matchup or not hasattr(matchup, 'home_team') or not matchup.home_team:
+                continue
+            
+            # Get all players from both teams (lineup includes starters and bench)
+            away_lineup = getattr(matchup, 'away_lineup', []) or []
+            home_lineup = getattr(matchup, 'home_lineup', []) or []
+            
+            # Process all players from away team (including bench)
+            for player in away_lineup:
+                process_player_for_defense(player, defense_stats, week)
+            
+            # Process all players from home team (including bench)
+            for player in home_lineup:
+                process_player_for_defense(player, defense_stats, week)
+        
+        # Also process players from all team rosters to get complete data
+        # This ensures we capture all RB/WR points, including players not in lineups
+        # Note: We process roster players but the opponent info might not be available
+        # The lineup players should have the most accurate opponent data
+        try:
+            for team in league.teams:
+                if hasattr(team, 'roster') and team.roster:
+                    for player in team.roster:
+                        position = getattr(player, 'position', '')
+                        if position not in ['RB', 'WR']:
+                            continue
+                        
+                        # Check if player has stats for this week
+                        if hasattr(player, 'stats') and player.stats:
+                            if isinstance(player.stats, dict):
+                                week_stats = player.stats.get(week, {})
+                                if week_stats and isinstance(week_stats, dict):
+                                    # Get points from week stats
+                                    points = week_stats.get('points', 0.0) or 0.0
+                                    if points > 0:  # Only process if player scored points
+                                        # Try to get opponent - use pro_opponent if available, otherwise skip
+                                        # (lineup players should have this, but roster players might not)
+                                        opponent = getattr(player, 'pro_opponent', '') or ''
+                                        
+                                        if opponent and opponent != 'BYE' and opponent != 'None' and opponent != '':
+                                            # Create a player-like object for processing
+                                            class TempPlayer:
+                                                def __init__(self, pos, pts, opp):
+                                                    self.position = pos
+                                                    self.points = pts
+                                                    self.pro_opponent = opp
+                                            
+                                            temp_player = TempPlayer(position, points, opponent)
+                                            process_player_for_defense(temp_player, defense_stats, week)
+        except Exception as e:
+            print(f"  Warning: Could not process all roster players for week {week}: {e}")
+    
+    # Convert to list and sort by total points against (ascending - lower is better)
+    defense_list = []
+    for defense, stats in defense_stats.items():
+        # Filter out None, empty strings, and BYE
+        if not defense or defense == 'None' or defense == '' or defense == 'BYE':
+            continue
+        if stats['total_points'] > 0:  # Only include defenses that have been played against
+            defense_list.append({
+                'defense': defense,
+                'total_points': round(stats['total_points'], 2),
+                'rb_points': round(stats['rb_points'], 2),
+                'wr_points': round(stats['wr_points'], 2),
+                'games': len(stats['games'])
+            })
+    
+    # Sort by total points ascending (lower is better)
+    defense_list.sort(key=lambda x: x['total_points'])
+    
+    return defense_list
+
+def process_player_for_defense(player, defense_stats, week):
+    """Process a player to track points scored against their opponent's defense"""
+    position = getattr(player, 'position', '')
+    points = getattr(player, 'points', 0.0) or 0.0
+    
+    # Only track RB and WR points
+    if position not in ['RB', 'WR']:
+        return
+    
+    # Get the opponent (the defense they played against)
+    # Try multiple attributes in case the API uses different names
+    opponent = getattr(player, 'pro_opponent', '') or getattr(player, 'opponent', '') or ''
+    
+    # Filter out invalid opponents
+    if not opponent or opponent == 'BYE' or opponent == 'None' or opponent == '':
+        return
+    
+    # Initialize defense if not exists
+    if opponent not in defense_stats:
+        defense_stats[opponent] = {
+            'total_points': 0.0,
+            'rb_points': 0.0,
+            'wr_points': 0.0,
+            'games': set()  # Track unique weeks to count games
+        }
+    
+    # Add points (only count if player actually played and scored points)
+    if points > 0:
+        defense_stats[opponent]['total_points'] += points
+        if position == 'RB':
+            defense_stats[opponent]['rb_points'] += points
+        elif position == 'WR':
+            defense_stats[opponent]['wr_points'] += points
+        
+        # Track games (unique weeks) - only count weeks where points were scored
+        defense_stats[opponent]['games'].add(week)
+
+def generate_defense_rankings_html(defense_data):
+    """Generate HTML for defense rankings table"""
+    
+    if not defense_data:
+        return "<div class='rb-content'><p>No defense data found.</p></div>"
+    
+    # Generate table rows
+    rows_html = ""
+    for idx, defense in enumerate(defense_data):
+        avg_points = defense['total_points'] / defense['games'] if defense['games'] > 0 else 0
+        
+        rows_html += f"""
+        <tr>
+            <td>{idx + 1}</td>
+            <td class="player-name clickable-defense" onclick="showDefenseBreakdown('{defense['defense']}')" title="Click to view RB/WR breakdown for {defense['defense']}">{defense['defense']}</td>
+            <td class="points">{defense['total_points']:.2f}</td>
+            <td>{defense['rb_points']:.2f}</td>
+            <td>{defense['wr_points']:.2f}</td>
+            <td>{defense['games']}</td>
+            <td>{avg_points:.2f}</td>
+        </tr>
+        """
+    
+    # Generate breakdown modals for each defense
+    breakdown_modals_html = ""
+    for defense in defense_data:
+        rb_pct = (defense['rb_points'] / defense['total_points'] * 100) if defense['total_points'] > 0 else 0
+        wr_pct = (defense['wr_points'] / defense['total_points'] * 100) if defense['total_points'] > 0 else 0
+        
+        breakdown_modals_html += f"""
+        <div id="defense-breakdown-modal-{defense['defense']}" class="vulture-modal">
+            <div class="vulture-modal-content">
+                <div class="vulture-modal-header">
+                    <h2>{defense['defense']} Defense - RB/WR Breakdown</h2>
+                    <span class="vulture-close" onclick="closeDefenseBreakdown('{defense['defense']}')">&times;</span>
+                </div>
+                <div class="vulture-info">
+                    <p><strong>Total Points Allowed (RB + WR):</strong> {defense['total_points']:.2f}</p>
+                    <p><strong>Games Played:</strong> {defense['games']}</p>
+                </div>
+                <div class="vulture-table-wrapper">
+                    <table class="vulture-table">
+                        <thead>
+                            <tr>
+                                <th>Position</th>
+                                <th>Total Points</th>
+                                <th>Percentage</th>
+                                <th>Avg per Game</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="player-name">Running Backs</td>
+                                <td class="points">{defense['rb_points']:.2f}</td>
+                                <td>{rb_pct:.1f}%</td>
+                                <td>{(defense['rb_points'] / defense['games'] if defense['games'] > 0 else 0):.2f}</td>
+                            </tr>
+                            <tr>
+                                <td class="player-name">Wide Receivers</td>
+                                <td class="points">{defense['wr_points']:.2f}</td>
+                                <td>{wr_pct:.1f}%</td>
+                                <td>{(defense['wr_points'] / defense['games'] if defense['games'] > 0 else 0):.2f}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        """
+    
+    return f"""
+    <div id="defense-rankings-content" class="rb-content" style="display: none;">
+        <div class="rb-header">
+            <h2>Defense Rankings</h2>
+            <p>NFL defenses ranked by total fantasy points allowed to RBs and WRs. Lower is better. Click a defense name to view the breakdown between RB and WR points.</p>
+        </div>
+        <div class="rb-table-wrapper">
+            <table class="rb-comparison-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Defense</th>
+                        <th>Total Points</th>
+                        <th>RB Points</th>
+                        <th>WR Points</th>
+                        <th>Games</th>
+                        <th>Avg per Game</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+        {breakdown_modals_html}
+    </div>
+    """
+
 def generate_fraud_watch_html(league, all_weeks_data):
     """Generate HTML for fraud watch page and club pages"""
     fraud_data = calculate_fraud_watch(league)
     club_200, club_sub100 = find_club_performances(league, all_weeks_data)
+    mismanagement_data = calculate_mismanagement_leaderboard(league, all_weeks_data)
     
     # Fraud Watch rows
     fraud_rows_html = ""
@@ -1070,6 +1549,9 @@ def generate_fraud_watch_html(league, all_weeks_data):
         </tr>
         """
     
+    # Mismanagement Leaderboard rows
+    mismanagement_rows_html = generate_mismanagement_rows(mismanagement_data)
+    
     return f"""
     <div id="total-year-stats-content" class="year-stats-content" style="display: none;">
         <div class="stats-header">
@@ -1079,6 +1561,7 @@ def generate_fraud_watch_html(league, all_weeks_data):
             <button class="stats-tab-button active" onclick="showStatsPage('fraud-watch')">Fraud Watch</button>
             <button class="stats-tab-button" onclick="showStatsPage('club-200')">200 Club</button>
             <button class="stats-tab-button" onclick="showStatsPage('club-sub100')">Sub 100 Club</button>
+            <button class="stats-tab-button" onclick="showStatsPage('mismanagement')">Mismanagement Leaderboard</button>
         </div>
         <div id="fraud-watch-page" class="stats-page" style="display: block;">
             <div class="page-header">
@@ -1153,6 +1636,31 @@ def generate_fraud_watch_html(league, all_weeks_data):
                     </thead>
                     <tbody>
                         {club_sub100_rows_html if club_sub100_rows_html else '<tr><td colspan="8" style="text-align: center; padding: 20px;">No teams scored under 100 points this season</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="mismanagement-page" class="stats-page" style="display: none;">
+            <div class="page-header">
+                <h3>Mismanagement Leaderboard</h3>
+                <p class="page-explanation">Teams ranked by total points left on the bench. This shows the difference between the best possible lineup (optimal players from their roster) and the actual lineup they played each week. Higher scores indicate more mismanagement.</p>
+            </div>
+            <div class="stats-table-wrapper">
+                <table class="stats-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Team</th>
+                            <th>Owner</th>
+                            <th>Total Mismanagement</th>
+                            <th>Max Possible Points</th>
+                            <th>Actual Points</th>
+                            <th>Avg per Week</th>
+                            <th>Record</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {mismanagement_rows_html}
                     </tbody>
                 </table>
             </div>
@@ -1313,7 +1821,7 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
     """
 
 def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, teams_2024_data, teams_2025_data):
-    """Generate HTML content shared across years (RB comparison, WR comparison, Year Stats, Team Pages)"""
+    """Generate HTML content shared across years (RB comparison, WR comparison, Year Stats, Team Pages, Defense Rankings)"""
     
     # Add RB comparison content (using 2025 data)
     rb_comparison_html = generate_rb_comparison_html(rbs)
@@ -1327,7 +1835,11 @@ def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, tea
     # Add Team Pages content
     team_pages_html = generate_team_pages_html(teams_2024_data, teams_2025_data)
     
-    return rb_comparison_html + wr_comparison_html + year_stats_html + team_pages_html
+    # Add Defense Rankings content (using 2025 data)
+    defense_data = collect_defense_rankings(league_2025, all_weeks_data_2025)
+    defense_rankings_html = generate_defense_rankings_html(defense_data)
+    
+    return rb_comparison_html + wr_comparison_html + year_stats_html + team_pages_html + defense_rankings_html
 
 
 def main():
@@ -1390,8 +1902,24 @@ def main():
         print("\nGenerating shared pages (RB/WR/Stats/Teams) from 2025 data...")
         rbs_2025 = collect_running_backs(league_2025)
         wrs_2025 = collect_wide_receivers(league_2025)
-        teams_2024_data = get_team_year_stats(league_2024) if league_2024 else []
-        teams_2025_data = get_team_year_stats(league_2025) if league_2025 else []
+        
+        # Get matchup data for 2024 if available
+        all_weeks_data_2024 = None
+        if league_2024:
+            try:
+                all_weeks_data_2024 = {}
+                current_week_2024 = league_2024.current_week
+                for week in range(1, current_week_2024 + 1):
+                    try:
+                        box_scores = league_2024.box_scores(week=week)
+                        all_weeks_data_2024[week] = box_scores
+                    except Exception as e:
+                        print(f"  Warning: Could not fetch week {week} for 2024: {e}")
+            except Exception as e:
+                print(f"  Warning: Could not fetch matchup data for 2024: {e}")
+        
+        teams_2024_data = get_team_year_stats(league_2024, all_weeks_data_2024) if league_2024 else []
+        teams_2025_data = get_team_year_stats(league_2025, all_weeks_data_2025) if league_2025 else []
         shared_content_html = generate_shared_content_html(
             rbs_2025, wrs_2025, league_2025, all_weeks_data_2025,
             teams_2024_data, teams_2025_data

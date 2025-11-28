@@ -274,7 +274,8 @@ function hideSharedPages(){
     "rb-comparison-content",
     "wr-comparison-content",
     "total-year-stats-content",
-    "team-pages-content"
+    "team-pages-content",
+    "defense-rankings-content"
   ];
   idsToHide.forEach(id=>{
     const el = document.getElementById(id);
@@ -300,6 +301,11 @@ window.showTotalYearStats = function(){
 window.showTeamPages = function(){
   hideMatchups();
   showOnly("team-pages-content");
+};
+
+window.showDefenseRankings = function(){
+  hideMatchups();
+  showOnly("defense-rankings-content");
 };
 
 function hideMatchups(){
@@ -361,6 +367,17 @@ window.showTeamYear = function(teamId, year){
   const btn = document.getElementById(`team-${teamId}-year-${year}-tab`);
   if (content) content.style.display="block";
   if (btn) btn.classList.add("active");
+};
+
+window.showDefenseBreakdown = function(defense){
+  document.querySelectorAll(".vulture-modal").forEach(m=>m.style.display="none");
+  const modal = document.getElementById(`defense-breakdown-modal-${defense}`);
+  if (modal) modal.style.display="block";
+};
+
+window.closeDefenseBreakdown = function(defense){
+  const modal = document.getElementById(`defense-breakdown-modal-${defense}`);
+  if (modal) modal.style.display="none";
 };
 
 // ---------- utils ----------
