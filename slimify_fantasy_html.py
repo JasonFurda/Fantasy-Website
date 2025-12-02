@@ -15,6 +15,7 @@ To keep your RB/WR/Fraud/Team Pages:
 from espn_api.football import League
 import json
 import os
+import math
 
 # ---------- League configuration ----------
 LEAGUE_ID = 953181335
@@ -376,6 +377,84 @@ def collect_running_backs(league):
     rbs.sort(key=lambda x: x['total_points'], reverse=True)
     
     return rbs
+
+def collect_draft_pick_values(league):
+    """Collect draft pick values - compares draft position to points scored"""
+    draft_values = []
+    
+    # Get draft picks
+    if not hasattr(league, 'draft') or not league.draft:
+        return draft_values
+    
+    # Create a mapping of player names to their total points
+    player_points = {}
+    
+    # Get points from all teams' rosters
+    for team in league.teams:
+        if hasattr(team, 'roster') and team.roster:
+            for player in team.roster:
+                player_name = getattr(player, 'name', '')
+                if player_name:
+                    total_points = getattr(player, 'total_points', 0.0) or 0.0
+                    # Use the higher value if player appears multiple times (shouldn't happen, but just in case)
+                    if player_name not in player_points or total_points > player_points[player_name]:
+                        player_points[player_name] = total_points
+    
+    # Process each draft pick
+    total_draft_picks = len(league.draft)
+    num_teams = len(league.teams) if hasattr(league, 'teams') else 12
+    
+    for idx, pick in enumerate(league.draft):
+        # Get pick information
+        player_name = getattr(pick, 'playerName', '') or getattr(pick, 'player_name', '')
+        round_num = getattr(pick, 'round_num', 0) or 0
+        round_pick = getattr(pick, 'round_pick', 0) or 0
+        
+        # Use the index in the draft list + 1 as the overall draft position
+        # This is the most accurate since the draft list is in order
+        draft_position = idx + 1
+        
+        # Get player's total points and position
+        total_points = player_points.get(player_name, 0.0)
+        
+        # Get player position - only include TE, RB, WR
+        position = None
+        for team in league.teams:
+            if hasattr(team, 'roster') and team.roster:
+                for player in team.roster:
+                    if getattr(player, 'name', '') == player_name:
+                        position = getattr(player, 'position', '')
+                        break
+                if position:
+                    break
+        
+        # Only include players who scored points and are TE, RB, or WR
+        if total_points > 0 and player_name and position in ['TE', 'RB', 'WR']:
+            # Calculate value: Make high points matter more than late draft pick
+            # Formula: value = total_points^2 × sqrt(draft_position)
+            # This squares points (making high scorers much more valuable) 
+            # while reducing the impact of very late picks
+            value = (total_points ** 2) * math.sqrt(draft_position)
+            
+            # Get team info
+            team = getattr(pick, 'team', None)
+            team_name = getattr(team, 'team_name', 'Unknown') if team else 'Unknown'
+            
+            draft_values.append({
+                'player_name': player_name,
+                'position': position,
+                'draft_position': draft_position,
+                'round_num': round_num,
+                'round_pick': round_pick,
+                'total_points': round(total_points, 2),
+                'value': round(value, 2),
+                'team_name': team_name
+            })
+    
+    # Sort by value descending (higher value = better)
+    draft_values.sort(key=lambda x: x['value'], reverse=True)
+    
+    return draft_values
 
 def collect_wide_receivers(league):
     """Collect all wide receivers from all teams and free agents"""
@@ -772,12 +851,57 @@ def calculate_fraud_watch(league):
     
     return teams_data
 
+def is_week_concluded(league, week, box_scores):
+    """Check if a week has concluded by verifying all players' games are complete"""
+    if week < league.current_week:
+        return True  # Past weeks are always concluded
+    
+    if week > league.current_week:
+        return False  # Future weeks haven't started
+    
+    # For current week, check if all players have completed their games
+    # Look for any players whose games are still in progress
+    for matchup in box_scores:
+        if not matchup.home_team:
+            continue
+        
+        # Check away team lineup
+        away_lineup = getattr(matchup, 'away_lineup', []) or []
+        for player in away_lineup:
+            # game_played represents percentage of game completed (0-100)
+            # If it's less than 100, the game is still in progress
+            game_played = getattr(player, 'game_played', 100)
+            on_bye = getattr(player, 'on_bye_week', False)
+            
+            # Skip bye week players, but check others
+            if not on_bye:
+                # If game_played is None or 0, might be game hasn't started
+                # If game_played is between 1-99, game is in progress
+                if game_played is None or (game_played is not None and game_played < 100):
+                    return False  # At least one player's game is still in progress or hasn't started
+        
+        # Check home team lineup
+        home_lineup = getattr(matchup, 'home_lineup', []) or []
+        for player in home_lineup:
+            game_played = getattr(player, 'game_played', 100)
+            on_bye = getattr(player, 'on_bye_week', False)
+            
+            if not on_bye:
+                if game_played is None or (game_played is not None and game_played < 100):
+                    return False  # At least one player's game is still in progress or hasn't started
+    
+    return True  # All games appear to be complete
+
 def find_club_performances(league, all_weeks_data):
     """Find teams that scored 200+ or sub-100 in any week"""
     club_200 = []  # Teams that scored 200+
     club_sub100 = []  # Teams that scored < 100
     
     for week, box_scores in all_weeks_data.items():
+        # For sub-100 club, skip current week if it hasn't concluded
+        # Always skip current week for sub-100 club to avoid showing incomplete scores
+        skip_sub100_this_week = (week == league.current_week)
+        
         for matchup in box_scores:
             if not matchup.home_team:
                 continue
@@ -792,7 +916,7 @@ def find_club_performances(league, all_weeks_data):
                     'opponent_score': matchup.home_score,
                     'won': matchup.away_score > matchup.home_score
                 })
-            elif matchup.away_score < 100:
+            elif matchup.away_score < 100 and not skip_sub100_this_week:
                 club_sub100.append({
                     'team': matchup.away_team,
                     'score': matchup.away_score,
@@ -812,7 +936,7 @@ def find_club_performances(league, all_weeks_data):
                     'opponent_score': matchup.away_score,
                     'won': matchup.home_score > matchup.away_score
                 })
-            elif matchup.home_score < 100:
+            elif matchup.home_score < 100 and not skip_sub100_this_week:
                 club_sub100.append({
                     'team': matchup.home_team,
                     'score': matchup.home_score,
@@ -1427,6 +1551,61 @@ def process_player_for_defense(player, defense_stats, week):
         
         # Track games (unique weeks) - only count weeks where points were scored
         defense_stats[opponent]['games'].add(week)
+
+def generate_draft_pick_value_html(draft_values):
+    """Generate HTML for draft pick value table"""
+    
+    if not draft_values:
+        return "<div class='rb-content'><p>No draft pick value data found.</p></div>"
+    
+    # Generate table rows
+    rows_html = ""
+    for idx, player in enumerate(draft_values):
+        # Calculate value per point (how much value per point scored)
+        value_per_point = player['value'] / player['total_points'] if player['total_points'] > 0 else 0
+        
+        rows_html += f"""
+        <tr>
+            <td>{idx + 1}</td>
+            <td class="player-name">{player['player_name']}</td>
+            <td>{player['position']}</td>
+            <td>{player['team_name']}</td>
+            <td>{player['draft_position']}</td>
+            <td>Round {player['round_num']}, Pick {player['round_pick']}</td>
+            <td class="points">{player['total_points']:.2f}</td>
+            <td class="points">{player['value']:.2f}</td>
+            <td>{value_per_point:.2f}</td>
+        </tr>
+        """
+    
+    return f"""
+        <div id="draft-pick-value-content" class="rb-content stats-tab-content" style="display: none;">
+        <div class="rb-header">
+            <h2>Draft Pick Value</h2>
+            <p>Players ranked by draft pick value (TE, RB, WR only). Higher value indicates players who scored more points despite being picked later in the draft. Value = (Total Points)² × √(Draft Position). High point totals are weighted more heavily than late draft position.</p>
+        </div>
+        <div class="rb-table-wrapper">
+            <table class="rb-comparison-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Position</th>
+                        <th>Team</th>
+                        <th>Draft Position</th>
+                        <th>Round/Pick</th>
+                        <th>Total Points</th>
+                        <th>Value</th>
+                        <th>Value/Point</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
 
 def generate_defense_rankings_html(defense_data):
     """Generate HTML for defense rankings table"""
@@ -2139,7 +2318,11 @@ def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, tea
     defense_data = collect_defense_rankings(league_2025, all_weeks_data_2025)
     defense_rankings_html = generate_defense_rankings_html(defense_data)
     
-    # Wrap RB, WR, and Defense in Player Comparisons with tabs
+    # Add Draft Pick Value content (using 2025 data)
+    draft_values = collect_draft_pick_values(league_2025) if league_2025 else []
+    draft_pick_value_html = generate_draft_pick_value_html(draft_values)
+    
+    # Wrap RB, WR, Defense, and Draft Pick Value in Player Comparisons with tabs
     player_comparisons_html = f"""
     <!-- Player Comparisons page with tabs -->
     <div id="player-comparisons-content" style="display: none;">
@@ -2153,11 +2336,15 @@ def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, tea
             <button class="stats-tab-button" onclick="showPlayerComparisonTab('defense')" id="player-comparison-tab-defense">
                 Defense Rankings
             </button>
+            <button class="stats-tab-button" onclick="showPlayerComparisonTab('draft')" id="player-comparison-tab-draft">
+                Draft Pick Value
+            </button>
         </div>
         
         {wr_comparison_html}
         {rb_comparison_html}
         {defense_rankings_html}
+        {draft_pick_value_html}
     </div>
     """
     

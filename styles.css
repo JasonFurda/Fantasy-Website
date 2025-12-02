@@ -874,6 +874,37 @@
             background: #e8f5e9;
         }
         
+        /* Performance classes should override player-playing */
+        .player-playing.perf-legendary,
+        .player-finished.perf-legendary {
+            background: #5dade2 !important;
+        }
+        
+        .player-playing.perf-legendary td,
+        .player-finished.perf-legendary td {
+            background: #5dade2 !important;
+        }
+        
+        .player-playing.perf-amazing,
+        .player-finished.perf-amazing {
+            background: #43a047 !important;
+        }
+        
+        .player-playing.perf-amazing td,
+        .player-finished.perf-amazing td {
+            background: #43a047 !important;
+        }
+        
+        .player-playing.perf-great,
+        .player-finished.perf-great {
+            background: #c5e1a5 !important;
+        }
+        
+        .player-playing.perf-great td,
+        .player-finished.perf-great td {
+            background: #c5e1a5 !important;
+        }
+        
         .player-pending {
             background: #fff3e0;
         }
@@ -894,12 +925,28 @@
         }
         
         /* Performance color coding - Green for overperformance */
+        .perf-legendary {
+            background: #5dade2 !important;  /* Deeper blue - 2x or more and >35 points */
+        }
+        
+        .perf-legendary td {
+            background: #5dade2 !important;
+        }
+        
+        .perf-amazing {
+            background: #43a047 !important;  /* Lighter green - 1.5x or more */
+        }
+        
+        .perf-amazing td {
+            background: #43a047 !important;
+        }
+        
         .perf-excellent {
             background: #81c784 !important;  /* Deeper green */
         }
         
         .perf-great {
-            background: #dcedc8 !important;
+            background: #c5e1a5 !important;  /* Darker light green - 1.25x or more */
         }
         
         .perf-good {
@@ -928,6 +975,8 @@
         }
         
         /* Override bench styling for performance colors */
+        .player-bench.perf-legendary,
+        .player-bench.perf-amazing,
         .player-bench.perf-excellent,
         .player-bench.perf-great,
         .player-bench.perf-good,

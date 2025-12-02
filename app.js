@@ -390,8 +390,10 @@ function renderPlayerRow(p){
 function performanceClass(points, proj){
   if (proj <= 0) return "";
   const ratio = points / proj;
-  if (ratio >= 1.35) return "perf-amazing";
-  if (ratio >= 1.15) return "perf-great";
+  // Bright light blue only if 2x+ AND points > 35 (extra rare)
+  if (ratio >= 2.0 && points > 35) return "perf-legendary";
+  if (ratio >= 1.5) return "perf-amazing";  // 1.5x or more - deep green
+  if (ratio >= 1.25) return "perf-great";  // 1.25x or more - light green
   if (ratio >= 0.95) return "perf-good";
   if (ratio >= 0.75) return "perf-bad";
   if (ratio >= 0.55) return "perf-very-bad";
@@ -451,8 +453,22 @@ window.showWeeklyMatchups = function(){
 
 window.showPlayerComparisons = function(){
   try {
+    // Hide weekly matchups navigation elements first
     hideMatchups();
     hideHomePage();
+    
+    // Hide all other shared pages (but NOT player-comparisons-content)
+    const idsToHide = [
+      "weekly-matchups-content",
+      "total-year-stats-content",
+      "team-pages-content"
+    ];
+    idsToHide.forEach(id=>{
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    });
+    
+    // Now show only the player comparisons content
     const playerComparisonsPage = document.getElementById("player-comparisons-content");
     if (playerComparisonsPage) {
       playerComparisonsPage.style.display = "block";
@@ -490,6 +506,9 @@ window.showPlayerComparisonTab = function(tab){
   } else if (tab === 'defense') {
     contentId = 'defense-rankings-content';
     tabButtonId = 'player-comparison-tab-defense';
+  } else if (tab === 'draft') {
+    contentId = 'draft-pick-value-content';
+    tabButtonId = 'player-comparison-tab-draft';
   }
   
   const content = document.getElementById(contentId);
