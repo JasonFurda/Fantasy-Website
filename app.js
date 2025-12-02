@@ -12,6 +12,7 @@ let currentWeek = null;
 let currentMatchupIndex = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOMContentLoaded - initializing page");
   // Show Weekly Matchups by default
   showWeeklyMatchups();
   
@@ -316,41 +317,53 @@ function hideSharedPages(){
 }
 
 window.showWeeklyMatchups = function(){
-  hideSharedPages();
-  const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
-  if (weeklyMatchupsPage) {
-    weeklyMatchupsPage.style.display = "block";
-    // Show week and matchup navigation
-    const weekNav = document.getElementById("week-nav");
-    const matchupNav = document.getElementById("matchup-nav");
-    const content = document.getElementById("content");
-    if (weekNav) {
-      weekNav.style.display = "flex";
-      weekNav.className = "week-navigation";
+  try {
+    hideSharedPages();
+    const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
+    if (weeklyMatchupsPage) {
+      weeklyMatchupsPage.style.display = "block";
+      // Show week and matchup navigation
+      const weekNav = document.getElementById("week-nav");
+      const matchupNav = document.getElementById("matchup-nav");
+      const content = document.getElementById("content");
+      if (weekNav) {
+        weekNav.style.display = "flex";
+        weekNav.className = "week-navigation";
+      }
+      if (matchupNav) {
+        matchupNav.style.display = "flex";
+        matchupNav.className = "matchup-tabs";
+      }
+      if (content) {
+        content.style.display = "block";
+      }
+      // If we have a current week, show it
+      if (currentWeek && yearDataCache[currentYear]) {
+        const yd = yearDataCache[currentYear];
+        renderWeekNav(yd);
+        showWeek(currentWeek, currentYear);
+      }
+    } else {
+      console.error("weekly-matchups-content element not found!");
     }
-    if (matchupNav) {
-      matchupNav.style.display = "flex";
-      matchupNav.className = "matchup-tabs";
-    }
-    if (content) {
-      content.style.display = "block";
-    }
-    // If we have a current week, show it
-    if (currentWeek && yearDataCache[currentYear]) {
-      const yd = yearDataCache[currentYear];
-      renderWeekNav(yd);
-      showWeek(currentWeek, currentYear);
-    }
+  } catch (error) {
+    console.error("Error in showWeeklyMatchups:", error);
   }
 };
 
 window.showPlayerComparisons = function(){
-  hideMatchups();
-  const playerComparisonsPage = document.getElementById("player-comparisons-content");
-  if (playerComparisonsPage) {
-    playerComparisonsPage.style.display = "block";
-    // Show WR tab by default (first tab)
-    showPlayerComparisonTab('wr');
+  try {
+    hideMatchups();
+    const playerComparisonsPage = document.getElementById("player-comparisons-content");
+    if (playerComparisonsPage) {
+      playerComparisonsPage.style.display = "block";
+      // Show WR tab by default (first tab)
+      showPlayerComparisonTab('wr');
+    } else {
+      console.error("player-comparisons-content element not found!");
+    }
+  } catch (error) {
+    console.error("Error in showPlayerComparisons:", error);
   }
 };
 
@@ -410,24 +423,30 @@ window.showTotalYearStats = function(){
 };
 
 window.showTeamPages = function(){
-  // Hide weekly matchups navigation elements first
-  hideMatchups();
-  
-  // Hide all other shared pages (but NOT team-pages-content)
-  const idsToHide = [
-    "weekly-matchups-content",
-    "player-comparisons-content",
-    "total-year-stats-content"
-  ];
-  idsToHide.forEach(id=>{
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
-  
-  // Now show only the team pages content
-  const teamPagesContent = document.getElementById("team-pages-content");
-  if (teamPagesContent) {
-    teamPagesContent.style.display = "block";
+  try {
+    // Hide weekly matchups navigation elements first
+    hideMatchups();
+    
+    // Hide all other shared pages (but NOT team-pages-content)
+    const idsToHide = [
+      "weekly-matchups-content",
+      "player-comparisons-content",
+      "total-year-stats-content"
+    ];
+    idsToHide.forEach(id=>{
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    });
+    
+    // Now show only the team pages content
+    const teamPagesContent = document.getElementById("team-pages-content");
+    if (teamPagesContent) {
+      teamPagesContent.style.display = "block";
+    } else {
+      console.error("team-pages-content element not found!");
+    }
+  } catch (error) {
+    console.error("Error in showTeamPages:", error);
   }
 };
 
@@ -513,6 +532,21 @@ window.closeDefenseBreakdown = function(defense){
   const modal = document.getElementById(`defense-breakdown-modal-${defense}`);
   if (modal) modal.style.display="none";
 };
+
+// Verify all main functions are defined (for debugging on GitHub Pages)
+if (typeof window.showWeeklyMatchups !== 'function') {
+  console.error("ERROR: showWeeklyMatchups is not defined!");
+}
+if (typeof window.showPlayerComparisons !== 'function') {
+  console.error("ERROR: showPlayerComparisons is not defined!");
+}
+if (typeof window.showTotalYearStats !== 'function') {
+  console.error("ERROR: showTotalYearStats is not defined!");
+}
+if (typeof window.showTeamPages !== 'function') {
+  console.error("ERROR: showTeamPages is not defined!");
+}
+console.log("app.js loaded - all functions should be available");
 
 // ---------- utils ----------
 function number(x){
