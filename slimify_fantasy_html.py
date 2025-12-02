@@ -136,16 +136,17 @@ def generate_index_shell_html(shared_content_html, league_name="Fantasy League")
       <p>All Weeks Matchups</p>
     </div>
 
-    <!-- Main nav buttons you already had -->
+    <!-- Main nav buttons -->
     <div class="main-navigation">
-      <button class="rb-comparison-main-btn" onclick="showRBComparison()" id="rb-comparison-btn">
-        <span class="btn-icon">📊</span>
-        <span class="btn-text">Running Back Comparison</span>
+      <button class="rb-comparison-main-btn" onclick="showWeeklyMatchups()" id="weekly-matchups-btn"
+        style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+        <span class="btn-icon">📅</span>
+        <span class="btn-text">Weekly Matchups</span>
       </button>
-      <button class="rb-comparison-main-btn" onclick="showWRComparison()" id="wr-comparison-btn"
-        style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-        <span class="btn-icon">🤾</span>
-        <span class="btn-text">Wide Receiver Comparison</span>
+      <button class="rb-comparison-main-btn" onclick="showPlayerComparisons()" id="player-comparisons-btn"
+        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <span class="btn-icon">📊</span>
+        <span class="btn-text">Player Comparisons</span>
       </button>
       <button class="rb-comparison-main-btn" onclick="showTotalYearStats()" id="year-stats-btn"
         style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
@@ -157,34 +158,7 @@ def generate_index_shell_html(shared_content_html, league_name="Fantasy League")
         <span class="btn-icon">👥</span>
         <span class="btn-text">Team Pages</span>
       </button>
-      <button class="rb-comparison-main-btn" onclick="showDefenseRankings()" id="defense-rankings-btn"
-        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-        <span class="btn-icon">🛡️</span>
-        <span class="btn-text">Defense Rankings</span>
-      </button>
     </div>
-
-    <!-- Year selector (same ids as before) -->
-    <div class="year-selector" style="background: #f8f9fa; padding: 15px 30px; border-bottom: 2px solid #e0e0e0; text-align: center;">
-      <div style="display: inline-flex; gap: 10px; align-items: center;">
-        <span style="font-weight: 600; margin-right: 10px;">Year:</span>
-        <button class="rb-comparison-main-btn" onclick="switchYear(2024)" id="year-2024-btn"
-          style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
-          <span class="btn-icon">📅</span>
-          <span class="btn-text">2024</span>
-        </button>
-        <button class="rb-comparison-main-btn" onclick="switchYear(2025)" id="year-2025-btn"
-          style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
-          <span class="btn-icon">📅</span>
-          <span class="btn-text">2025</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- These three are now empty; app.js fills them -->
-    <div id="week-nav" class="week-navigation"></div>
-    <div id="matchup-nav" class="matchup-tabs"></div>
-    <div id="content" class="matchup-content-wrapper"></div>
 
     <!-- Shared pages are still injected here -->
     {shared_content_html}
@@ -902,7 +876,7 @@ def generate_rb_comparison_html(rbs):
         """
     
     return f"""
-    <div id="rb-comparison-content" class="rb-content" style="display: none;">
+            <div id="rb-comparison-content" class="rb-content stats-tab-content" style="display: none;">
         <div class="rb-header">
             <h2>Running Back Comparison</h2>
             <p>All running backs in the league, sorted by total fantasy points. Click a player name to view vulture percentage for their NFL team.</p>
@@ -1038,7 +1012,7 @@ def generate_wr_comparison_html(wrs):
         """
     
     return f"""
-    <div id="wr-comparison-content" class="rb-content" style="display: none;">
+        <div id="wr-comparison-content" class="rb-content stats-tab-content" style="display: block;">
         <div class="rb-header">
             <h2>Wide Receiver Comparison</h2>
             <p>All wide receivers in the league, sorted by total fantasy points. Click a player name to view target and points percentage for their NFL team.</p>
@@ -1459,7 +1433,7 @@ def generate_defense_rankings_html(defense_data):
         """
     
     return f"""
-    <div id="defense-rankings-content" class="rb-content" style="display: none;">
+        <div id="defense-rankings-content" class="rb-content stats-tab-content" style="display: none;">
         <div class="rb-header">
             <h2>Defense Rankings</h2>
             <p>NFL defenses ranked by total fantasy points allowed to RBs and WRs. Lower is better. Click a defense name to view the breakdown between RB and WR points.</p>
@@ -1821,7 +1795,36 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
     """
 
 def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, teams_2024_data, teams_2025_data):
-    """Generate HTML content shared across years (RB comparison, WR comparison, Year Stats, Team Pages, Defense Rankings)"""
+    """Generate HTML content shared across years (Weekly Matchups, Player Comparisons, Year Stats, Team Pages)"""
+    
+    # Generate year selector buttons dynamically
+    year_buttons_html = ""
+    for year in YEARS:
+        year_buttons_html += f"""
+                <button class="rb-comparison-main-btn" onclick="switchYear({year})" id="year-{year}-btn"
+                    style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                    <span class="btn-icon">📅</span>
+                    <span class="btn-text">{year}</span>
+                </button>"""
+    
+    # Weekly Matchups content with year selector and navigation placeholders
+    weekly_matchups_html = f"""
+    <!-- Weekly Matchups page -->
+    <div id="weekly-matchups-content" style="display: none;">
+        <!-- Year selector -->
+        <div class="year-selector" style="background: #f8f9fa; padding: 15px 30px; border-bottom: 2px solid #e0e0e0; text-align: center;">
+            <div style="display: inline-flex; gap: 10px; align-items: center;">
+                <span style="font-weight: 600; margin-right: 10px;">Year:</span>
+                {year_buttons_html}
+            </div>
+        </div>
+        
+        <!-- These three are now empty; app.js fills them -->
+        <div id="week-nav" class="week-navigation"></div>
+        <div id="matchup-nav" class="matchup-tabs"></div>
+        <div id="content" class="matchup-content-wrapper"></div>
+    </div>
+    """
     
     # Add RB comparison content (using 2025 data)
     rb_comparison_html = generate_rb_comparison_html(rbs)
@@ -1829,17 +1832,39 @@ def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, tea
     # Add WR comparison content (using 2025 data)
     wr_comparison_html = generate_wr_comparison_html(wrs)
     
+    # Add Defense Rankings content (using 2025 data)
+    defense_data = collect_defense_rankings(league_2025, all_weeks_data_2025)
+    defense_rankings_html = generate_defense_rankings_html(defense_data)
+    
+    # Wrap RB, WR, and Defense in Player Comparisons with tabs
+    player_comparisons_html = f"""
+    <!-- Player Comparisons page with tabs -->
+    <div id="player-comparisons-content" style="display: none;">
+        <div class="stats-tabs-container">
+            <button class="stats-tab-button active" onclick="showPlayerComparisonTab('wr')" id="player-comparison-tab-wr">
+                Wide Receivers
+            </button>
+            <button class="stats-tab-button" onclick="showPlayerComparisonTab('rb')" id="player-comparison-tab-rb">
+                Running Backs
+            </button>
+            <button class="stats-tab-button" onclick="showPlayerComparisonTab('defense')" id="player-comparison-tab-defense">
+                Defense Rankings
+            </button>
+        </div>
+        
+        {wr_comparison_html}
+        {rb_comparison_html}
+        {defense_rankings_html}
+    </div>
+    """
+    
     # Add Total Year Stats content (using 2025 data)
     year_stats_html = generate_fraud_watch_html(league_2025, all_weeks_data_2025)
     
     # Add Team Pages content
     team_pages_html = generate_team_pages_html(teams_2024_data, teams_2025_data)
     
-    # Add Defense Rankings content (using 2025 data)
-    defense_data = collect_defense_rankings(league_2025, all_weeks_data_2025)
-    defense_rankings_html = generate_defense_rankings_html(defense_data)
-    
-    return rb_comparison_html + wr_comparison_html + year_stats_html + team_pages_html + defense_rankings_html
+    return weekly_matchups_html + player_comparisons_html + year_stats_html + team_pages_html
 
 
 def main():

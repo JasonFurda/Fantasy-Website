@@ -249,7 +249,7 @@
         }
         
         .matchup-content-wrapper {
-            min-height: 400px;
+            min-height: 0;
         }
         
         .matchup-content {
@@ -258,6 +258,79 @@
         
         .rb-content {
             padding: 30px;
+        }
+        
+        /* Stats page with tabs */
+        #stats-page-content {
+            background: white;
+        }
+        
+        .stats-tabs-container {
+            display: flex;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-bottom: 2px solid #e9ecef;
+            overflow-x: auto;
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            gap: 0;
+        }
+        
+        .stats-tab-button {
+            background: transparent;
+            border: none;
+            padding: 16px 24px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 600;
+            color: #6c757d;
+            border-bottom: 3px solid transparent;
+            border-right: 1px solid #e9ecef;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            position: relative;
+            min-width: 150px;
+            text-align: center;
+        }
+        
+        .stats-tab-button::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 3px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+            border-radius: 2px 2px 0 0;
+        }
+        
+        .stats-tab-button:hover {
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            color: #667eea;
+            transform: translateY(-1px);
+        }
+        
+        .stats-tab-button:hover::after {
+            width: 80%;
+        }
+        
+        .stats-tab-button.active {
+            color: #667eea;
+            background: white;
+            box-shadow: 0 -2px 6px rgba(102, 126, 234, 0.1);
+        }
+        
+        .stats-tab-button.active::after {
+            width: 100%;
+        }
+        
+        .stats-tab-button:last-child {
+            border-right: none;
+        }
+        
+        .stats-tab-content {
+            display: none;
         }
         
         .rb-header {
@@ -953,7 +1026,7 @@
         }
         
         .team-year-content-wrapper {
-            min-height: 400px;
+            min-height: 0;
         }
         
         .team-stats-header {
