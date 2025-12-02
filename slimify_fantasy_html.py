@@ -116,11 +116,49 @@ def build_year_json(league, all_weeks_data, year):
 
     return out
 
+def get_fantasy_art_images():
+    """Get list of images from the fantasy-art folder"""
+    fantasy_art_path = os.path.join(os.path.dirname(__file__), "fantasy-art")
+    images = []
+    
+    if os.path.exists(fantasy_art_path):
+        for filename in os.listdir(fantasy_art_path):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+                images.append(f"fantasy-art/{filename}")
+    
+    return images
+
 def generate_index_shell_html(shared_content_html, league_name="Fantasy League"):
     """
     Small HTML shell. app.js handles all week/matchup rendering now.
     We keep your class names/structure so existing CSS works.
     """
+    # Get fantasy art images for the carousel
+    fantasy_images = get_fantasy_art_images()
+    
+    # Generate image carousel HTML
+    carousel_images_html = ""
+    carousel_indicators_html = ""
+    
+    if fantasy_images:
+        for idx, img_path in enumerate(fantasy_images):
+            active_class = "active" if idx == 0 else ""
+            carousel_images_html += f"""
+            <div class="carousel-slide {active_class}">
+                <img src="{img_path}" alt="Fantasy Art {idx + 1}" class="carousel-image">
+            </div>
+            """
+            carousel_indicators_html += f"""
+            <span class="carousel-indicator {active_class}" onclick="goToSlide({idx})"></span>
+            """
+    else:
+        # Fallback if no images found
+        carousel_images_html = """
+            <div class="carousel-slide active">
+                <div class="carousel-placeholder">No images found in fantasy-art folder</div>
+            </div>
+            """
+    
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -158,6 +196,18 @@ def generate_index_shell_html(shared_content_html, league_name="Fantasy League")
         <span class="btn-icon">👥</span>
         <span class="btn-text">Team Pages</span>
       </button>
+    </div>
+
+    <!-- Home Page with Image Carousel -->
+    <div id="home-page-content" class="home-page-content">
+      <div class="image-carousel-container">
+        <div class="image-carousel">
+          {carousel_images_html}
+        </div>
+        <div class="carousel-indicators">
+          {carousel_indicators_html}
+        </div>
+      </div>
     </div>
 
     <!-- Shared pages are still injected here -->
@@ -1642,8 +1692,99 @@ def generate_fraud_watch_html(league, all_weeks_data):
     </div>
     """
 
+def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
+    """Calculate aggregated all-time stats for each team across all years"""
+    all_time_stats = {}
+    
+    # Combine all team data
+    all_teams_data = teams_2024_data + teams_2025_data
+    
+    for team_data in all_teams_data:
+        team_id = team_data['team_id']
+        
+        if team_id not in all_time_stats:
+            all_time_stats[team_id] = {
+                'team_id': team_id,
+                'team_name': team_data['team_name'],
+                'owner': team_data['owner'],
+                'wins': 0,
+                'losses': 0,
+                'ties': 0,
+                'points_for': 0.0,
+                'points_against': 0.0,
+                'all_players': {}  # Dictionary to track players across years
+            }
+        
+        # Aggregate wins, losses, ties
+        all_time_stats[team_id]['wins'] += team_data['wins']
+        all_time_stats[team_id]['losses'] += team_data['losses']
+        all_time_stats[team_id]['ties'] += team_data.get('ties', 0)
+        
+        # Aggregate points
+        all_time_stats[team_id]['points_for'] += team_data['points_for']
+        all_time_stats[team_id]['points_against'] += team_data['points_against']
+        
+        # Aggregate players (combine points across years)
+        for player in team_data['top_3_players']:
+            player_name = player['name']
+            if player_name not in all_time_stats[team_id]['all_players']:
+                all_time_stats[team_id]['all_players'][player_name] = {
+                    'name': player_name,
+                    'position': player['position'],
+                    'proTeam': player['proTeam'],
+                    'total_points': 0.0,
+                    'total_games': 0,
+                    'avg_points': 0.0
+                }
+            
+            # Add points and calculate games (approximate from avg)
+            all_time_stats[team_id]['all_players'][player_name]['total_points'] += player['total_points']
+            # Estimate games from avg points (if avg > 0)
+            if player['avg_points'] > 0:
+                estimated_games = int(player['total_points'] / player['avg_points'])
+                all_time_stats[team_id]['all_players'][player_name]['total_games'] += estimated_games
+    
+    # Convert to list format and calculate final stats
+    result = []
+    for team_id, stats in all_time_stats.items():
+        # Calculate record
+        total_games = stats['wins'] + stats['losses'] + stats['ties']
+        record = f"{stats['wins']}-{stats['losses']}" + (f"-{stats['ties']}" if stats['ties'] > 0 else "")
+        
+        # Get top 3 players by total points
+        all_players_list = list(stats['all_players'].values())
+        for player in all_players_list:
+            if player['total_games'] > 0:
+                player['avg_points'] = round(player['total_points'] / player['total_games'], 2)
+            else:
+                player['avg_points'] = 0.0
+            player['total_points'] = round(player['total_points'], 2)
+        
+        all_players_list.sort(key=lambda x: x['total_points'], reverse=True)
+        top_3_players = all_players_list[:3]
+        
+        result.append({
+            'team_id': team_id,
+            'team_name': stats['team_name'],
+            'owner': stats['owner'],
+            'wins': stats['wins'],
+            'losses': stats['losses'],
+            'ties': stats['ties'],
+            'record': record,
+            'playoff_placement': 'All Time',  # Special label for all-time view
+            'points_for': round(stats['points_for'], 2),
+            'points_against': round(stats['points_against'], 2),
+            'top_3_players': top_3_players
+        })
+    
+    return result
+
 def generate_team_pages_html(teams_2024_data, teams_2025_data):
     """Generate HTML for team pages with tabs for teams and years"""
+    
+    # Calculate all-time stats
+    all_time_stats = calculate_all_time_team_stats(teams_2024_data, teams_2025_data)
+    all_time_dict = {team['team_id']: team for team in all_time_stats}
     
     # Get unique team names and IDs across both years
     all_teams = {}
@@ -1762,6 +1903,51 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
             year_content_html += f"""
             <div id="team-{team_id}-year-2024-content" class="team-year-content" style="display: none;">
                 <p>No data available for 2024</p>
+            </div>
+            """
+        
+        # Total/All-time data
+        team_total = all_time_dict.get(team_id)
+        year_tabs_html += f'<button class="year-tab-button" onclick="showTeamYear({team_id}, \'total\')" id="team-{team_id}-year-total-tab">Total</button>\n'
+        
+        if team_total:
+            year_content_html += f"""
+            <div id="team-{team_id}-year-total-content" class="team-year-content" style="display: none;">
+                <div class="team-stats-header">
+                    <h2>{team_total['team_name']} - All Time</h2>
+                    <p class="team-owner">Owner: {team_total['owner']}</p>
+                </div>
+                <div class="team-record-info">
+                    <div class="record-box">
+                        <h3>Record</h3>
+                        <p class="record-text">{team_total['record']}</p>
+                        <p class="points-text">Points For: {team_total['points_for']:.2f}</p>
+                        <p class="points-text">Points Against: {team_total['points_against']:.2f}</p>
+                    </div>
+                    <div class="playoff-box">
+                        <h3>Playoff Result</h3>
+                        <p class="playoff-text">{team_total['playoff_placement']}</p>
+                    </div>
+                </div>
+                <div class="top-players-section">
+                    <h3>Top 3 Players (All Time)</h3>
+                    <div class="top-players-grid">
+                        {''.join([f'''
+                        <div class="player-card">
+                            <div class="player-name">{player['name']}</div>
+                            <div class="player-position">{player['position']} - {player['proTeam']}</div>
+                            <div class="player-points">Total: {player['total_points']:.2f} pts</div>
+                            <div class="player-avg">Avg: {player['avg_points']:.2f} pts</div>
+                        </div>
+                        ''' for player in team_total['top_3_players']])}
+                    </div>
+                </div>
+            </div>
+            """
+        else:
+            year_content_html += f"""
+            <div id="team-{team_id}-year-total-content" class="team-year-content" style="display: none;">
+                <p>No all-time data available</p>
             </div>
             """
         

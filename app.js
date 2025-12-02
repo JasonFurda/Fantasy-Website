@@ -11,10 +11,17 @@ let currentYear = 2025;
 let currentWeek = null;
 let currentMatchupIndex = 0;
 
+// Carousel state
+let carouselInterval = null;
+let currentSlideIndex = 0;
+
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOMContentLoaded - initializing page");
-  // Show Weekly Matchups by default
-  showWeeklyMatchups();
+  // Show home page by default
+  showHomePage();
+  
+  // Initialize carousel
+  initCarousel();
   
   // Default to 2025 if present, else first available
   loadYear(currentYear).catch(err => {
@@ -22,6 +29,75 @@ document.addEventListener("DOMContentLoaded", () => {
     showError(`Failed to load data: ${err.message}. Make sure you're running from a web server (not file://).`);
   });
 });
+
+// Initialize image carousel
+function initCarousel() {
+  const slides = document.querySelectorAll('.carousel-slide');
+  if (slides.length === 0) return;
+  
+  // Start with first slide
+  currentSlideIndex = 0;
+  updateCarousel();
+  
+  // Rotate every 10 seconds
+  carouselInterval = setInterval(() => {
+    currentSlideIndex = (currentSlideIndex + 1) % slides.length;
+    updateCarousel();
+  }, 10000);
+}
+
+function updateCarousel() {
+  const slides = document.querySelectorAll('.carousel-slide');
+  const indicators = document.querySelectorAll('.carousel-indicator');
+  
+  slides.forEach((slide, index) => {
+    if (index === currentSlideIndex) {
+      slide.classList.add('active');
+    } else {
+      slide.classList.remove('active');
+    }
+  });
+  
+  indicators.forEach((indicator, index) => {
+    if (index === currentSlideIndex) {
+      indicator.classList.add('active');
+    } else {
+      indicator.classList.remove('active');
+    }
+  });
+}
+
+window.goToSlide = function(index) {
+  currentSlideIndex = index;
+  updateCarousel();
+  
+  // Reset the interval
+  if (carouselInterval) {
+    clearInterval(carouselInterval);
+  }
+  const slides = document.querySelectorAll('.carousel-slide');
+  carouselInterval = setInterval(() => {
+    currentSlideIndex = (currentSlideIndex + 1) % slides.length;
+    updateCarousel();
+  }, 10000);
+};
+
+function showHomePage() {
+  // Hide all other pages
+  hideSharedPages();
+  hideMatchups();
+  
+  // Show home page
+  const homePage = document.getElementById("home-page-content");
+  if (homePage) {
+    homePage.style.display = "block";
+  }
+  
+  // Remove active class from all nav buttons
+  document.querySelectorAll('.rb-comparison-main-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+}
 
 // ---------- Data loading ----------
 async function loadYear(year) {
@@ -319,6 +395,7 @@ function hideSharedPages(){
 window.showWeeklyMatchups = function(){
   try {
     hideSharedPages();
+    hideHomePage();
     const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
     if (weeklyMatchupsPage) {
       weeklyMatchupsPage.style.display = "block";
@@ -354,6 +431,7 @@ window.showWeeklyMatchups = function(){
 window.showPlayerComparisons = function(){
   try {
     hideMatchups();
+    hideHomePage();
     const playerComparisonsPage = document.getElementById("player-comparisons-content");
     if (playerComparisonsPage) {
       playerComparisonsPage.style.display = "block";
@@ -403,6 +481,7 @@ window.showPlayerComparisonTab = function(tab){
 window.showTotalYearStats = function(){
   // Hide weekly matchups navigation elements first
   hideMatchups();
+  hideHomePage();
   
   // Hide all other shared pages (but NOT total-year-stats-content)
   const idsToHide = [
@@ -426,6 +505,7 @@ window.showTeamPages = function(){
   try {
     // Hide weekly matchups navigation elements first
     hideMatchups();
+    hideHomePage();
     
     // Hide all other shared pages (but NOT team-pages-content)
     const idsToHide = [
@@ -466,6 +546,13 @@ function hideMatchups(){
   if (content) {
     content.innerHTML = "";
     content.style.display = "none";
+  }
+}
+
+function hideHomePage(){
+  const homePage = document.getElementById("home-page-content");
+  if (homePage) {
+    homePage.style.display = "none";
   }
 }
 
