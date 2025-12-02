@@ -575,6 +575,14 @@ def calculate_wr_targets_percentage(team_wrs):
     
     return results
 
+def get_ordinal_suffix(n):
+    """Get ordinal suffix for a number (1st, 2nd, 3rd, 4th, etc.)"""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
 def get_team_year_stats(league, all_weeks_data=None):
     """Get team statistics for a specific year including record, playoff placement, and top 3 players"""
     teams_data = []
@@ -591,16 +599,14 @@ def get_team_year_stats(league, all_weeks_data=None):
         standing = None
         
         if hasattr(team, 'final_standing') and team.final_standing:
+            # If final_standing exists, the season is complete - show exact placement
             if team.final_standing == 1:
                 playoff_placement = "Champion"
             elif team.final_standing == 2:
                 playoff_placement = "Runner-up"
             elif team.final_standing > 0:
-                playoff_teams = getattr(league.settings, 'playoff_teams', 6)
-                if team.final_standing <= playoff_teams:
-                    playoff_placement = f"{team.final_standing}th Place"
-                else:
-                    playoff_placement = "Did not make playoffs"
+                # Show exact placement using ordinal suffix
+                playoff_placement = f"{get_ordinal_suffix(team.final_standing)} Place"
         elif hasattr(team, 'standing_seed') and team.standing_seed:
             playoff_placement = f"#{team.standing_seed} Seed"
         elif hasattr(team, 'standing') and team.standing:
@@ -1102,21 +1108,23 @@ def generate_wr_comparison_html(wrs):
 def generate_mismanagement_rows(mismanagement_data):
     """Generate HTML rows for mismanagement leaderboard"""
     if not mismanagement_data:
-        return '<tr><td colspan="8" style="text-align: center; padding: 20px;">No mismanagement data available</td></tr>'
+        return '<tr><td colspan="9" style="text-align: center; padding: 20px;">No mismanagement data available</td></tr>'
     
     rows_html = ""
     for idx, data in enumerate(mismanagement_data):
         team = data['team']
-        mismanagement_class = "fraud-high" if data['total_mismanagement'] > 100 else "fraud-medium" if data['total_mismanagement'] > 50 else "fraud-low"
+        # Use percentage for classification - lower percentage = worse
+        mismanagement_class = "fraud-high" if data['percentage_scored'] < 90 else "fraud-medium" if data['percentage_scored'] < 95 else "fraud-low"
         
         rows_html += f"""
         <tr class="{mismanagement_class}">
             <td>{idx + 1}</td>
             <td class="team-name">{team.team_name}</td>
             <td>{data['owner']}</td>
-            <td class="fraud-score">{data['total_mismanagement']:.2f}</td>
+            <td class="fraud-score">{data['percentage_scored']:.2f}%</td>
             <td class="points">{data['total_optimal_points']:.2f}</td>
             <td class="points">{data['total_actual_points']:.2f}</td>
+            <td>{data['total_mismanagement']:.2f}</td>
             <td>{data['avg_mismanagement']:.2f}</td>
             <td>{team.wins}-{team.losses}-{team.ties}</td>
         </tr>
@@ -1163,9 +1171,13 @@ def calculate_mismanagement_leaderboard(league, all_weeks_data):
                     team_mismanagement
                 )
     
-    # Convert to list and sort by total mismanagement (descending - worst first)
+    # Convert to list and calculate percentage of optimal points scored
     mismanagement_list = []
     for team_id, data in team_mismanagement.items():
+        # Calculate percentage: (actual / optimal) * 100
+        # Lower percentage = worse mismanagement
+        percentage_scored = (data['total_actual_points'] / data['total_optimal_points'] * 100) if data['total_optimal_points'] > 0 else 0
+        
         mismanagement_list.append({
             'team': data['team'],
             'owner': data['owner'],
@@ -1173,10 +1185,12 @@ def calculate_mismanagement_leaderboard(league, all_weeks_data):
             'total_optimal_points': round(data['total_optimal_points'], 2),
             'total_actual_points': round(data['total_actual_points'], 2),
             'avg_mismanagement': round(data['total_mismanagement'] / len(data['weeks']) if data['weeks'] else 0, 2),
+            'percentage_scored': round(percentage_scored, 2),
             'weeks': data['weeks']
         })
     
-    mismanagement_list.sort(key=lambda x: x['total_mismanagement'], reverse=True)
+    # Sort by percentage scored (ascending - lower percentage = worse mismanagement)
+    mismanagement_list.sort(key=lambda x: x['percentage_scored'])
     return mismanagement_list
 
 def process_team_mismanagement(team, lineup, week, team_mismanagement):
@@ -1669,7 +1683,7 @@ def generate_fraud_watch_html(league, all_weeks_data):
         <div id="mismanagement-page" class="stats-page" style="display: none;">
             <div class="page-header">
                 <h3>Mismanagement Leaderboard</h3>
-                <p class="page-explanation">Teams ranked by total points left on the bench. This shows the difference between the best possible lineup (optimal players from their roster) and the actual lineup they played each week. Higher scores indicate more mismanagement.</p>
+                <p class="page-explanation">Teams ranked by percentage of optimal points scored. This shows how well teams utilized their rosters - lower percentages indicate more points left on the bench. Teams are ranked from worst to best percentage.</p>
             </div>
             <div class="stats-table-wrapper">
                 <table class="stats-table">
@@ -1678,9 +1692,10 @@ def generate_fraud_watch_html(league, all_weeks_data):
                             <th>Rank</th>
                             <th>Team</th>
                             <th>Owner</th>
-                            <th>Total Mismanagement</th>
+                            <th>% of Optimal</th>
                             <th>Max Possible Points</th>
                             <th>Actual Points</th>
+                            <th>Points Left</th>
                             <th>Avg per Week</th>
                             <th>Record</th>
                         </tr>
@@ -1779,7 +1794,55 @@ def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
             'top_3_players': top_3_players
         })
     
+    # Sort teams by wins (descending), then by points for (descending) for standings
+    result.sort(key=lambda x: (x['wins'], x['points_for']), reverse=True)
+    
     return result
+
+def generate_standings_html(teams_data, year_label):
+    """Generate HTML table for standings"""
+    if not teams_data:
+        return f'<p>No standings data available for {year_label}</p>'
+    
+    # Teams are already sorted by wins then points_for in get_team_year_stats
+    rows_html = ""
+    for idx, team in enumerate(teams_data):
+        win_pct = (team['wins'] / (team['wins'] + team['losses'] + team['ties']) * 100) if (team['wins'] + team['losses'] + team['ties']) > 0 else 0
+        
+        rows_html += f"""
+        <tr>
+            <td>{idx + 1}</td>
+            <td class="team-name">{team['team_name']}</td>
+            <td>{team['owner']}</td>
+            <td>{team['record']}</td>
+            <td>{win_pct:.1f}%</td>
+            <td class="points">{team['points_for']:.2f}</td>
+            <td class="points">{team['points_against']:.2f}</td>
+            <td>{team['playoff_placement']}</td>
+        </tr>
+        """
+    
+    return f"""
+    <div class="standings-table-wrapper">
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Team</th>
+                    <th>Owner</th>
+                    <th>Record</th>
+                    <th>Win %</th>
+                    <th>Points For</th>
+                    <th>Points Against</th>
+                    <th>Playoff Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+    </div>
+    """
 
 def generate_team_pages_html(teams_2024_data, teams_2025_data):
     """Generate HTML for team pages with tabs for teams and years"""
@@ -1801,8 +1864,8 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
             'owner': team['owner']
         }
     
-    # Create team tabs
-    team_tabs_html = ""
+    # Create team tabs - add Standings button
+    team_tabs_html = '<button class="team-tab-button" onclick="showTeam(\'standings\')" id="team-tab-standings">Standings</button>\n'
     team_content_html = ""
     
     # Create a mapping of team_id to data for each year
@@ -1965,11 +2028,63 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
         </div>
         """
     
+    # Generate standings content with year tabs
+    standings_year_tabs_html = ""
+    standings_content_html = ""
+    
+    # 2025 standings
+    standings_year_tabs_html += '<button class="year-tab-button" onclick="showTeamYear(\'standings\', 2025)" id="team-standings-year-2025-tab">2025</button>\n'
+    standings_2025_html = generate_standings_html(teams_2025_data, "2025")
+    standings_content_html += f"""
+    <div id="team-standings-year-2025-content" class="team-year-content" style="display: block;">
+        <div class="team-stats-header">
+            <h2>Standings - 2025</h2>
+        </div>
+        {standings_2025_html}
+    </div>
+    """
+    
+    # 2024 standings
+    standings_year_tabs_html += '<button class="year-tab-button" onclick="showTeamYear(\'standings\', 2024)" id="team-standings-year-2024-tab">2024</button>\n'
+    standings_2024_html = generate_standings_html(teams_2024_data, "2024")
+    standings_content_html += f"""
+    <div id="team-standings-year-2024-content" class="team-year-content" style="display: none;">
+        <div class="team-stats-header">
+            <h2>Standings - 2024</h2>
+        </div>
+        {standings_2024_html}
+    </div>
+    """
+    
+    # Total/All-time standings
+    standings_year_tabs_html += '<button class="year-tab-button" onclick="showTeamYear(\'standings\', \'total\')" id="team-standings-year-total-tab">Total</button>\n'
+    standings_total_html = generate_standings_html(all_time_stats, "All Time")
+    standings_content_html += f"""
+    <div id="team-standings-year-total-content" class="team-year-content" style="display: none;">
+        <div class="team-stats-header">
+            <h2>Standings - All Time</h2>
+        </div>
+        {standings_total_html}
+    </div>
+    """
+    
+    # Add standings content wrapper
+    team_content_html += f"""
+    <div id="team-standings-content" class="team-content" style="display: none;">
+        <div class="team-year-tabs">
+            {standings_year_tabs_html}
+        </div>
+        <div class="team-year-content-wrapper">
+            {standings_content_html}
+        </div>
+    </div>
+    """
+    
     return f"""
     <div id="team-pages-content" class="rb-content" style="display: none;">
         <div class="rb-header">
             <h2>Team Pages</h2>
-            <p>View statistics and top players for each team by year. Click a team name to view their page, then switch between years.</p>
+            <p>View statistics and top players for each team by year, or view league standings. Click a team name to view their page, then switch between years.</p>
         </div>
         <div class="team-tabs-wrapper">
             <div class="team-tabs">

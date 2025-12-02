@@ -619,13 +619,22 @@ window.showTeam = function(teamId){
   const btn = document.getElementById(`team-tab-${teamId}`);
   if (content) content.style.display="block";
   if (btn) btn.classList.add("active");
+  
+  // If showing standings, default to first year (2025)
+  if (teamId === 'standings') {
+    showTeamYear('standings', 2025);
+  }
 };
 
 window.showTeamYear = function(teamId, year){
-  document.querySelectorAll(`#team-${teamId}-content .team-year-content`).forEach(c=>c.style.display="none");
-  document.querySelectorAll(`#team-${teamId}-content .year-tab-button`).forEach(b=>b.classList.remove("active"));
-  const content = document.getElementById(`team-${teamId}-year-${year}-content`);
-  const btn = document.getElementById(`team-${teamId}-year-${year}-tab`);
+  // Handle both numeric team IDs and string IDs like 'standings' or 'total'
+  const teamIdStr = String(teamId);
+  const yearStr = String(year);
+  
+  document.querySelectorAll(`#team-${teamIdStr}-content .team-year-content`).forEach(c=>c.style.display="none");
+  document.querySelectorAll(`#team-${teamIdStr}-content .year-tab-button`).forEach(b=>b.classList.remove("active"));
+  const content = document.getElementById(`team-${teamIdStr}-year-${yearStr}-content`);
+  const btn = document.getElementById(`team-${teamIdStr}-year-${yearStr}-tab`);
   if (content) content.style.display="block";
   if (btn) btn.classList.add("active");
 };
