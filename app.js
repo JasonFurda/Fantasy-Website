@@ -35,6 +35,21 @@ function initCarousel() {
   const slides = document.querySelectorAll('.carousel-slide');
   if (slides.length === 0) return;
   
+  // Ensure all slides start in correct state
+  slides.forEach((slide, index) => {
+    if (index === 0) {
+      slide.classList.add('active');
+      slide.style.opacity = '1';
+      slide.style.visibility = 'visible';
+      slide.style.zIndex = '1';
+    } else {
+      slide.classList.remove('active');
+      slide.style.opacity = '0';
+      slide.style.visibility = 'hidden';
+      slide.style.zIndex = '0';
+    }
+  });
+  
   // Start with first slide
   currentSlideIndex = 0;
   updateCarousel();
@@ -53,8 +68,14 @@ function updateCarousel() {
   slides.forEach((slide, index) => {
     if (index === currentSlideIndex) {
       slide.classList.add('active');
+      slide.style.opacity = '1';
+      slide.style.visibility = 'visible';
+      slide.style.zIndex = '1';
     } else {
       slide.classList.remove('active');
+      slide.style.opacity = '0';
+      slide.style.visibility = 'hidden';
+      slide.style.zIndex = '0';
     }
   });
   

@@ -143,8 +143,10 @@ def generate_index_shell_html(shared_content_html, league_name="Fantasy League")
     if fantasy_images:
         for idx, img_path in enumerate(fantasy_images):
             active_class = "active" if idx == 0 else ""
+            # Add inline style to ensure non-active slides are hidden from the start
+            style_attr = "" if idx == 0 else 'style="opacity: 0; visibility: hidden; z-index: 0;"'
             carousel_images_html += f"""
-            <div class="carousel-slide {active_class}">
+            <div class="carousel-slide {active_class}" {style_attr}>
                 <img src="{img_path}" alt="Fantasy Art {idx + 1}" class="carousel-image">
             </div>
             """

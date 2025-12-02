@@ -1188,12 +1188,16 @@
             width: 100%;
             height: 100%;
             opacity: 0;
-            transition: opacity 1s ease-in-out;
+            visibility: hidden;
+            transition: opacity 1s ease-in-out, visibility 0s 1s;
+            z-index: 0;
         }
 
         .carousel-slide.active {
             opacity: 1;
+            visibility: visible;
             z-index: 1;
+            transition: opacity 1s ease-in-out, visibility 0s 0s;
         }
 
         .carousel-image {
