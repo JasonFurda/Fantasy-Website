@@ -262,9 +262,13 @@ def collect_running_backs(league):
                     'receiving_tds': 0,
                     'fumbles_lost': 0,
                     'games_played': 0,
+                    'variance': 0.0,
                     'injury_status': getattr(player, 'injuryStatus', ''),
                     'injured': getattr(player, 'injured', False)
                 }
+                
+                # Collect weekly points for variance calculation
+                weekly_points = []
                 
                 # Try to get season totals from week 0 first
                 season_stats = {}
@@ -283,12 +287,25 @@ def collect_running_backs(league):
                     rb_data['receiving_tds'] = season_breakdown.get('receivingTouchdowns', 0)
                     rb_data['fumbles_lost'] = season_breakdown.get('lostFumbles', 0)
                     
-                    # Count games played by counting weeks with stats
+                    # Collect weekly points and count games played
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
                         for week in range(1, league.current_week + 1):
                             week_stats = player.stats.get(week, {})
                             if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                # Player played this week (has breakdown = played, not on bye/injured)
                                 rb_data['games_played'] += 1
+                                # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                week_points = week_stats.get('appliedTotal')
+                                if week_points is None:
+                                    week_points = week_stats.get('points')
+                                if week_points is None:
+                                    week_points = week_stats.get('statTotal', 0.0)
+                                try:
+                                    week_points = float(week_points) if week_points is not None else 0.0
+                                except (ValueError, TypeError):
+                                    week_points = 0.0
+                                # Include all weeks played, even if 0 points
+                                weekly_points.append(week_points)
                 else:
                     # Fallback: Aggregate stats across all weeks
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
@@ -305,6 +322,28 @@ def collect_running_backs(league):
                                     rb_data['receiving_yards'] += breakdown.get('receivingYards', 0)
                                     rb_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
                                     rb_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                    week_points = week_stats.get('appliedTotal')
+                                    if week_points is None:
+                                        week_points = week_stats.get('points')
+                                    if week_points is None:
+                                        week_points = week_stats.get('statTotal', 0.0)
+                                    try:
+                                        week_points = float(week_points) if week_points is not None else 0.0
+                                    except (ValueError, TypeError):
+                                        week_points = 0.0
+                                    # Include all weeks played, even if 0 points
+                                    weekly_points.append(week_points)
+                
+                # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
+                if len(weekly_points) > 1:
+                    mean = sum(weekly_points) / len(weekly_points)
+                    variance = sum((x - mean) ** 2 for x in weekly_points) / (len(weekly_points) - 1)
+                    rb_data['variance'] = round(variance, 2)
+                elif len(weekly_points) == 1:
+                    rb_data['variance'] = 0.0
+                else:
+                    rb_data['variance'] = 0.0
                 
                 rbs.append(rb_data)
     
@@ -329,9 +368,13 @@ def collect_running_backs(league):
                         'receiving_tds': 0,
                         'fumbles_lost': 0,
                         'games_played': 0,
+                        'variance': 0.0,
                         'injury_status': getattr(player, 'injuryStatus', ''),
                         'injured': getattr(player, 'injured', False)
                     }
+                    
+                    # Collect weekly points for variance calculation
+                    weekly_points = []
                     
                     # For free agents, try to get season totals from week 0 first
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
@@ -348,11 +391,24 @@ def collect_running_backs(league):
                             rb_data['receiving_tds'] = season_breakdown.get('receivingTouchdowns', 0)
                             rb_data['fumbles_lost'] = season_breakdown.get('lostFumbles', 0)
                             
-                            # Count games played
+                            # Collect weekly points and count games played
                             for week in range(1, league.current_week + 1):
                                 week_stats = player.stats.get(week, {})
                                 if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                    # Player played this week (has breakdown = played, not on bye/injured)
                                     rb_data['games_played'] += 1
+                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                    week_points = week_stats.get('appliedTotal')
+                                    if week_points is None:
+                                        week_points = week_stats.get('points')
+                                    if week_points is None:
+                                        week_points = week_stats.get('statTotal', 0.0)
+                                    try:
+                                        week_points = float(week_points) if week_points is not None else 0.0
+                                    except (ValueError, TypeError):
+                                        week_points = 0.0
+                                    # Include all weeks played, even if 0 points
+                                    weekly_points.append(week_points)
                         else:
                             # Fallback: Aggregate stats across all weeks
                             for week in range(1, league.current_week + 1):
@@ -368,6 +424,24 @@ def collect_running_backs(league):
                                         rb_data['receiving_yards'] += breakdown.get('receivingYards', 0)
                                         rb_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
                                         rb_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                        # Get points from week_stats - try multiple possible keys
+                                        week_points = week_stats.get('points')
+                                        if week_points is None:
+                                            week_points = week_stats.get('appliedTotal', 0.0) or 0.0
+                                        else:
+                                            week_points = float(week_points) if week_points is not None else 0.0
+                                        # Include all weeks played, even if 0 points
+                                        weekly_points.append(week_points)
+                    
+                    # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
+                    if len(weekly_points) > 1:
+                        mean = sum(weekly_points) / len(weekly_points)
+                        variance = sum((x - mean) ** 2 for x in weekly_points) / (len(weekly_points) - 1)
+                        rb_data['variance'] = round(variance, 2)
+                    elif len(weekly_points) == 1:
+                        rb_data['variance'] = 0.0
+                    else:
+                        rb_data['variance'] = 0.0
                     
                     rbs.append(rb_data)
     except Exception as e:
@@ -476,9 +550,13 @@ def collect_wide_receivers(league):
                     'receiving_tds': 0,
                     'fumbles_lost': 0,
                     'games_played': 0,
+                    'variance': 0.0,
                     'injury_status': getattr(player, 'injuryStatus', ''),
                     'injured': getattr(player, 'injured', False)
                 }
+                
+                # Collect weekly points for variance calculation
+                weekly_points = []
                 
                 # Try to get season totals from week 0 first
                 season_stats = {}
@@ -495,12 +573,21 @@ def collect_wide_receivers(league):
                     wr_data['receiving_tds'] = season_breakdown.get('receivingTouchdowns', 0)
                     wr_data['fumbles_lost'] = season_breakdown.get('lostFumbles', 0)
                     
-                    # Count games played by counting weeks with stats
+                    # Collect weekly points and count games played
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
                         for week in range(1, league.current_week + 1):
                             week_stats = player.stats.get(week, {})
                             if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                # Player played this week (has breakdown = played, not on bye/injured)
                                 wr_data['games_played'] += 1
+                                # Get points from week_stats - try multiple possible keys
+                                week_points = week_stats.get('points')
+                                if week_points is None:
+                                    week_points = week_stats.get('appliedTotal', 0.0) or 0.0
+                                else:
+                                    week_points = float(week_points) if week_points is not None else 0.0
+                                # Include all weeks played, even if 0 points
+                                weekly_points.append(week_points)
                 else:
                     # Fallback: Aggregate stats across all weeks
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
@@ -515,6 +602,28 @@ def collect_wide_receivers(league):
                                     wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
                                     wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
                                     wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                    week_points = week_stats.get('appliedTotal')
+                                    if week_points is None:
+                                        week_points = week_stats.get('points')
+                                    if week_points is None:
+                                        week_points = week_stats.get('statTotal', 0.0)
+                                    try:
+                                        week_points = float(week_points) if week_points is not None else 0.0
+                                    except (ValueError, TypeError):
+                                        week_points = 0.0
+                                    # Include all weeks played, even if 0 points
+                                    weekly_points.append(week_points)
+                
+                # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
+                if len(weekly_points) > 1:
+                    mean = sum(weekly_points) / len(weekly_points)
+                    variance = sum((x - mean) ** 2 for x in weekly_points) / (len(weekly_points) - 1)
+                    wr_data['variance'] = round(variance, 2)
+                elif len(weekly_points) == 1:
+                    wr_data['variance'] = 0.0
+                else:
+                    wr_data['variance'] = 0.0
                 
                 wrs.append(wr_data)
     
@@ -537,9 +646,13 @@ def collect_wide_receivers(league):
                         'receiving_tds': 0,
                         'fumbles_lost': 0,
                         'games_played': 0,
+                        'variance': 0.0,
                         'injury_status': getattr(player, 'injuryStatus', ''),
                         'injured': getattr(player, 'injured', False)
                     }
+                    
+                    # Collect weekly points for variance calculation
+                    weekly_points = []
                     
                     # For free agents, try to get season totals from week 0 first
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
@@ -554,11 +667,24 @@ def collect_wide_receivers(league):
                             wr_data['receiving_tds'] = season_breakdown.get('receivingTouchdowns', 0)
                             wr_data['fumbles_lost'] = season_breakdown.get('lostFumbles', 0)
                             
-                            # Count games played
+                            # Collect weekly points and count games played
                             for week in range(1, league.current_week + 1):
                                 week_stats = player.stats.get(week, {})
                                 if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                    # Player played this week (has breakdown = played, not on bye/injured)
                                     wr_data['games_played'] += 1
+                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                    week_points = week_stats.get('appliedTotal')
+                                    if week_points is None:
+                                        week_points = week_stats.get('points')
+                                    if week_points is None:
+                                        week_points = week_stats.get('statTotal', 0.0)
+                                    try:
+                                        week_points = float(week_points) if week_points is not None else 0.0
+                                    except (ValueError, TypeError):
+                                        week_points = 0.0
+                                    # Include all weeks played, even if 0 points
+                                    weekly_points.append(week_points)
                         else:
                             # Fallback: Aggregate stats across all weeks
                             for week in range(1, league.current_week + 1):
@@ -572,6 +698,24 @@ def collect_wide_receivers(league):
                                         wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
                                         wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
                                         wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                        # Get points from week_stats - try multiple possible keys
+                                        week_points = week_stats.get('points')
+                                        if week_points is None:
+                                            week_points = week_stats.get('appliedTotal', 0.0) or 0.0
+                                        else:
+                                            week_points = float(week_points) if week_points is not None else 0.0
+                                        # Include all weeks played, even if 0 points
+                                        weekly_points.append(week_points)
+                    
+                    # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
+                    if len(weekly_points) > 1:
+                        mean = sum(weekly_points) / len(weekly_points)
+                        variance = sum((x - mean) ** 2 for x in weekly_points) / (len(weekly_points) - 1)
+                        wr_data['variance'] = round(variance, 2)
+                    elif len(weekly_points) == 1:
+                        wr_data['variance'] = 0.0
+                    else:
+                        wr_data['variance'] = 0.0
                     
                     wrs.append(wr_data)
     except Exception as e:
@@ -981,7 +1125,7 @@ def generate_rb_comparison_html(rbs):
             <td>{rb['proTeam']}</td>
             <td class="points">{rb['total_points']:.2f}</td>
             <td>{rb['avg_points']:.2f}</td>
-            <td>{rb['games_played']}</td>
+            <td>{rb['variance']:.2f}</td>
             <td>{rb['rushing_attempts']}</td>
             <td>{rb['rushing_yards']}</td>
             <td>{ypc:.1f}</td>
@@ -1073,7 +1217,7 @@ def generate_rb_comparison_html(rbs):
                         <th>NFL Team</th>
                         <th>Total Pts</th>
                         <th>Avg Pts</th>
-                        <th>Games</th>
+                        <th>Variance</th>
                         <th>Rush Att</th>
                         <th>Rush Yds</th>
                         <th>YPC</th>
@@ -1124,7 +1268,7 @@ def generate_wr_comparison_html(wrs):
             <td>{wr['proTeam']}</td>
             <td class="points">{wr['total_points']:.2f}</td>
             <td>{wr['avg_points']:.2f}</td>
-            <td>{wr['games_played']}</td>
+            <td>{wr['variance']:.2f}</td>
             <td>{wr['targets']}</td>
             <td>{wr['receptions']}</td>
             <td>{catch_rate:.1f}%</td>
@@ -1209,7 +1353,7 @@ def generate_wr_comparison_html(wrs):
                         <th>NFL Team</th>
                         <th>Total Pts</th>
                         <th>Avg Pts</th>
-                        <th>Games</th>
+                        <th>Variance</th>
                         <th>Targets</th>
                         <th>Rec</th>
                         <th>Catch %</th>
