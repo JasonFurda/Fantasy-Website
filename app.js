@@ -17,17 +17,36 @@ let currentSlideIndex = 0;
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOMContentLoaded - initializing page");
-  // Show home page by default
-  showHomePage();
-  
-  // Initialize carousel
-  initCarousel();
-  
-  // Default to 2025 if present, else first available
-  loadYear(currentYear).catch(err => {
-    console.error("Error loading year:", err);
-    showError(`Failed to load data: ${err.message}. Make sure you're running from a web server (not file://).`);
-  });
+
+  const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
+  const playerComparisonsPage = document.getElementById("player-comparisons-content");
+  const yearStatsPage = document.getElementById("total-year-stats-content");
+  const teamPagesPage = document.getElementById("team-pages-content");
+
+  // Landing / navigation page (index.html) – has no shared-content containers
+  if (!weeklyMatchupsPage && !playerComparisonsPage && !yearStatsPage && !teamPagesPage) {
+    initCarousel();
+    return;
+  }
+
+  // Weekly matchups dedicated page
+  if (weeklyMatchupsPage) {
+    showWeeklyMatchups();
+    // Default to 2025 if present, else first available
+    loadYear(currentYear).catch(err => {
+      console.error("Error loading year:", err);
+      showError(`Failed to load data: ${err.message}. Make sure you're running from a web server (not file://).`);
+    });
+    return;
+  }
+
+  // Player comparisons page – ensure WR tab is visible by default
+  if (playerComparisonsPage) {
+    showPlayerComparisonTab('wr');
+    return;
+  }
+
+  // Other pages (year stats, team pages) don't need special JS init
 });
 
 // Initialize image carousel

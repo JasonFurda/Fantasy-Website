@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatham Moms - Weekly Matchups</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Chatham Moms</h1>
+      <p>Weekly Matchups</p>
+    </div>
+    <div class="main-navigation">
+      <a class="rb-comparison-main-btn" href="index.html">
+        <span class="btn-icon">🏠</span>
+        <span class="btn-text">Home</span>
+      </a>
+      <a class="rb-comparison-main-btn" href="player-comparisons.html">
+        <span class="btn-icon">📊</span>
+        <span class="btn-text">Player Comparisons</span>
+      </a>
+      <a class="rb-comparison-main-btn" href="year-stats.html">
+        <span class="btn-icon">📈</span>
+        <span class="btn-text">Total Year Stats</span>
+      </a>
+      <a class="rb-comparison-main-btn" href="team-pages.html">
+        <span class="btn-icon">👥</span>
+        <span class="btn-text">Team Pages</span>
+      </a>
+    </div>
+    
+    <!-- Weekly Matchups page -->
+    <div id="weekly-matchups-content" style="display: block;">
+        <!-- Year selector -->
+        <div class="year-selector" style="background: #f8f9fa; padding: 15px 30px; border-bottom: 2px solid #e0e0e0; text-align: center;">
+            <div style="display: inline-flex; gap: 10px; align-items: center;">
+                <span style="font-weight: 600; margin-right: 10px;">Year:</span>
+                
+                <button class="rb-comparison-main-btn" onclick="switchYear(2025)" id="year-2025-btn"
+                    style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                    <span class="btn-icon">📅</span>
+                    <span class="btn-text">2025</span>
+                </button>
+                <button class="rb-comparison-main-btn" onclick="switchYear(2024)" id="year-2024-btn"
+                    style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                    <span class="btn-icon">📅</span>
+                    <span class="btn-text">2024</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- These three are now empty; app.js fills them -->
+        <div id="week-nav" class="week-navigation"></div>
+        <div id="matchup-nav" class="matchup-tabs"></div>
+        <div id="content" class="matchup-content-wrapper"></div>
+    </div>
+    
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
