@@ -1260,9 +1260,13 @@ def find_club_performances(league, all_weeks_data):
     club_sub100 = []  # Teams that scored < 100
     
     for week, box_scores in all_weeks_data.items():
-        # For sub-100 club, skip current week if it hasn't concluded
-        # Always skip current week for sub-100 club to avoid showing incomplete scores
-        skip_sub100_this_week = (week == league.current_week)
+        # For sub-100 club, only skip the current week if it hasn't concluded.
+        # This allows us to include low scores from the final (playoff) week
+        # once all games are finished.
+        if week == league.current_week:
+            skip_sub100_this_week = not is_week_concluded(league, week, box_scores)
+        else:
+            skip_sub100_this_week = False
         
         for matchup in box_scores:
             if not matchup.home_team:

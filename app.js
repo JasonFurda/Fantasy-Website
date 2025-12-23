@@ -31,6 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Weekly matchups dedicated page
   if (weeklyMatchupsPage) {
+    // Ensure it's visible (might be hidden by CSS or other JS)
+    weeklyMatchupsPage.style.display = "block";
     showWeeklyMatchups();
     // Default to 2025 if present, else first available
     loadYear(currentYear).catch(err => {
@@ -42,11 +44,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Player comparisons page – ensure WR tab is visible by default
   if (playerComparisonsPage) {
+    // Ensure it's visible
+    playerComparisonsPage.style.display = "block";
     showPlayerComparisonTab('wr');
     return;
   }
 
-  // Other pages (year stats, team pages) don't need special JS init
+  // Year stats page – ensure it's visible
+  if (yearStatsPage) {
+    yearStatsPage.style.display = "block";
+    // Show the first tab (fraud-watch) by default
+    const fraudWatchPage = document.getElementById("fraud-watch-page");
+    if (fraudWatchPage) {
+      fraudWatchPage.style.display = "block";
+    }
+    return;
+  }
+
+  // Team pages – ensure it's visible and show first team/standings
+  if (teamPagesPage) {
+    teamPagesPage.style.display = "block";
+    // Show standings by default if available
+    const standingsContent = document.getElementById("team-standings-content");
+    if (standingsContent) {
+      standingsContent.style.display = "block";
+    }
+    return;
+  }
 });
 
 // Initialize image carousel
