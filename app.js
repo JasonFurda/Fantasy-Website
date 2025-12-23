@@ -6,6 +6,19 @@
      data-2024.json
 */
 
+// Global error handler to prevent errors from breaking the page
+window.addEventListener('error', function(e) {
+  console.error('Global error caught:', e.error, e.message, e.filename, e.lineno);
+  // Don't prevent default - let it log but don't break the page
+  return false;
+});
+
+// Handle unhandled promise rejections
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('Unhandled promise rejection:', e.reason);
+  e.preventDefault(); // Prevent default browser behavior
+});
+
 let yearDataCache = {};
 let currentYear = 2025;
 let currentWeek = null;
@@ -735,115 +748,169 @@ window.closeTargetsModal = function(){
 };
 
 window.showTeam = function(teamId){
-  document.querySelectorAll(".team-content").forEach(c=>c.style.display="none");
-  document.querySelectorAll(".team-tab-button").forEach(b=>b.classList.remove("active"));
-  const content = document.getElementById(`team-${teamId}-content`);
-  const btn = document.getElementById(`team-tab-${teamId}`);
-  if (content) content.style.display="block";
-  if (btn) btn.classList.add("active");
-  
-  // If showing standings, default to first year (2025)
-  if (teamId === 'standings') {
-    showTeamYear('standings', 2025);
-  } else {
-    // For regular teams, default to Stats view and 2025 year
-    showTeamView(teamId, 'stats');
-    showTeamViewYear(teamId, 'stats', 2025);
+  try {
+    if (!teamId) {
+      console.error("showTeam: teamId is required");
+      return;
+    }
+    document.querySelectorAll(".team-content").forEach(c=>c.style.display="none");
+    document.querySelectorAll(".team-tab-button").forEach(b=>b.classList.remove("active"));
+    const content = document.getElementById(`team-${teamId}-content`);
+    const btn = document.getElementById(`team-tab-${teamId}`);
+    if (content) content.style.display="block";
+    if (btn) btn.classList.add("active");
+    
+    // If showing standings, default to first year (2025)
+    if (teamId === 'standings') {
+      if (typeof window.showTeamYear === 'function') {
+        showTeamYear('standings', 2025);
+      }
+    } else {
+      // For regular teams, default to Stats view and 2025 year
+      if (typeof window.showTeamView === 'function') {
+        showTeamView(teamId, 'stats');
+      }
+      if (typeof window.showTeamViewYear === 'function') {
+        showTeamViewYear(teamId, 'stats', 2025);
+      }
+    }
+  } catch (error) {
+    console.error("Error in showTeam:", error);
   }
 };
 
 window.showTeamView = function(teamId, view){
-  // Switch between Stats and Roster views for a team
-  const teamIdStr = String(teamId);
-  
-  // Hide all view contents for this team
-  document.querySelectorAll(`#team-${teamIdStr}-content .team-view-content`).forEach(c=>c.style.display="none");
-  document.querySelectorAll(`#team-${teamIdStr}-content .stats-tab-button`).forEach(b=>b.classList.remove("active"));
-  
-  // Show selected view
-  const viewContent = document.getElementById(`team-${teamIdStr}-view-${view}`);
-  const viewBtn = document.getElementById(`team-${teamIdStr}-view-${view}-tab`);
-  
-  if (viewContent) {
-    viewContent.style.display = "block";
-    
-    // Show the default year (2025) for this view
-    const defaultYearBtn = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-2025-tab`);
-    if (defaultYearBtn) {
-      showTeamViewYear(teamId, view, 2025);
+  try {
+    if (!teamId || !view) {
+      console.error("showTeamView: teamId and view are required");
+      return;
     }
+    // Switch between Stats and Roster views for a team
+    const teamIdStr = String(teamId);
+    
+    // Hide all view contents for this team
+    const teamContent = document.getElementById(`team-${teamIdStr}-content`);
+    if (teamContent) {
+      teamContent.querySelectorAll(".team-view-content").forEach(c=>c.style.display="none");
+      teamContent.querySelectorAll(".stats-tab-button").forEach(b=>b.classList.remove("active"));
+    }
+    
+    // Show selected view
+    const viewContent = document.getElementById(`team-${teamIdStr}-view-${view}`);
+    const viewBtn = document.getElementById(`team-${teamIdStr}-view-${view}-tab`);
+    
+    if (viewContent) {
+      viewContent.style.display = "block";
+      
+      // Show the default year (2025) for this view
+      const defaultYearBtn = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-2025-tab`);
+      if (defaultYearBtn && typeof window.showTeamViewYear === 'function') {
+        showTeamViewYear(teamId, view, 2025);
+      }
+    }
+    
+    if (viewBtn) viewBtn.classList.add("active");
+  } catch (error) {
+    console.error("Error in showTeamView:", error);
   }
-  
-  if (viewBtn) viewBtn.classList.add("active");
 };
 
 window.showTeamViewYear = function(teamId, view, year){
-  // Switch years within a view (Stats or Roster)
-  const teamIdStr = String(teamId);
-  const yearStr = String(year);
-  
-  // Hide all year contents for this view
-  const viewContent = document.getElementById(`team-${teamIdStr}-view-${view}`);
-  if (viewContent) {
-    viewContent.querySelectorAll(`.team-year-content`).forEach(c=>c.style.display="none");
-    viewContent.querySelectorAll(`.year-tab-button`).forEach(b=>b.classList.remove("active"));
+  try {
+    if (!teamId || !view || year === undefined || year === null) {
+      console.error("showTeamViewYear: teamId, view, and year are required");
+      return;
+    }
+    // Switch years within a view (Stats or Roster)
+    const teamIdStr = String(teamId);
+    const yearStr = String(year);
     
-    // Show selected year
-    const yearContent = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-${yearStr}-content`);
-    const yearBtn = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-${yearStr}-tab`);
-    
-    if (yearContent) yearContent.style.display = "block";
-    if (yearBtn) yearBtn.classList.add("active");
+    // Hide all year contents for this view
+    const viewContent = document.getElementById(`team-${teamIdStr}-view-${view}`);
+    if (viewContent) {
+      viewContent.querySelectorAll(".team-year-content").forEach(c=>c.style.display="none");
+      viewContent.querySelectorAll(".year-tab-button").forEach(b=>b.classList.remove("active"));
+      
+      // Show selected year
+      const yearContent = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-${yearStr}-content`);
+      const yearBtn = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-${yearStr}-tab`);
+      
+      if (yearContent) yearContent.style.display = "block";
+      if (yearBtn) yearBtn.classList.add("active");
+    }
+  } catch (error) {
+    console.error("Error in showTeamViewYear:", error);
   }
 };
 
 window.switchRosterSort = function(teamId, year, sortType){
-  // Switch between position and points sorting for roster
-  const teamIdStr = String(teamId);
-  const yearStr = String(year);
-  
-  // Hide all sort contents
-  const positionContent = document.getElementById(`roster-${teamIdStr}-${yearStr}-position-content`);
-  const pointsContent = document.getElementById(`roster-${teamIdStr}-${yearStr}-points-content`);
-  
-  // Remove active class from all sort buttons
-  const positionBtn = document.getElementById(`roster-${teamIdStr}-${yearStr}-sort-position`);
-  const pointsBtn = document.getElementById(`roster-${teamIdStr}-${yearStr}-sort-points`);
-  
-  if (positionContent) positionContent.style.display = "none";
-  if (pointsContent) pointsContent.style.display = "none";
-  if (positionBtn) positionBtn.classList.remove("active");
-  if (pointsBtn) pointsBtn.classList.remove("active");
-  
-  // Show selected sort
-  if (sortType === 'position') {
-    if (positionContent) positionContent.style.display = "block";
-    if (positionBtn) positionBtn.classList.add("active");
-  } else {
-    if (pointsContent) pointsContent.style.display = "block";
-    if (pointsBtn) pointsBtn.classList.add("active");
+  try {
+    if (!teamId || !year || !sortType) {
+      console.error("switchRosterSort: teamId, year, and sortType are required");
+      return;
+    }
+    // Switch between position and points sorting for roster
+    const teamIdStr = String(teamId);
+    const yearStr = String(year);
+    
+    // Hide all sort contents
+    const positionContent = document.getElementById(`roster-${teamIdStr}-${yearStr}-position-content`);
+    const pointsContent = document.getElementById(`roster-${teamIdStr}-${yearStr}-points-content`);
+    
+    // Remove active class from all sort buttons
+    const positionBtn = document.getElementById(`roster-${teamIdStr}-${yearStr}-sort-position`);
+    const pointsBtn = document.getElementById(`roster-${teamIdStr}-${yearStr}-sort-points`);
+    
+    if (positionContent) positionContent.style.display = "none";
+    if (pointsContent) pointsContent.style.display = "none";
+    if (positionBtn) positionBtn.classList.remove("active");
+    if (pointsBtn) pointsBtn.classList.remove("active");
+    
+    // Show selected sort
+    if (sortType === 'position') {
+      if (positionContent) positionContent.style.display = "block";
+      if (positionBtn) positionBtn.classList.add("active");
+    } else if (sortType === 'points') {
+      if (pointsContent) pointsContent.style.display = "block";
+      if (pointsBtn) pointsBtn.classList.add("active");
+    }
+  } catch (error) {
+    console.error("Error in switchRosterSort:", error);
   }
 };
 
 window.showTeamYear = function(teamId, year){
-  // Legacy function for standings - still works for backwards compatibility
-  // Handle both numeric team IDs and string IDs like 'standings' or 'total'
-  const teamIdStr = String(teamId);
-  const yearStr = String(year);
-  
-  // Check if this is the new structure (with views) or old structure (standings)
-  const viewContent = document.getElementById(`team-${teamIdStr}-view-stats`);
-  if (viewContent) {
-    // New structure - use showTeamViewYear
-    showTeamViewYear(teamId, 'stats', year);
-  } else {
-    // Old structure (standings) - use original logic
-    document.querySelectorAll(`#team-${teamIdStr}-content .team-year-content`).forEach(c=>c.style.display="none");
-    document.querySelectorAll(`#team-${teamIdStr}-content .year-tab-button`).forEach(b=>b.classList.remove("active"));
-    const content = document.getElementById(`team-${teamIdStr}-year-${yearStr}-content`);
-    const btn = document.getElementById(`team-${teamIdStr}-year-${yearStr}-tab`);
-    if (content) content.style.display="block";
-    if (btn) btn.classList.add("active");
+  try {
+    if (!teamId || year === undefined || year === null) {
+      console.error("showTeamYear: teamId and year are required");
+      return;
+    }
+    // Legacy function for standings - still works for backwards compatibility
+    // Handle both numeric team IDs and string IDs like 'standings' or 'total'
+    const teamIdStr = String(teamId);
+    const yearStr = String(year);
+    
+    // Check if this is the new structure (with views) or old structure (standings)
+    const viewContent = document.getElementById(`team-${teamIdStr}-view-stats`);
+    if (viewContent) {
+      // New structure - use showTeamViewYear
+      if (typeof window.showTeamViewYear === 'function') {
+        showTeamViewYear(teamId, 'stats', year);
+      }
+    } else {
+      // Old structure (standings) - use original logic
+      const teamContent = document.getElementById(`team-${teamIdStr}-content`);
+      if (teamContent) {
+        teamContent.querySelectorAll(".team-year-content").forEach(c=>c.style.display="none");
+        teamContent.querySelectorAll(".year-tab-button").forEach(b=>b.classList.remove("active"));
+      }
+      const content = document.getElementById(`team-${teamIdStr}-year-${yearStr}-content`);
+      const btn = document.getElementById(`team-${teamIdStr}-year-${yearStr}-tab`);
+      if (content) content.style.display="block";
+      if (btn) btn.classList.add("active");
+    }
+  } catch (error) {
+    console.error("Error in showTeamYear:", error);
   }
 };
 
@@ -870,6 +937,21 @@ if (typeof window.showTotalYearStats !== 'function') {
 }
 if (typeof window.showTeamPages !== 'function') {
   console.error("ERROR: showTeamPages is not defined!");
+}
+if (typeof window.showTeam !== 'function') {
+  console.error("ERROR: showTeam is not defined!");
+}
+if (typeof window.showTeamView !== 'function') {
+  console.error("ERROR: showTeamView is not defined!");
+}
+if (typeof window.showTeamViewYear !== 'function') {
+  console.error("ERROR: showTeamViewYear is not defined!");
+}
+if (typeof window.showTeamYear !== 'function') {
+  console.error("ERROR: showTeamYear is not defined!");
+}
+if (typeof window.switchRosterSort !== 'function') {
+  console.error("ERROR: switchRosterSort is not defined!");
 }
 console.log("app.js loaded - all functions should be available");
 
