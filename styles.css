@@ -329,6 +329,22 @@
             border-right: none;
         }
         
+        .roster-sort-tabs {
+            display: flex;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border-bottom: 2px solid #e9ecef;
+            overflow-x: auto;
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            gap: 0;
+            margin-bottom: 20px;
+            border-radius: 8px 8px 0 0;
+        }
+        
+        .roster-sort-content {
+            display: none;
+        }
+        
         .stats-tab-content {
             display: none;
         }
