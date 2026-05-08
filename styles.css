@@ -329,22 +329,6 @@
             border-right: none;
         }
         
-        .roster-sort-tabs {
-            display: flex;
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-            border-bottom: 2px solid #e9ecef;
-            overflow-x: auto;
-            padding: 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            gap: 0;
-            margin-bottom: 20px;
-            border-radius: 8px 8px 0 0;
-        }
-        
-        .roster-sort-content {
-            display: none;
-        }
-        
         .stats-tab-content {
             display: none;
         }
@@ -890,37 +874,6 @@
             background: #e8f5e9;
         }
         
-        /* Performance classes should override player-playing */
-        .player-playing.perf-legendary,
-        .player-finished.perf-legendary {
-            background: #5dade2 !important;
-        }
-        
-        .player-playing.perf-legendary td,
-        .player-finished.perf-legendary td {
-            background: #5dade2 !important;
-        }
-        
-        .player-playing.perf-amazing,
-        .player-finished.perf-amazing {
-            background: #43a047 !important;
-        }
-        
-        .player-playing.perf-amazing td,
-        .player-finished.perf-amazing td {
-            background: #43a047 !important;
-        }
-        
-        .player-playing.perf-great,
-        .player-finished.perf-great {
-            background: #c5e1a5 !important;
-        }
-        
-        .player-playing.perf-great td,
-        .player-finished.perf-great td {
-            background: #c5e1a5 !important;
-        }
-        
         .player-pending {
             background: #fff3e0;
         }
@@ -941,28 +894,12 @@
         }
         
         /* Performance color coding - Green for overperformance */
-        .perf-legendary {
-            background: #5dade2 !important;  /* Deeper blue - 2x or more and >35 points */
-        }
-        
-        .perf-legendary td {
-            background: #5dade2 !important;
-        }
-        
-        .perf-amazing {
-            background: #43a047 !important;  /* Lighter green - 1.5x or more */
-        }
-        
-        .perf-amazing td {
-            background: #43a047 !important;
-        }
-        
         .perf-excellent {
             background: #81c784 !important;  /* Deeper green */
         }
         
         .perf-great {
-            background: #c5e1a5 !important;  /* Darker light green - 1.25x or more */
+            background: #dcedc8 !important;
         }
         
         .perf-good {
@@ -991,8 +928,6 @@
         }
         
         /* Override bench styling for performance colors */
-        .player-bench.perf-legendary,
-        .player-bench.perf-amazing,
         .player-bench.perf-excellent,
         .player-bench.perf-great,
         .player-bench.perf-good,
@@ -1220,106 +1155,5 @@
             
             .top-players-grid {
                 grid-template-columns: 1fr;
-            }
-        }
-
-        /* Home Page and Image Carousel Styles */
-        .home-page-content {
-            padding: 40px;
-            display: block;
-        }
-
-        .image-carousel-container {
-            position: relative;
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        }
-
-        .image-carousel {
-            position: relative;
-            width: 100%;
-            height: 600px;
-            overflow: hidden;
-        }
-
-        .carousel-slide {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 1s ease-in-out, visibility 0s 1s;
-            z-index: 0;
-        }
-
-        .carousel-slide.active {
-            opacity: 1;
-            visibility: visible;
-            z-index: 1;
-            transition: opacity 1s ease-in-out, visibility 0s 0s;
-        }
-
-        .carousel-image {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            background: #f8f9fa;
-        }
-
-        .carousel-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f8f9fa;
-            color: #666;
-            font-size: 1.2em;
-        }
-
-        .carousel-indicators {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
-            z-index: 10;
-        }
-
-        .carousel-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.5);
-            cursor: pointer;
-            transition: all 0.3s;
-            border: 2px solid rgba(255, 255, 255, 0.8);
-        }
-
-        .carousel-indicator:hover {
-            background: rgba(255, 255, 255, 0.8);
-            transform: scale(1.2);
-        }
-
-        .carousel-indicator.active {
-            background: white;
-            border-color: white;
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-        }
-
-        @media (max-width: 768px) {
-            .image-carousel {
-                height: 400px;
-            }
-            
-            .home-page-content {
-                padding: 20px;
             }
         }

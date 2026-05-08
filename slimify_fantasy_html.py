@@ -1,6 +1,8 @@
 """
 generate_matchups_html.py (JSON-on-demand version)
 
+Requires python-dotenv and a .env file (see .env.example) with ESPN_LEAGUE_ID, ESPN_S2, ESPN_SWID.
+
 What this does:
 - Fetches matchups for years in YEARS.
 - Writes data-YYYY.json for each year (weeks, matchups, lineups).
@@ -14,17 +16,20 @@ To keep your RB/WR/Fraud/Team Pages:
 
 from espn_api.football import League
 import json
-import os
 import math
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # ---------- League configuration ----------
-LEAGUE_ID = 953181335
+LEAGUE_ID = int(os.getenv("ESPN_LEAGUE_ID"))
+ESPN_S2 = os.getenv("ESPN_S2")
+SWID = os.getenv("ESPN_SWID")
 YEARS = [2025, 2024]  # order matters: first year becomes default view
 YEAR_DEFAULT = YEARS[0]
-
-# IMPORTANT: move these to env vars if you share the repo
-ESPN_S2 = 'AEAXwngCrt5PQ2zc%2F2Si2z%2B8Syo4oDo1hs6gSsDACboeC7WNVJT5EWC1Hiu6gueWZgnEDv3IL%2FdPldXwm7f4PvTW4p7WEe8w20SfVmN3utCymMrKJExo5PSQtO62xFh2kIh9cPE0ZCQZxrPX%2F7kjSmfT5Mo2qlDq3dEBbMHJIIG3nJ03FDHzz8xalcpdf1M9ZcEFsOrDGKSJX%2BxlL18puksn9M2ACEzL0El8oFJcGA3mYGsIgreBQGwKa1ZKcsnJZegXIDhasPTrGqXk%2Fv81oGUdAYQzVmKwJfxadoywCRETwg7wnQpu8UpRcwVj9nCsDYHjeU%2BysosGhneVWtLFGKzf'
-SWID = '{EC9E2E2E-468A-4AD9-B5CD-19E1D66BBF09}'
 
 # ---------- Helpers ----------
 def get_owner_name(team):
@@ -131,9 +136,8 @@ def get_fantasy_art_images():
 
 def generate_index_shell_html(shared_content_html, league_name="Fantasy League"):
     """
-    LEGACY: single-page shell with embedded shared content.
-    Kept for reference but no longer used – the site now uses
-    separate HTML pages for navigation.
+    Small HTML shell. app.js handles all week/matchup rendering now.
+    We keep your class names/structure so existing CSS works.
     """
     # Get fantasy art images for the carousel
     fantasy_images = get_fantasy_art_images()
@@ -223,95 +227,6 @@ def generate_index_shell_html(shared_content_html, league_name="Fantasy League")
 </html>
 """
 
-
-def generate_main_index_nav_html(league_name="Fantasy League"):
-    """
-    New architecture entrypoint:
-    Simple navigation/landing page that links to the four sections,
-    each rendered as its own HTML page.
-    """
-    # Get fantasy art images for the carousel on the landing page
-    fantasy_images = get_fantasy_art_images()
-    carousel_images_html = ""
-    carousel_indicators_html = ""
-
-    if fantasy_images:
-        for idx, img_path in enumerate(fantasy_images):
-            active_class = "active" if idx == 0 else ""
-            style_attr = "" if idx == 0 else 'style="opacity: 0; visibility: hidden; z-index: 0;"'
-            carousel_images_html += f"""
-            <div class="carousel-slide {active_class}" {style_attr}>
-                <img src="{img_path}" alt="Fantasy Art {idx + 1}" class="carousel-image">
-            </div>
-            """
-            carousel_indicators_html += f"""
-            <span class="carousel-indicator {active_class}" onclick="goToSlide({idx})"></span>
-            """
-    else:
-        carousel_images_html = """
-            <div class="carousel-slide active">
-                <div class="carousel-placeholder">No images found in fantasy-art folder</div>
-            </div>
-        """
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{league_name} - Fantasy Overview</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>{league_name}</h1>
-      <p>Choose a view to explore the league.</p>
-    </div>
-
-    <!-- Main nav links -->
-    <div class="main-navigation">
-      <a class="rb-comparison-main-btn" href="weekly.html"
-        style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); text-decoration: none;">
-        <span class="btn-icon">📅</span>
-        <span class="btn-text">Weekly Matchups</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="player-comparisons.html"
-        style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); text-decoration: none;">
-        <span class="btn-icon">📊</span>
-        <span class="btn-text">Player Comparisons</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="year-stats.html"
-        style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); text-decoration: none;">
-        <span class="btn-icon">📈</span>
-        <span class="btn-text">Total Year Stats</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="team-pages.html"
-        style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); text-decoration: none;">
-        <span class="btn-icon">👥</span>
-        <span class="btn-text">Team Pages</span>
-      </a>
-    </div>
-
-    <!-- Simple landing carousel -->
-    <div class="home-page-content">
-      <div class="image-carousel-container">
-        <div class="image-carousel">
-          {carousel_images_html}
-        </div>
-        <div class="carousel-indicators">
-          {carousel_indicators_html}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Reuse existing JS for carousel only; it safely no-ops on other features -->
-  <script src="app.js"></script>
-</body>
-</html>
-"""
-
 # -------------------------------------------------------------------
 # OPTIONAL: paste your existing RB/WR/Fraud/Team functions here
 # (collect_running_backs, collect_wide_receivers, generate_shared_content_html,
@@ -330,53 +245,7 @@ def get_team_name_for_player(player, league):
             return team.team_name
     return "Unknown"
 
-def build_player_weekly_points_from_json(year):
-    """Build a mapping of player name -> list of weekly fantasy points
-    using the frozen data-{year}.json file.
-
-    This is used for variance calculation so that we're independent of
-    espn_api's per-player stats structure.
-    """
-    filename = f"data-{year}.json"
-    try:
-        with open(filename, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        print(f"  Warning: Could not load {filename} for variance calc: {e}")
-        return {}
-
-    player_weeks = {}
-    weeks = data.get("weeks", {})
-
-    for week_key, matchups in weeks.items():
-        if not isinstance(matchups, list):
-            continue
-        for matchup in matchups:
-            if not isinstance(matchup, dict):
-                continue
-            for side in ("away", "home"):
-                team = matchup.get(side) or {}
-                lineup = team.get("lineup") or []
-                if not isinstance(lineup, list):
-                    continue
-                for p in lineup:
-                    if not isinstance(p, dict):
-                        continue
-                    name = p.get("name")
-                    if not name:
-                        continue
-                    # Use the fantasy points field from JSON
-                    points = p.get("points", 0.0) or 0.0
-                    try:
-                        pts = float(points)
-                    except (ValueError, TypeError):
-                        pts = 0.0
-                    player_weeks.setdefault(name, []).append(pts)
-
-    return player_weeks
-
-
-def collect_running_backs(league, player_weekly_points=None):
+def collect_running_backs(league):
     """Collect all running backs from all teams and free agents"""
     rbs = []
     
@@ -427,30 +296,21 @@ def collect_running_backs(league, player_weekly_points=None):
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
                         for week in range(1, league.current_week + 1):
                             week_stats = player.stats.get(week, {})
-                            if week_stats and isinstance(week_stats, dict):
-                                # Consider this a played week if we have either breakdown data
-                                # or any kind of scoring information. Some espn_api versions
-                                # omit the 'breakdown' key but still provide points.
-                                breakdown = week_stats.get('breakdown', {})
-                                has_scoring = (
-                                    week_stats.get('appliedTotal') is not None
-                                    or week_stats.get('points') is not None
-                                    or week_stats.get('statTotal') is not None
-                                )
-                                if breakdown or has_scoring:
-                                    rb_data['games_played'] += 1
-                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
-                                    week_points = week_stats.get('appliedTotal')
-                                    if week_points is None:
-                                        week_points = week_stats.get('points')
-                                    if week_points is None:
-                                        week_points = week_stats.get('statTotal', 0.0)
-                                    try:
-                                        week_points = float(week_points) if week_points is not None else 0.0
-                                    except (ValueError, TypeError):
-                                        week_points = 0.0
-                                    # Include all weeks played, even if 0 points
-                                    weekly_points.append(week_points)
+                            if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                # Player played this week (has breakdown = played, not on bye/injured)
+                                rb_data['games_played'] += 1
+                                # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                week_points = week_stats.get('appliedTotal')
+                                if week_points is None:
+                                    week_points = week_stats.get('points')
+                                if week_points is None:
+                                    week_points = week_stats.get('statTotal', 0.0)
+                                try:
+                                    week_points = float(week_points) if week_points is not None else 0.0
+                                except (ValueError, TypeError):
+                                    week_points = 0.0
+                                # Include all weeks played, even if 0 points
+                                weekly_points.append(week_points)
                 else:
                     # Fallback: Aggregate stats across all weeks
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
@@ -458,21 +318,15 @@ def collect_running_backs(league, player_weekly_points=None):
                             week_stats = player.stats.get(week, {})
                             if week_stats and isinstance(week_stats, dict):
                                 breakdown = week_stats.get('breakdown', {})
-                                has_scoring = (
-                                    week_stats.get('appliedTotal') is not None
-                                    or week_stats.get('points') is not None
-                                    or week_stats.get('statTotal') is not None
-                                )
-                                if (breakdown and isinstance(breakdown, dict)) or has_scoring:  # Player played this week
+                                if breakdown and isinstance(breakdown, dict):  # Player played this week
                                     rb_data['games_played'] += 1
-                                    if breakdown and isinstance(breakdown, dict):
-                                        rb_data['rushing_attempts'] += breakdown.get('rushingAttempts', 0)
-                                        rb_data['rushing_yards'] += breakdown.get('rushingYards', 0)
-                                        rb_data['rushing_tds'] += breakdown.get('rushingTouchdowns', 0)
-                                        rb_data['receptions'] += breakdown.get('receivingReceptions', 0)
-                                        rb_data['receiving_yards'] += breakdown.get('receivingYards', 0)
-                                        rb_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
-                                        rb_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                    rb_data['rushing_attempts'] += breakdown.get('rushingAttempts', 0)
+                                    rb_data['rushing_yards'] += breakdown.get('rushingYards', 0)
+                                    rb_data['rushing_tds'] += breakdown.get('rushingTouchdowns', 0)
+                                    rb_data['receptions'] += breakdown.get('receivingReceptions', 0)
+                                    rb_data['receiving_yards'] += breakdown.get('receivingYards', 0)
+                                    rb_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
+                                    rb_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
                                     # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
                                     week_points = week_stats.get('appliedTotal')
                                     if week_points is None:
@@ -486,13 +340,6 @@ def collect_running_backs(league, player_weekly_points=None):
                                     # Include all weeks played, even if 0 points
                                     weekly_points.append(week_points)
                 
-                # If we have JSON-based weekly points, prefer those for variance
-                if player_weekly_points is not None:
-                    json_points = player_weekly_points.get(player.name)
-                    if json_points and len(json_points) > 0:
-                        weekly_points = json_points
-                        rb_data['games_played'] = len(json_points)
-
                 # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
                 if len(weekly_points) > 1:
                     mean = sum(weekly_points) / len(weekly_points)
@@ -552,49 +399,36 @@ def collect_running_backs(league, player_weekly_points=None):
                             # Collect weekly points and count games played
                             for week in range(1, league.current_week + 1):
                                 week_stats = player.stats.get(week, {})
-                                if week_stats and isinstance(week_stats, dict):
-                                    breakdown = week_stats.get('breakdown', {})
-                                    has_scoring = (
-                                        week_stats.get('appliedTotal') is not None
-                                        or week_stats.get('points') is not None
-                                        or week_stats.get('statTotal') is not None
-                                    )
-                                    if breakdown or has_scoring:
-                                        # Player played this week (has breakdown or scoring info)
-                                        rb_data['games_played'] += 1
-                                        # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
-                                        week_points = week_stats.get('appliedTotal')
-                                        if week_points is None:
-                                            week_points = week_stats.get('points')
-                                        if week_points is None:
-                                            week_points = week_stats.get('statTotal', 0.0)
-                                        try:
-                                            week_points = float(week_points) if week_points is not None else 0.0
-                                        except (ValueError, TypeError):
-                                            week_points = 0.0
-                                        # Include all weeks played, even if 0 points
-                                        weekly_points.append(week_points)
+                                if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                    # Player played this week (has breakdown = played, not on bye/injured)
+                                    rb_data['games_played'] += 1
+                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                    week_points = week_stats.get('appliedTotal')
+                                    if week_points is None:
+                                        week_points = week_stats.get('points')
+                                    if week_points is None:
+                                        week_points = week_stats.get('statTotal', 0.0)
+                                    try:
+                                        week_points = float(week_points) if week_points is not None else 0.0
+                                    except (ValueError, TypeError):
+                                        week_points = 0.0
+                                    # Include all weeks played, even if 0 points
+                                    weekly_points.append(week_points)
                         else:
                             # Fallback: Aggregate stats across all weeks
                             for week in range(1, league.current_week + 1):
                                 week_stats = player.stats.get(week, {})
                                 if week_stats and isinstance(week_stats, dict):
                                     breakdown = week_stats.get('breakdown', {})
-                                    has_scoring = (
-                                        week_stats.get('appliedTotal') is not None
-                                        or week_stats.get('points') is not None
-                                        or week_stats.get('statTotal') is not None
-                                    )
-                                    if (breakdown and isinstance(breakdown, dict)) or has_scoring:
+                                    if breakdown and isinstance(breakdown, dict):
                                         rb_data['games_played'] += 1
-                                        if breakdown and isinstance(breakdown, dict):
-                                            rb_data['rushing_attempts'] += breakdown.get('rushingAttempts', 0)
-                                            rb_data['rushing_yards'] += breakdown.get('rushingYards', 0)
-                                            rb_data['rushing_tds'] += breakdown.get('rushingTouchdowns', 0)
-                                            rb_data['receptions'] += breakdown.get('receivingReceptions', 0)
-                                            rb_data['receiving_yards'] += breakdown.get('receivingYards', 0)
-                                            rb_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
-                                            rb_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                        rb_data['rushing_attempts'] += breakdown.get('rushingAttempts', 0)
+                                        rb_data['rushing_yards'] += breakdown.get('rushingYards', 0)
+                                        rb_data['rushing_tds'] += breakdown.get('rushingTouchdowns', 0)
+                                        rb_data['receptions'] += breakdown.get('receivingReceptions', 0)
+                                        rb_data['receiving_yards'] += breakdown.get('receivingYards', 0)
+                                        rb_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
+                                        rb_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
                                         # Get points from week_stats - try multiple possible keys
                                         week_points = week_stats.get('points')
                                         if week_points is None:
@@ -604,13 +438,6 @@ def collect_running_backs(league, player_weekly_points=None):
                                         # Include all weeks played, even if 0 points
                                         weekly_points.append(week_points)
                     
-                    # If we have JSON-based weekly points, prefer those for variance
-                    if player_weekly_points is not None:
-                        json_points = player_weekly_points.get(player.name)
-                        if json_points and len(json_points) > 0:
-                            weekly_points = json_points
-                            rb_data['games_played'] = len(json_points)
-
                     # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
                     if len(weekly_points) > 1:
                         mean = sum(weekly_points) / len(weekly_points)
@@ -708,7 +535,7 @@ def collect_draft_pick_values(league):
     
     return draft_values
 
-def collect_wide_receivers(league, player_weekly_points=None):
+def collect_wide_receivers(league):
     """Collect all wide receivers from all teams and free agents"""
     wrs = []
     
@@ -755,24 +582,17 @@ def collect_wide_receivers(league, player_weekly_points=None):
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
                         for week in range(1, league.current_week + 1):
                             week_stats = player.stats.get(week, {})
-                            if week_stats and isinstance(week_stats, dict):
-                                breakdown = week_stats.get('breakdown', {})
-                                has_scoring = (
-                                    week_stats.get('appliedTotal') is not None
-                                    or week_stats.get('points') is not None
-                                    or week_stats.get('statTotal') is not None
-                                )
-                                if breakdown or has_scoring:
-                                    # Player played this week (has breakdown or scoring info)
-                                    wr_data['games_played'] += 1
-                                    # Get points from week_stats - try multiple possible keys
-                                    week_points = week_stats.get('points')
-                                    if week_points is None:
-                                        week_points = week_stats.get('appliedTotal', 0.0) or 0.0
-                                    else:
-                                        week_points = float(week_points) if week_points is not None else 0.0
-                                    # Include all weeks played, even if 0 points
-                                    weekly_points.append(week_points)
+                            if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                # Player played this week (has breakdown = played, not on bye/injured)
+                                wr_data['games_played'] += 1
+                                # Get points from week_stats - try multiple possible keys
+                                week_points = week_stats.get('points')
+                                if week_points is None:
+                                    week_points = week_stats.get('appliedTotal', 0.0) or 0.0
+                                else:
+                                    week_points = float(week_points) if week_points is not None else 0.0
+                                # Include all weeks played, even if 0 points
+                                weekly_points.append(week_points)
                 else:
                     # Fallback: Aggregate stats across all weeks
                     if hasattr(player, 'stats') and player.stats and isinstance(player.stats, dict):
@@ -780,19 +600,13 @@ def collect_wide_receivers(league, player_weekly_points=None):
                             week_stats = player.stats.get(week, {})
                             if week_stats and isinstance(week_stats, dict):
                                 breakdown = week_stats.get('breakdown', {})
-                                has_scoring = (
-                                    week_stats.get('appliedTotal') is not None
-                                    or week_stats.get('points') is not None
-                                    or week_stats.get('statTotal') is not None
-                                )
-                                if (breakdown and isinstance(breakdown, dict)) or has_scoring:  # Player played this week
+                                if breakdown and isinstance(breakdown, dict):  # Player played this week
                                     wr_data['games_played'] += 1
-                                    if breakdown and isinstance(breakdown, dict):
-                                        wr_data['targets'] += breakdown.get('receivingTargets', 0)
-                                        wr_data['receptions'] += breakdown.get('receivingReceptions', 0)
-                                        wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
-                                        wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
-                                        wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                    wr_data['targets'] += breakdown.get('receivingTargets', 0)
+                                    wr_data['receptions'] += breakdown.get('receivingReceptions', 0)
+                                    wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
+                                    wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
+                                    wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
                                     # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
                                     week_points = week_stats.get('appliedTotal')
                                     if week_points is None:
@@ -806,13 +620,6 @@ def collect_wide_receivers(league, player_weekly_points=None):
                                     # Include all weeks played, even if 0 points
                                     weekly_points.append(week_points)
                 
-                # If we have JSON-based weekly points, prefer those for variance
-                if player_weekly_points is not None:
-                    json_points = player_weekly_points.get(player.name)
-                    if json_points and len(json_points) > 0:
-                        weekly_points = json_points
-                        wr_data['games_played'] = len(json_points)
-
                 # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
                 if len(weekly_points) > 1:
                     mean = sum(weekly_points) / len(weekly_points)
@@ -868,47 +675,34 @@ def collect_wide_receivers(league, player_weekly_points=None):
                             # Collect weekly points and count games played
                             for week in range(1, league.current_week + 1):
                                 week_stats = player.stats.get(week, {})
-                                if week_stats and isinstance(week_stats, dict):
-                                    breakdown = week_stats.get('breakdown', {})
-                                    has_scoring = (
-                                        week_stats.get('appliedTotal') is not None
-                                        or week_stats.get('points') is not None
-                                        or week_stats.get('statTotal') is not None
-                                    )
-                                    if breakdown or has_scoring:
-                                        # Player played this week (has breakdown or scoring info)
-                                        wr_data['games_played'] += 1
-                                        # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
-                                        week_points = week_stats.get('appliedTotal')
-                                        if week_points is None:
-                                            week_points = week_stats.get('points')
-                                        if week_points is None:
-                                            week_points = week_stats.get('statTotal', 0.0)
-                                        try:
-                                            week_points = float(week_points) if week_points is not None else 0.0
-                                        except (ValueError, TypeError):
-                                            week_points = 0.0
-                                        # Include all weeks played, even if 0 points
-                                        weekly_points.append(week_points)
+                                if week_stats and isinstance(week_stats, dict) and week_stats.get('breakdown'):
+                                    # Player played this week (has breakdown = played, not on bye/injured)
+                                    wr_data['games_played'] += 1
+                                    # Get points from week_stats - espn_api uses 'appliedTotal' as primary source
+                                    week_points = week_stats.get('appliedTotal')
+                                    if week_points is None:
+                                        week_points = week_stats.get('points')
+                                    if week_points is None:
+                                        week_points = week_stats.get('statTotal', 0.0)
+                                    try:
+                                        week_points = float(week_points) if week_points is not None else 0.0
+                                    except (ValueError, TypeError):
+                                        week_points = 0.0
+                                    # Include all weeks played, even if 0 points
+                                    weekly_points.append(week_points)
                         else:
                             # Fallback: Aggregate stats across all weeks
                             for week in range(1, league.current_week + 1):
                                 week_stats = player.stats.get(week, {})
                                 if week_stats and isinstance(week_stats, dict):
                                     breakdown = week_stats.get('breakdown', {})
-                                    has_scoring = (
-                                        week_stats.get('appliedTotal') is not None
-                                        or week_stats.get('points') is not None
-                                        or week_stats.get('statTotal') is not None
-                                    )
-                                    if (breakdown and isinstance(breakdown, dict)) or has_scoring:
+                                    if breakdown and isinstance(breakdown, dict):
                                         wr_data['games_played'] += 1
-                                        if breakdown and isinstance(breakdown, dict):
-                                            wr_data['targets'] += breakdown.get('receivingTargets', 0)
-                                            wr_data['receptions'] += breakdown.get('receivingReceptions', 0)
-                                            wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
-                                            wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
-                                            wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
+                                        wr_data['targets'] += breakdown.get('receivingTargets', 0)
+                                        wr_data['receptions'] += breakdown.get('receivingReceptions', 0)
+                                        wr_data['receiving_yards'] += breakdown.get('receivingYards', 0)
+                                        wr_data['receiving_tds'] += breakdown.get('receivingTouchdowns', 0)
+                                        wr_data['fumbles_lost'] += breakdown.get('lostFumbles', 0)
                                         # Get points from week_stats - try multiple possible keys
                                         week_points = week_stats.get('points')
                                         if week_points is None:
@@ -918,13 +712,6 @@ def collect_wide_receivers(league, player_weekly_points=None):
                                         # Include all weeks played, even if 0 points
                                         weekly_points.append(week_points)
                     
-                    # If we have JSON-based weekly points, prefer those for variance
-                    if player_weekly_points is not None:
-                        json_points = player_weekly_points.get(player.name)
-                        if json_points and len(json_points) > 0:
-                            weekly_points = json_points
-                            wr_data['games_played'] = len(json_points)
-
                     # Calculate variance using sample variance formula: sum((x - mean)^2) / (n - 1)
                     if len(weekly_points) > 1:
                         mean = sum(weekly_points) / len(weekly_points)
@@ -1150,7 +937,6 @@ def get_team_year_stats(league, all_weeks_data=None):
             'points_for': team.points_for if hasattr(team, 'points_for') else 0,
             'points_against': team.points_against if hasattr(team, 'points_against') else 0,
             'top_3_players': top_3_players,
-            'full_roster': roster_players,  # Store full roster for roster tab
             'standing': standing
         })
     
@@ -1261,13 +1047,9 @@ def find_club_performances(league, all_weeks_data):
     club_sub100 = []  # Teams that scored < 100
     
     for week, box_scores in all_weeks_data.items():
-        # For sub-100 club, only skip the current week if it hasn't concluded.
-        # This allows us to include low scores from the final (playoff) week
-        # once all games are finished.
-        if week == league.current_week:
-            skip_sub100_this_week = not is_week_concluded(league, week, box_scores)
-        else:
-            skip_sub100_this_week = False
+        # For sub-100 club, skip current week if it hasn't concluded
+        # Always skip current week for sub-100 club to avoid showing incomplete scores
+        skip_sub100_this_week = (week == league.current_week)
         
         for matchup in box_scores:
             if not matchup.home_team:
@@ -2139,7 +1921,7 @@ def generate_fraud_watch_html(league, all_weeks_data):
     mismanagement_rows_html = generate_mismanagement_rows(mismanagement_data)
     
     return f"""
-    <div id="total-year-stats-content" class="year-stats-content" style="display: block;">
+    <div id="total-year-stats-content" class="year-stats-content" style="display: none;">
         <div class="stats-header">
             <h2>Total Year Stats</h2>
         </div>
@@ -2255,65 +2037,6 @@ def generate_fraud_watch_html(league, all_weeks_data):
     </div>
     """
 
-def playoff_placement_to_number(placement_str):
-    """Convert playoff placement string to numeric value for averaging"""
-    if not placement_str or placement_str == "Unknown":
-        return None
-    
-    placement_lower = placement_str.lower()
-    
-    if placement_lower == "champion":
-        return 1.0
-    elif placement_lower == "runner-up":
-        return 2.0
-    elif "place" in placement_lower:
-        # Extract number from strings like "3rd Place", "4th Place"
-        import re
-        match = re.search(r'(\d+)', placement_str)
-        if match:
-            return float(match.group(1))
-    elif "seed" in placement_lower:
-        # Extract seed number from strings like "#1 Seed", "#2 Seed"
-        import re
-        match = re.search(r'#(\d+)', placement_str)
-        if match:
-            # Treat seeds as placements (lower seed = better placement)
-            return float(match.group(1))
-    elif "did not make playoffs" in placement_lower:
-        # Use a high number for teams that didn't make playoffs
-        return 9.0
-    
-    return None
-
-def get_decimal_ordinal_suffix(num):
-    """Format a decimal number with ordinal suffix (e.g., 3.5 -> "3.5th")"""
-    # For decimals, we'll use "th" suffix for simplicity
-    # Round to 1 decimal place for display
-    rounded = round(num, 1)
-    if rounded == int(rounded):
-        # If it's a whole number, use the regular ordinal function
-        return get_ordinal_suffix(int(rounded))
-    else:
-        # For decimals, use "th" suffix
-        return f"{rounded}th"
-
-def number_to_playoff_placement(avg_num):
-    """Convert average numeric placement back to readable string with 'Average Playoff Placement' prefix"""
-    if avg_num is None:
-        return "Average Playoff Placement: Unknown"
-    
-    prefix = "Average Playoff Placement: "
-    
-    if avg_num <= 1.5:
-        return f"{prefix}Champion"
-    elif avg_num <= 2.5:
-        return f"{prefix}Runner-up"
-    elif avg_num <= 8.5:
-        # Show decimal with ordinal suffix
-        return f"{prefix}{get_decimal_ordinal_suffix(avg_num)} Place"
-    else:
-        return f"{prefix}Did not make playoffs"
-
 def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
     """Calculate aggregated all-time stats for each team across all years"""
     all_time_stats = {}
@@ -2334,7 +2057,6 @@ def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
                 'ties': 0,
                 'points_for': 0.0,
                 'points_against': 0.0,
-                'playoff_placements': [],  # List to track playoff placements for averaging
                 'all_players': {}  # Dictionary to track players across years
             }
         
@@ -2346,11 +2068,6 @@ def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
         # Aggregate points
         all_time_stats[team_id]['points_for'] += team_data['points_for']
         all_time_stats[team_id]['points_against'] += team_data['points_against']
-        
-        # Track playoff placements for averaging
-        placement_num = playoff_placement_to_number(team_data.get('playoff_placement', ''))
-        if placement_num is not None:
-            all_time_stats[team_id]['playoff_placements'].append(placement_num)
         
         # Aggregate players (combine points across years)
         for player in team_data['top_3_players']:
@@ -2379,13 +2096,6 @@ def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
         total_games = stats['wins'] + stats['losses'] + stats['ties']
         record = f"{stats['wins']}-{stats['losses']}" + (f"-{stats['ties']}" if stats['ties'] > 0 else "")
         
-        # Calculate average playoff placement
-        if stats['playoff_placements']:
-            avg_placement = sum(stats['playoff_placements']) / len(stats['playoff_placements'])
-            playoff_placement = number_to_playoff_placement(avg_placement)
-        else:
-            playoff_placement = "Unknown"
-        
         # Get top 3 players by total points
         all_players_list = list(stats['all_players'].values())
         for player in all_players_list:
@@ -2406,7 +2116,7 @@ def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
             'losses': stats['losses'],
             'ties': stats['ties'],
             'record': record,
-            'playoff_placement': playoff_placement,
+            'playoff_placement': 'All Time',  # Special label for all-time view
             'points_for': round(stats['points_for'], 2),
             'points_against': round(stats['points_against'], 2),
             'top_3_players': top_3_players
@@ -2416,131 +2126,6 @@ def calculate_all_time_team_stats(teams_2024_data, teams_2025_data):
     result.sort(key=lambda x: (x['wins'], x['points_for']), reverse=True)
     
     return result
-
-def get_position_class(position):
-    """Get CSS class for position-based color coding"""
-    position_upper = str(position).upper() if position else ""
-    position_map = {
-        'QB': 'roster-position-qb',
-        'RB': 'roster-position-rb',
-        'WR': 'roster-position-wr',
-        'TE': 'roster-position-te',
-        'K': 'roster-position-k',
-        'DEF': 'roster-position-def',
-        'DST': 'roster-position-def',
-        'D/ST': 'roster-position-def'
-    }
-    return position_map.get(position_upper, 'roster-position-other')
-
-def get_position_sort_order(position):
-    """Get sort order for position (lower number = higher priority)"""
-    position_upper = str(position).upper() if position else ""
-    position_order = {
-        'QB': 1,
-        'RB': 2,
-        'WR': 3,
-        'TE': 4,
-        'K': 5,
-        'DEF': 6,
-        'DST': 6,
-        'D/ST': 6
-    }
-    return position_order.get(position_upper, 99)
-
-def generate_roster_rows(roster_data, sort_by='position'):
-    """Generate table rows for roster, sorted by position or points"""
-    if sort_by == 'position':
-        # Sort by position first, then by points within position
-        sorted_roster = sorted(roster_data, key=lambda x: (
-            get_position_sort_order(x.get('position', '')),
-            -x['total_points']  # Negative for descending
-        ))
-    else:  # sort_by == 'points'
-        # Sort by total points descending
-        sorted_roster = sorted(roster_data, key=lambda x: x['total_points'], reverse=True)
-    
-    rows_html = ""
-    for idx, player in enumerate(sorted_roster):
-        position_class = get_position_class(player.get('position', ''))
-        rows_html += f"""
-        <tr class="{position_class}">
-            <td>{idx + 1}</td>
-            <td class="player-name">{player['name']}</td>
-            <td>{player['position']}</td>
-            <td>{player['proTeam']}</td>
-            <td class="points">{player['total_points']:.2f}</td>
-            <td>{player['avg_points']:.2f}</td>
-        </tr>
-        """
-    return rows_html
-
-def generate_roster_html(roster_data, year_label, team_id):
-    """Generate HTML table for team roster with position-based color coding and sort options"""
-    if not roster_data or len(roster_data) == 0:
-        return f'<p>No roster data available for {year_label}</p>'
-    
-    # Generate rows for both sorting methods
-    rows_by_position = generate_roster_rows(roster_data, sort_by='position')
-    rows_by_points = generate_roster_rows(roster_data, sort_by='points')
-    
-    return f"""
-    <style>
-        .roster-table-wrapper .stats-table tr.roster-position-qb {{ background-color: #e3f2fd !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-rb {{ background-color: #fff3e0 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-wr {{ background-color: #f3e5f5 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-te {{ background-color: #e8f5e9 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-k {{ background-color: #fce4ec !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-def {{ background-color: #e0f2f1 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-other {{ background-color: #f5f5f5 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-qb:hover {{ background-color: #bbdefb !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-rb:hover {{ background-color: #ffe0b2 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-wr:hover {{ background-color: #e1bee7 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-te:hover {{ background-color: #c8e6c9 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-k:hover {{ background-color: #f8bbd0 !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-def:hover {{ background-color: #b2dfdb !important; }}
-        .roster-table-wrapper .stats-table tr.roster-position-other:hover {{ background-color: #e0e0e0 !important; }}
-    </style>
-    <div class="roster-sort-tabs">
-        <button class="stats-tab-button active" onclick="switchRosterSort({team_id}, '{year_label}', 'position')" id="roster-{team_id}-{year_label}-sort-position">By Position</button>
-        <button class="stats-tab-button" onclick="switchRosterSort({team_id}, '{year_label}', 'points')" id="roster-{team_id}-{year_label}-sort-points">By Points</button>
-    </div>
-    <div class="roster-table-wrapper">
-        <div id="roster-{team_id}-{year_label}-position-content" class="roster-sort-content" style="display: block;">
-            <table class="stats-table">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Player</th>
-                        <th>Position</th>
-                        <th>NFL Team</th>
-                        <th>Total Points</th>
-                        <th>Avg Points</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_by_position}
-                </tbody>
-            </table>
-        </div>
-        <div id="roster-{team_id}-{year_label}-points-content" class="roster-sort-content" style="display: none;">
-            <table class="stats-table">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Player</th>
-                        <th>Position</th>
-                        <th>NFL Team</th>
-                        <th>Total Points</th>
-                        <th>Avg Points</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_by_points}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    """
 
 def generate_standings_html(teams_data, year_label):
     """Generate HTML table for standings"""
@@ -2620,27 +2205,17 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
         # Team tab button
         team_tabs_html += f'<button class="team-tab-button" onclick="showTeam({team_id})" id="team-tab-{team_id}">{team_info["team_name"]}</button>\n'
         
-        # Team content section with view tabs (Stats/Roster) and year tabs
-        view_tabs_html = f'<button class="stats-tab-button active" onclick="showTeamView({team_id}, \'stats\')" id="team-{team_id}-view-stats-tab">Stats</button>\n'
-        view_tabs_html += f'<button class="stats-tab-button" onclick="showTeamView({team_id}, \'roster\')" id="team-{team_id}-view-roster-tab">Roster</button>\n'
-        
-        # Stats view content with year tabs
-        stats_year_tabs_html = ""
-        stats_year_content_html = ""
-        
-        # Roster view content with year tabs
-        roster_year_tabs_html = ""
-        roster_year_content_html = ""
+        # Team content section with year tabs
+        year_tabs_html = ""
+        year_content_html = ""
         
         # 2025 data
         team_2025 = teams_2025_dict.get(team_id)
-        stats_year_tabs_html += f'<button class="year-tab-button" onclick="showTeamViewYear({team_id}, \'stats\', 2025)" id="team-{team_id}-stats-year-2025-tab">2025</button>\n'
-        roster_year_tabs_html += f'<button class="year-tab-button" onclick="showTeamViewYear({team_id}, \'roster\', 2025)" id="team-{team_id}-roster-year-2025-tab">2025</button>\n'
+        year_tabs_html += f'<button class="year-tab-button" onclick="showTeamYear({team_id}, 2025)" id="team-{team_id}-year-2025-tab">2025</button>\n'
         
         if team_2025:
-            # Stats view for 2025
-            stats_year_content_html += f"""
-            <div id="team-{team_id}-stats-year-2025-content" class="team-year-content" style="display: block;">
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2025-content" class="team-year-content" style="display: block;">
                 <div class="team-stats-header">
                     <h2>{team_2025['team_name']} - 2025</h2>
                     <p class="team-owner">Owner: {team_2025['owner']}</p>
@@ -2672,40 +2247,20 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
                 </div>
             </div>
             """
-            
-            # Roster view for 2025
-            roster_2025 = team_2025.get('full_roster', [])
-            roster_html_2025 = generate_roster_html(roster_2025, "2025", team_id)
-            roster_year_content_html += f"""
-            <div id="team-{team_id}-roster-year-2025-content" class="team-year-content" style="display: block;">
-                <div class="team-stats-header">
-                    <h2>{team_2025['team_name']} - 2025 Roster</h2>
-                    <p class="team-owner">Owner: {team_2025['owner']}</p>
-                </div>
-                {roster_html_2025}
-            </div>
-            """
         else:
-            stats_year_content_html += f"""
-            <div id="team-{team_id}-stats-year-2025-content" class="team-year-content" style="display: block;">
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2025-content" class="team-year-content" style="display: block;">
                 <p>No data available for 2025</p>
-            </div>
-            """
-            roster_year_content_html += f"""
-            <div id="team-{team_id}-roster-year-2025-content" class="team-year-content" style="display: block;">
-                <p>No roster data available for 2025</p>
             </div>
             """
         
         # 2024 data
         team_2024 = teams_2024_dict.get(team_id)
-        stats_year_tabs_html += f'<button class="year-tab-button" onclick="showTeamViewYear({team_id}, \'stats\', 2024)" id="team-{team_id}-stats-year-2024-tab">2024</button>\n'
-        roster_year_tabs_html += f'<button class="year-tab-button" onclick="showTeamViewYear({team_id}, \'roster\', 2024)" id="team-{team_id}-roster-year-2024-tab">2024</button>\n'
+        year_tabs_html += f'<button class="year-tab-button" onclick="showTeamYear({team_id}, 2024)" id="team-{team_id}-year-2024-tab">2024</button>\n'
         
         if team_2024:
-            # Stats view for 2024
-            stats_year_content_html += f"""
-            <div id="team-{team_id}-stats-year-2024-content" class="team-year-content" style="display: none;">
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2024-content" class="team-year-content" style="display: none;">
                 <div class="team-stats-header">
                     <h2>{team_2024['team_name']} - 2024</h2>
                     <p class="team-owner">Owner: {team_2024['owner']}</p>
@@ -2737,39 +2292,20 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
                 </div>
             </div>
             """
-            
-            # Roster view for 2024
-            roster_2024 = team_2024.get('full_roster', [])
-            roster_html_2024 = generate_roster_html(roster_2024, "2024", team_id)
-            roster_year_content_html += f"""
-            <div id="team-{team_id}-roster-year-2024-content" class="team-year-content" style="display: none;">
-                <div class="team-stats-header">
-                    <h2>{team_2024['team_name']} - 2024 Roster</h2>
-                    <p class="team-owner">Owner: {team_2024['owner']}</p>
-                </div>
-                {roster_html_2024}
-            </div>
-            """
         else:
-            stats_year_content_html += f"""
-            <div id="team-{team_id}-stats-year-2024-content" class="team-year-content" style="display: none;">
+            year_content_html += f"""
+            <div id="team-{team_id}-year-2024-content" class="team-year-content" style="display: none;">
                 <p>No data available for 2024</p>
             </div>
             """
-            roster_year_content_html += f"""
-            <div id="team-{team_id}-roster-year-2024-content" class="team-year-content" style="display: none;">
-                <p>No roster data available for 2024</p>
-            </div>
-            """
         
-        # Total/All-time data (only for Stats view, not Roster)
+        # Total/All-time data
         team_total = all_time_dict.get(team_id)
-        stats_year_tabs_html += f'<button class="year-tab-button" onclick="showTeamViewYear({team_id}, \'stats\', \'total\')" id="team-{team_id}-stats-year-total-tab">Total</button>\n'
+        year_tabs_html += f'<button class="year-tab-button" onclick="showTeamYear({team_id}, \'total\')" id="team-{team_id}-year-total-tab">Total</button>\n'
         
         if team_total:
-            # Stats view for Total
-            stats_year_content_html += f"""
-            <div id="team-{team_id}-stats-year-total-content" class="team-year-content" style="display: none;">
+            year_content_html += f"""
+            <div id="team-{team_id}-year-total-content" class="team-year-content" style="display: none;">
                 <div class="team-stats-header">
                     <h2>{team_total['team_name']} - All Time</h2>
                     <p class="team-owner">Owner: {team_total['owner']}</p>
@@ -2802,37 +2338,20 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
             </div>
             """
         else:
-            stats_year_content_html += f"""
-            <div id="team-{team_id}-stats-year-total-content" class="team-year-content" style="display: none;">
+            year_content_html += f"""
+            <div id="team-{team_id}-year-total-content" class="team-year-content" style="display: none;">
                 <p>No all-time data available</p>
             </div>
             """
         
-        # Team content wrapper with view tabs
+        # Team content wrapper
         team_content_html += f"""
         <div id="team-{team_id}-content" class="team-content" style="display: {'block' if idx == 0 else 'none'};">
-            <div class="stats-tabs-container">
-                {view_tabs_html}
+            <div class="team-year-tabs">
+                {year_tabs_html}
             </div>
-            
-            <!-- Stats View -->
-            <div id="team-{team_id}-view-stats" class="team-view-content" style="display: block;">
-                <div class="team-year-tabs">
-                    {stats_year_tabs_html}
-                </div>
-                <div class="team-year-content-wrapper">
-                    {stats_year_content_html}
-                </div>
-            </div>
-            
-            <!-- Roster View -->
-            <div id="team-{team_id}-view-roster" class="team-view-content" style="display: none;">
-                <div class="team-year-tabs">
-                    {roster_year_tabs_html}
-                </div>
-                <div class="team-year-content-wrapper">
-                    {roster_year_content_html}
-                </div>
+            <div class="team-year-content-wrapper">
+                {year_content_html}
             </div>
         </div>
         """
@@ -2890,7 +2409,7 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
     """
     
     return f"""
-    <div id="team-pages-content" class="rb-content" style="display: block;">
+    <div id="team-pages-content" class="rb-content" style="display: none;">
         <div class="rb-header">
             <h2>Team Pages</h2>
             <p>View statistics and top players for each team by year, or view league standings. Click a team name to view their page, then switch between years.</p>
@@ -2906,13 +2425,8 @@ def generate_team_pages_html(teams_2024_data, teams_2025_data):
     </div>
     """
 
-def generate_shared_content_html(rbs_2025, wrs_2025, rbs_2024, wrs_2024, league_2025, league_2024, all_weeks_data_2025, all_weeks_data_2024, teams_2024_data, teams_2025_data):
-    """Generate HTML content for the four main sections.
-
-    NOTE: In the new architecture, each section is written to its own
-    HTML file. This function returns the raw section HTML blocks so the
-    caller can wrap them in full pages.
-    """
+def generate_shared_content_html(rbs, wrs, league_2025, all_weeks_data_2025, teams_2024_data, teams_2025_data):
+    """Generate HTML content shared across years (Weekly Matchups, Player Comparisons, Year Stats, Team Pages)"""
     
     # Generate year selector buttons dynamically
     year_buttons_html = ""
@@ -2925,10 +2439,9 @@ def generate_shared_content_html(rbs_2025, wrs_2025, rbs_2024, wrs_2024, league_
                 </button>"""
     
     # Weekly Matchups content with year selector and navigation placeholders
-    # Visible by default on its dedicated page.
     weekly_matchups_html = f"""
     <!-- Weekly Matchups page -->
-    <div id="weekly-matchups-content" style="display: block;">
+    <div id="weekly-matchups-content" style="display: none;">
         <!-- Year selector -->
         <div class="year-selector" style="background: #f8f9fa; padding: 15px 30px; border-bottom: 2px solid #e0e0e0; text-align: center;">
             <div style="display: inline-flex; gap: 10px; align-items: center;">
@@ -2944,48 +2457,24 @@ def generate_shared_content_html(rbs_2025, wrs_2025, rbs_2024, wrs_2024, league_
     </div>
     """
     
-    # Generate year selector buttons for player comparisons
-    player_year_buttons_html = ""
-    for year in YEARS:
-        active_class = "active" if year == YEAR_DEFAULT else ""
-        player_year_buttons_html += f"""
-                <button class="rb-comparison-main-btn player-year-btn {active_class}" onclick="switchPlayerComparisonYear({year})" id="player-year-{year}-btn"
-                    style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
-                    <span class="btn-icon">📅</span>
-                    <span class="btn-text">{year}</span>
-                </button>"""
+    # Add RB comparison content (using 2025 data)
+    rb_comparison_html = generate_rb_comparison_html(rbs)
     
-    # Generate content for 2025
-    rb_comparison_html_2025 = generate_rb_comparison_html(rbs_2025)
-    wr_comparison_html_2025 = generate_wr_comparison_html(wrs_2025)
-    defense_data_2025 = collect_defense_rankings(league_2025, all_weeks_data_2025) if league_2025 else []
-    defense_rankings_html_2025 = generate_defense_rankings_html(defense_data_2025)
-    draft_values_2025 = collect_draft_pick_values(league_2025) if league_2025 else []
-    draft_pick_value_html_2025 = generate_draft_pick_value_html(draft_values_2025)
+    # Add WR comparison content (using 2025 data)
+    wr_comparison_html = generate_wr_comparison_html(wrs)
     
-    # Generate content for 2024
-    rb_comparison_html_2024 = generate_rb_comparison_html(rbs_2024) if rbs_2024 else "<div class='rb-content'><p>No data available for 2024.</p></div>"
-    wr_comparison_html_2024 = generate_wr_comparison_html(wrs_2024) if wrs_2024 else "<div class='rb-content'><p>No data available for 2024.</p></div>"
-    defense_data_2024 = collect_defense_rankings(league_2024, all_weeks_data_2024) if league_2024 and all_weeks_data_2024 else []
-    defense_rankings_html_2024 = generate_defense_rankings_html(defense_data_2024)
-    draft_values_2024 = collect_draft_pick_values(league_2024) if league_2024 else []
-    draft_pick_value_html_2024 = generate_draft_pick_value_html(draft_values_2024)
+    # Add Defense Rankings content (using 2025 data)
+    defense_data = collect_defense_rankings(league_2025, all_weeks_data_2025)
+    defense_rankings_html = generate_defense_rankings_html(defense_data)
     
-    # Wrap RB, WR, Defense, and Draft Pick Value in Player Comparisons with tabs and year selector
-    default_year_display = "block" if YEAR_DEFAULT == 2025 else "none"
-    alt_year_display = "none" if YEAR_DEFAULT == 2025 else "block"
+    # Add Draft Pick Value content (using 2025 data)
+    draft_values = collect_draft_pick_values(league_2025) if league_2025 else []
+    draft_pick_value_html = generate_draft_pick_value_html(draft_values)
     
+    # Wrap RB, WR, Defense, and Draft Pick Value in Player Comparisons with tabs
     player_comparisons_html = f"""
     <!-- Player Comparisons page with tabs -->
-    <div id="player-comparisons-content" style="display: block;">
-        <!-- Year selector -->
-        <div class="year-selector" style="background: #f8f9fa; padding: 15px 30px; border-bottom: 2px solid #e0e0e0; text-align: center;">
-            <div style="display: inline-flex; gap: 10px; align-items: center;">
-                <span style="font-weight: 600; margin-right: 10px;">Year:</span>
-                {player_year_buttons_html}
-            </div>
-        </div>
-        
+    <div id="player-comparisons-content" style="display: none;">
         <div class="stats-tabs-container">
             <button class="stats-tab-button active" onclick="showPlayerComparisonTab('wr')" id="player-comparison-tab-wr">
                 Wide Receivers
@@ -3001,21 +2490,10 @@ def generate_shared_content_html(rbs_2025, wrs_2025, rbs_2024, wrs_2024, league_
             </button>
         </div>
         
-        <!-- 2025 Content -->
-        <div id="player-comparisons-year-2025" class="player-comparisons-year-content" style="display: {default_year_display};">
-            {wr_comparison_html_2025}
-            {rb_comparison_html_2025}
-            {defense_rankings_html_2025}
-            {draft_pick_value_html_2025}
-        </div>
-        
-        <!-- 2024 Content -->
-        <div id="player-comparisons-year-2024" class="player-comparisons-year-content" style="display: {alt_year_display};">
-            {wr_comparison_html_2024}
-            {rb_comparison_html_2024}
-            {defense_rankings_html_2024}
-            {draft_pick_value_html_2024}
-        </div>
+        {wr_comparison_html}
+        {rb_comparison_html}
+        {defense_rankings_html}
+        {draft_pick_value_html}
     </div>
     """
     
@@ -3025,16 +2503,15 @@ def generate_shared_content_html(rbs_2025, wrs_2025, rbs_2024, wrs_2024, league_
     # Add Team Pages content
     team_pages_html = generate_team_pages_html(teams_2024_data, teams_2025_data)
     
-    return weekly_matchups_html, player_comparisons_html, year_stats_html, team_pages_html
+    return weekly_matchups_html + player_comparisons_html + year_stats_html + team_pages_html
 
 
 def main():
     # Check if credentials are set
-    if ESPN_S2 == 'PUT_YOUR_ESPN_S2_HERE' or SWID == '{PUT_YOUR_SWID_HERE}':
-        print("ERROR: Please set your ESPN_S2 and SWID credentials in the script!")
-        print("Replace 'PUT_YOUR_ESPN_S2_HERE' and '{PUT_YOUR_SWID_HERE}' with your actual values.")
+    if not ESPN_S2 or not SWID:
+        print("ERROR: Please set ESPN_S2 and ESPN_SWID in your .env file (see .env.example).")
         return
-    
+
     league_2025 = None
     league_2024 = None
     all_weeks_data_2025 = None
@@ -3066,13 +2543,6 @@ def main():
         print(f"Current week for {year}: {current_week}")
         print(f"Fetching box scores weeks 1..{current_week}")
 
-        # NOTE: JSON data for 2024 and 2025 is now fixed and
-        #       should not be regenerated on each run.
-        #       However, some of the shared pages (defense rankings,
-        #       team year stats, etc.) still need in-memory box score
-        #       data for 2025. So we rebuild only the in-memory
-        #       structure for 2025 and stop writing data-*.json files.
-
         all_weeks_data = {}
         for week in range(1, current_week + 1):
             try:
@@ -3085,29 +2555,16 @@ def main():
         if year == 2025:
             all_weeks_data_2025 = all_weeks_data
 
-        # Do NOT regenerate or overwrite JSON files anymore:
-        # year_json = build_year_json(league, all_weeks_data, year)
-        # with open(f\"data-{year}.json\", \"w\", encoding=\"utf-8\") as f:
-        #     json.dump(year_json, f)
-        # print(f\"Wrote data-{year}.json\")
+        year_json = build_year_json(league, all_weeks_data, year)
+        with open(f"data-{year}.json", "w", encoding="utf-8") as f:
+            json.dump(year_json, f)
+        print(f"Wrote data-{year}.json")
 
-    # Build per-section shared pages (RB/WR/Stats/Teams) from 2025 and 2024 data
+    # If you pasted your old shared generators above, this will work unchanged:
     if "generate_shared_content_html" in globals() and league_2025:
-        print("\nGenerating shared pages (RB/WR/Stats/Teams) from 2025 and 2024 data...")
-
-        # Build JSON-based weekly points map for variance (from frozen data files)
-        player_weekly_points_2025 = build_player_weekly_points_from_json(2025)
-        player_weekly_points_2024 = build_player_weekly_points_from_json(2024) if league_2024 else None
-
-        rbs_2025 = collect_running_backs(league_2025, player_weekly_points_2025)
-        wrs_2025 = collect_wide_receivers(league_2025, player_weekly_points_2025)
-        
-        # Collect 2024 data if available
-        rbs_2024 = None
-        wrs_2024 = None
-        if league_2024:
-            rbs_2024 = collect_running_backs(league_2024, player_weekly_points_2024)
-            wrs_2024 = collect_wide_receivers(league_2024, player_weekly_points_2024)
+        print("\nGenerating shared pages (RB/WR/Stats/Teams) from 2025 data...")
+        rbs_2025 = collect_running_backs(league_2025)
+        wrs_2025 = collect_wide_receivers(league_2025)
         
         # Get matchup data for 2024 if available
         all_weeks_data_2024 = None
@@ -3126,198 +2583,23 @@ def main():
         
         teams_2024_data = get_team_year_stats(league_2024, all_weeks_data_2024) if league_2024 else []
         teams_2025_data = get_team_year_stats(league_2025, all_weeks_data_2025) if league_2025 else []
-
-        weekly_matchups_html, player_comparisons_html, year_stats_html, team_pages_html = generate_shared_content_html(
-            rbs_2025, wrs_2025, rbs_2024, wrs_2024, league_2025, league_2024, all_weeks_data_2025, all_weeks_data_2024,
+        shared_content_html = generate_shared_content_html(
+            rbs_2025, wrs_2025, league_2025, all_weeks_data_2025,
             teams_2024_data, teams_2025_data
         )
     else:
         print("\nShared pages skipped (functions not present).")
-        weekly_matchups_html = player_comparisons_html = year_stats_html = team_pages_html = ""
-    
-    league_name = league_2025.settings.name if league_2025 else "Fantasy League"
 
-    # New multi-page architecture
-    index_html = generate_main_index_nav_html(league_name=league_name)
+    league_name = league_2025.settings.name if league_2025 else "Fantasy League"
+    index_html = generate_index_shell_html(shared_content_html, league_name=league_name)
+
     with open("index.html", "w", encoding="utf-8") as f:
         f.write(index_html)
-
-    # Weekly matchups page
-    weekly_page_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{league_name} - Weekly Matchups</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>{league_name}</h1>
-      <p>Weekly Matchups</p>
-    </div>
-    <div class="main-navigation">
-      <a class="rb-comparison-main-btn" href="index.html">
-        <span class="btn-icon">🏠</span>
-        <span class="btn-text">Home</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="player-comparisons.html">
-        <span class="btn-icon">📊</span>
-        <span class="btn-text">Player Comparisons</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="year-stats.html">
-        <span class="btn-icon">📈</span>
-        <span class="btn-text">Total Year Stats</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="team-pages.html">
-        <span class="btn-icon">👥</span>
-        <span class="btn-text">Team Pages</span>
-      </a>
-    </div>
-    {weekly_matchups_html}
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>
-"""
-    with open("weekly.html", "w", encoding="utf-8") as f:
-        f.write(weekly_page_html)
-
-    # Player comparisons page
-    player_comparisons_page_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{league_name} - Player Comparisons</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>{league_name}</h1>
-      <p>Player Comparisons</p>
-    </div>
-    <div class="main-navigation">
-      <a class="rb-comparison-main-btn" href="index.html">
-        <span class="btn-icon">🏠</span>
-        <span class="btn-text">Home</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="weekly.html">
-        <span class="btn-icon">📅</span>
-        <span class="btn-text">Weekly Matchups</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="year-stats.html">
-        <span class="btn-icon">📈</span>
-        <span class="btn-text">Total Year Stats</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="team-pages.html">
-        <span class="btn-icon">👥</span>
-        <span class="btn-text">Team Pages</span>
-      </a>
-    </div>
-    {player_comparisons_html}
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>
-"""
-    with open("player-comparisons.html", "w", encoding="utf-8") as f:
-        f.write(player_comparisons_page_html)
-
-    # Total year stats page
-    year_stats_page_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{league_name} - Total Year Stats</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>{league_name}</h1>
-      <p>Total Year Stats</p>
-    </div>
-    <div class="main-navigation">
-      <a class="rb-comparison-main-btn" href="index.html">
-        <span class="btn-icon">🏠</span>
-        <span class="btn-text">Home</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="weekly.html">
-        <span class="btn-icon">📅</span>
-        <span class="btn-text">Weekly Matchups</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="player-comparisons.html">
-        <span class="btn-icon">📊</span>
-        <span class="btn-text">Player Comparisons</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="team-pages.html">
-        <span class="btn-icon">👥</span>
-        <span class="btn-text">Team Pages</span>
-      </a>
-    </div>
-    {year_stats_html}
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>
-"""
-    with open("year-stats.html", "w", encoding="utf-8") as f:
-        f.write(year_stats_page_html)
-
-    # Team pages
-    team_pages_page_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{league_name} - Team Pages</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>{league_name}</h1>
-      <p>Team Pages</p>
-    </div>
-    <div class="main-navigation">
-      <a class="rb-comparison-main-btn" href="index.html">
-        <span class="btn-icon">🏠</span>
-        <span class="btn-text">Home</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="weekly.html">
-        <span class="btn-icon">📅</span>
-        <span class="btn-text">Weekly Matchups</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="player-comparisons.html">
-        <span class="btn-icon">📊</span>
-        <span class="btn-text">Player Comparisons</span>
-      </a>
-      <a class="rb-comparison-main-btn" href="year-stats.html">
-        <span class="btn-icon">📈</span>
-        <span class="btn-text">Total Year Stats</span>
-      </a>
-    </div>
-    {team_pages_html}
-  </div>
-  <script src="app.js"></script>
-</body>
-</html>
-"""
-    with open("team-pages.html", "w", encoding="utf-8") as f:
-        f.write(team_pages_page_html)
 
     print("\nDone! Outputs:")
     for year in YEARS:
         print(f" - data-{year}.json")
-    print(" - index.html (navigation)")
-    print(" - weekly.html")
-    print(" - player-comparisons.html")
-    print(" - year-stats.html")
-    print(" - team-pages.html")
+    print(" - index.html (tiny shell)")
     print("\nOpen index.html in your browser.")
 
 if __name__ == "__main__":

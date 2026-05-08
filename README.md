@@ -21,6 +21,14 @@ If you're using VS Code, install the "Live Server" extension and click "Go Live"
 
 ## Generating Data
 
+Install Python dependencies once (`python-dotenv` is required for ESPN credentials):
+
+```bash
+pip install -r requirements.txt
+```
+
+Copy `.env.example` to `.env` if you have not already, and set `ESPN_LEAGUE_ID`, `ESPN_S2`, and `ESPN_SWID` for the ESPN Fantasy API.
+
 Run the slimify script to generate JSON data:
 ```bash
 python slimify_fantasy_html.py

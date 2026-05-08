@@ -1,197 +1,108 @@
-/* app.js (JSON-on-demand renderer)
-   Works with your existing CSS and shared-page HTML.
+/* app.js (Supabase-backed weekly data; static HTML for other tabs)
+   Weekly matchups load from Supabase. Other views use pre-generated HTML.
 
-   Expected files:
-     data-2025.json
-     data-2024.json
+   Replace SUPABASE_ANON_KEY with your publishable key (Dashboard → Settings → API).
 */
 
-// Global error handler to prevent errors from breaking the page
-window.addEventListener('error', function(e) {
-  console.error('Global error caught:', e.error, e.message, e.filename, e.lineno);
-  // Don't prevent default - let it log but don't break the page
-  return false;
-});
+const SUPABASE_URL = 'https://ixxltpuzpwsdwqhupaor.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_-ecI4qXWNBPkKiKG3o1uEA_-Qa4r_J2';
 
-// Handle unhandled promise rejections
-window.addEventListener('unhandledrejection', function(e) {
-  console.error('Unhandled promise rejection:', e.reason);
-  e.preventDefault(); // Prevent default browser behavior
-});
+let supabaseClient;
+if (globalThis.supabase) {
+  const { createClient } = globalThis.supabase;
+  supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  console.error(
+    'Missing Supabase JS: add <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script> before app.js.'
+  );
+}
 
 let yearDataCache = {};
 let currentYear = 2025;
 let currentWeek = null;
 let currentMatchupIndex = 0;
 
-// Carousel state
-let carouselInterval = null;
-let currentSlideIndex = 0;
-
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOMContentLoaded - initializing page");
-
-  const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
-  const playerComparisonsPage = document.getElementById("player-comparisons-content");
-  const yearStatsPage = document.getElementById("total-year-stats-content");
-  const teamPagesPage = document.getElementById("team-pages-content");
-
-  // Landing / navigation page (index.html) – has no shared-content containers
-  if (!weeklyMatchupsPage && !playerComparisonsPage && !yearStatsPage && !teamPagesPage) {
-    initCarousel();
-    return;
-  }
-
-  // Weekly matchups dedicated page
-  if (weeklyMatchupsPage) {
-    // Ensure it's visible (might be hidden by CSS or other JS)
-    weeklyMatchupsPage.style.display = "block";
-    showWeeklyMatchups();
-    // Default to 2025 if present, else first available
-    loadYear(currentYear).catch(err => {
-      console.error("Error loading year:", err);
-      showError(`Failed to load data: ${err.message}. Make sure you're running from a web server (not file://).`);
-    });
-    return;
-  }
-
-  // Player comparisons page – ensure WR tab is visible by default
-  if (playerComparisonsPage) {
-    // Ensure it's visible
-    playerComparisonsPage.style.display = "block";
-    // Set default year (2025) as active
-    const defaultYearBtn = document.getElementById("player-year-2025-btn");
-    if (defaultYearBtn) {
-      defaultYearBtn.classList.add('active');
-    }
-    // Show default year content and WR tab
-    const defaultYear = defaultYearBtn ? 2025 : 2024;
-    switchPlayerComparisonYear(defaultYear);
-    showPlayerComparisonTab('wr');
-    return;
-  }
-
-  // Year stats page – ensure it's visible
-  if (yearStatsPage) {
-    yearStatsPage.style.display = "block";
-    // Show the first tab (fraud-watch) by default
-    const fraudWatchPage = document.getElementById("fraud-watch-page");
-    if (fraudWatchPage) {
-      fraudWatchPage.style.display = "block";
-    }
-    return;
-  }
-
-  // Team pages – ensure it's visible and show first team/standings
-  if (teamPagesPage) {
-    teamPagesPage.style.display = "block";
-    // Show standings by default if available
-    const standingsContent = document.getElementById("team-standings-content");
-    if (standingsContent) {
-      standingsContent.style.display = "block";
-      showTeamYear('standings', 2025);
-    }
-    // For regular teams, ensure Stats view is shown by default
-    const firstTeamContent = document.querySelector(".team-content");
-    if (firstTeamContent && firstTeamContent.id !== "team-standings-content") {
-      const teamId = firstTeamContent.id.replace("team-", "").replace("-content", "");
-      if (teamId && teamId !== "standings") {
-        showTeamView(teamId, 'stats');
-        showTeamViewYear(teamId, 'stats', 2025);
-      }
-    }
-    return;
-  }
+  // Show Weekly Matchups by default
+  showWeeklyMatchups();
+  
+  // Default to 2025 if present, else first available
+  loadYear(currentYear).catch(err => {
+    console.error("Error loading year:", err);
+    showError(`Failed to load data: ${err.message}. Make sure you're running from a web server (not file://).`);
+  });
 });
 
-// Initialize image carousel
-function initCarousel() {
-  const slides = document.querySelectorAll('.carousel-slide');
-  if (slides.length === 0) return;
-  
-  // Ensure all slides start in correct state
-  slides.forEach((slide, index) => {
-    if (index === 0) {
-      slide.classList.add('active');
-      slide.style.opacity = '1';
-      slide.style.visibility = 'visible';
-      slide.style.zIndex = '1';
-    } else {
-      slide.classList.remove('active');
-      slide.style.opacity = '0';
-      slide.style.visibility = 'hidden';
-      slide.style.zIndex = '0';
-    }
-  });
-  
-  // Start with first slide
-  currentSlideIndex = 0;
-  updateCarousel();
-  
-  // Rotate every 10 seconds
-  carouselInterval = setInterval(() => {
-    currentSlideIndex = (currentSlideIndex + 1) % slides.length;
-    updateCarousel();
-  }, 10000);
+function normalizeEmbed(obj) {
+  if (obj == null) return null;
+  return Array.isArray(obj) ? obj[0] : obj;
 }
 
-function updateCarousel() {
-  const slides = document.querySelectorAll('.carousel-slide');
-  const indicators = document.querySelectorAll('.carousel-indicator');
-  
-  slides.forEach((slide, index) => {
-    if (index === currentSlideIndex) {
-      slide.classList.add('active');
-      slide.style.opacity = '1';
-      slide.style.visibility = 'visible';
-      slide.style.zIndex = '1';
-    } else {
-      slide.classList.remove('active');
-      slide.style.opacity = '0';
-      slide.style.visibility = 'hidden';
-      slide.style.zIndex = '0';
-    }
-  });
-  
-  indicators.forEach((indicator, index) => {
-    if (index === currentSlideIndex) {
-      indicator.classList.add('active');
-    } else {
-      indicator.classList.remove('active');
-    }
-  });
+function mapPlayerSlotRow(row) {
+  return {
+    slot: row.slot ?? '',
+    name: row.player_name ?? 'Unknown',
+    proTeam: row.pro_team ?? '',
+    opp: row.opponent ?? '',
+    points: Number(row.points) || 0,
+    proj: Number(row.projected) || 0,
+    gamePlayed: row.game_played ?? 0,
+    bye: !!row.is_bye,
+    injuryStatus: row.injury_status ?? '',
+    injured: !!row.is_injured,
+    bench: !!row.is_bench,
+  };
 }
 
-window.goToSlide = function(index) {
-  currentSlideIndex = index;
-  updateCarousel();
-  
-  // Reset the interval
-  if (carouselInterval) {
-    clearInterval(carouselInterval);
-  }
-  const slides = document.querySelectorAll('.carousel-slide');
-  carouselInterval = setInterval(() => {
-    currentSlideIndex = (currentSlideIndex + 1) % slides.length;
-    updateCarousel();
-  }, 10000);
-};
+function buildLineup(slots, teamSide) {
+  return (slots || [])
+    .filter((s) => s.team_side === teamSide)
+    .sort((a, b) => (a.sort_idx ?? 0) - (b.sort_idx ?? 0))
+    .map(mapPlayerSlotRow);
+}
 
-function showHomePage() {
-  // Hide all other pages
-  hideSharedPages();
-  hideMatchups();
-  
-  // Show home page
-  const homePage = document.getElementById("home-page-content");
-  if (homePage) {
-    homePage.style.display = "block";
+function reshapeYearFromSupabase(year, seasonRow, matchups) {
+  const weeks = {};
+  let maxWeek = 0;
+
+  for (const row of matchups) {
+    const w = Number(row.week);
+    if (!Number.isFinite(w)) continue;
+    maxWeek = Math.max(maxWeek, w);
+    const key = String(w);
+    if (!weeks[key]) weeks[key] = [];
+
+    const awayTeam = normalizeEmbed(row.away_team);
+    const homeTeam = normalizeEmbed(row.home_team);
+    const slots = row.player_slots || [];
+
+    weeks[key].push({
+      away: {
+        id: awayTeam && awayTeam.espn_id != null ? Number(awayTeam.espn_id) : 0,
+        name: awayTeam?.name ?? 'Unknown',
+        owner: awayTeam?.owner ?? '',
+        score: Number(row.away_score) || 0,
+        projected: Number(row.away_projected) || 0,
+        lineup: buildLineup(slots, 'away'),
+      },
+      home: {
+        id: homeTeam && homeTeam.espn_id != null ? Number(homeTeam.espn_id) : 0,
+        name: homeTeam?.name ?? 'Unknown',
+        owner: homeTeam?.owner ?? '',
+        score: Number(row.home_score) || 0,
+        projected: Number(row.home_projected) || 0,
+        lineup: buildLineup(slots, 'home'),
+      },
+    });
   }
-  
-  // Remove active class from all nav buttons
-  document.querySelectorAll('.rb-comparison-main-btn').forEach(btn => {
-    btn.classList.remove('active');
-  });
+
+  const cw = seasonRow?.current_week;
+  return {
+    year,
+    current_week: cw != null && !Number.isNaN(Number(cw)) ? Number(cw) : (maxWeek || 1),
+    weeks,
+  };
 }
 
 // ---------- Data loading ----------
@@ -200,14 +111,51 @@ async function loadYear(year) {
 
   if (!yearDataCache[year]) {
     try {
-      const resp = await fetch(`data-${year}.json`);
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}: Could not load data-${year}.json. Make sure the file exists and you're running from a web server.`);
+      console.log('SUPABASE_ANON_KEY value:', JSON.stringify(SUPABASE_ANON_KEY));
+      if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === 'your_anon_key_here') {
+        throw new Error(
+          'Set SUPABASE_ANON_KEY in app.js to your Supabase publishable (anon) key (Dashboard → Settings → API).'
+        );
       }
+
+      if (!supabaseClient) {
+        throw new Error('Supabase client failed to initialize. Load @supabase/supabase-js before app.js.');
+      }
+
+      const { data: seasonRow, error: seasonErr } = await supabaseClient
+        .from('seasons')
+        .select('current_week')
+        .eq('year', year)
+        .maybeSingle();
+      if (seasonErr) throw seasonErr;
+
+      const { data: matchups, error: matchupsErr } = await supabaseClient
+        .from('matchups')
+        .select(
+          `
+            id, week, away_score, home_score, away_projected, home_projected,
+            away_team:teams!matchups_away_team_id_fkey(id, espn_id, name, owner),
+            home_team:teams!matchups_home_team_id_fkey(id, espn_id, name, owner),
+            player_slots(team_side, slot, player_name, pro_team, opponent, points, projected, game_played, is_bye, injury_status, is_injured, is_bench, sort_idx)
+          `
+        )
+        .eq('year', year)
+        .order('week', { ascending: true })
+        .order('id', { ascending: true });
+      if (matchupsErr) throw matchupsErr;
+
+      yearDataCache[year] = reshapeYearFromSupabase(year, seasonRow, matchups || []);
+
+      /* Fallback (local JSON): restore if needed
+      const resp = await fetch(`data-${year}.json`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       yearDataCache[year] = await resp.json();
+      */
     } catch (err) {
-      if (err.message.includes('fetch')) {
-        throw new Error(`Cannot load JSON file. This usually means you're opening the HTML file directly. Please use a local web server (e.g., 'python -m http.server' or 'npx serve').`);
+      if (String(err.message || '').includes('fetch')) {
+        throw new Error(
+          `Cannot load data. If using JSON files, run a local web server. Supabase error: ${err.message}`
+        );
       }
       throw err;
     }
@@ -215,21 +163,21 @@ async function loadYear(year) {
 
   const yd = yearDataCache[year];
   if (!yd || !yd.weeks) {
-    throw new Error(`Invalid data format in data-${year}.json`);
+    throw new Error('Invalid data format from Supabase (missing weeks).');
   }
 
-  const weekKeys = Object.keys(yd.weeks).map(Number).filter(w => !isNaN(w));
+  const weekKeys = Object.keys(yd.weeks).map(Number).filter((w) => !isNaN(w));
   if (weekKeys.length === 0) {
-    throw new Error(`No weeks found in data-${year}.json`);
+    throw new Error(`No weeks found for season ${year} in Supabase.`);
   }
 
   currentWeek = yd.current_week || Math.max(...weekKeys);
 
   renderYearButtons(year);
-  
+
   // Show Weekly Matchups if it's visible
-  const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
-  if (weeklyMatchupsPage && weeklyMatchupsPage.style.display !== "none") {
+  const weeklyMatchupsPage = document.getElementById('weekly-matchups-content');
+  if (weeklyMatchupsPage && weeklyMatchupsPage.style.display !== 'none') {
     renderWeekNav(yd);
     showWeek(currentWeek, year);
   } else {
@@ -464,10 +412,8 @@ function renderPlayerRow(p){
 function performanceClass(points, proj){
   if (proj <= 0) return "";
   const ratio = points / proj;
-  // Bright light blue only if 2x+ AND points > 35 (extra rare)
-  if (ratio >= 2.0 && points > 35) return "perf-legendary";
-  if (ratio >= 1.5) return "perf-amazing";  // 1.5x or more - deep green
-  if (ratio >= 1.25) return "perf-great";  // 1.25x or more - light green
+  if (ratio >= 1.35) return "perf-amazing";
+  if (ratio >= 1.15) return "perf-great";
   if (ratio >= 0.95) return "perf-good";
   if (ratio >= 0.75) return "perf-bad";
   if (ratio >= 0.55) return "perf-very-bad";
@@ -492,7 +438,6 @@ function hideSharedPages(){
 window.showWeeklyMatchups = function(){
   try {
     hideSharedPages();
-    hideHomePage();
     const weeklyMatchupsPage = document.getElementById("weekly-matchups-content");
     if (weeklyMatchupsPage) {
       weeklyMatchupsPage.style.display = "block";
@@ -527,22 +472,7 @@ window.showWeeklyMatchups = function(){
 
 window.showPlayerComparisons = function(){
   try {
-    // Hide weekly matchups navigation elements first
     hideMatchups();
-    hideHomePage();
-    
-    // Hide all other shared pages (but NOT player-comparisons-content)
-    const idsToHide = [
-      "weekly-matchups-content",
-      "total-year-stats-content",
-      "team-pages-content"
-    ];
-    idsToHide.forEach(id=>{
-      const el = document.getElementById(id);
-      if (el) el.style.display = "none";
-    });
-    
-    // Now show only the player comparisons content
     const playerComparisonsPage = document.getElementById("player-comparisons-content");
     if (playerComparisonsPage) {
       playerComparisonsPage.style.display = "block";
@@ -557,24 +487,17 @@ window.showPlayerComparisons = function(){
 };
 
 window.showPlayerComparisonTab = function(tab){
-  // Get the currently selected year
-  const activeYearBtn = document.querySelector('.player-year-btn.active');
-  const currentYear = activeYearBtn ? parseInt(activeYearBtn.id.replace('player-year-', '').replace('-btn', '')) : 2025;
-  
-  // Hide all stats tab contents for the active year only
-  const activeYearContainer = document.getElementById(`player-comparisons-year-${currentYear}`);
-  if (activeYearContainer) {
-    activeYearContainer.querySelectorAll('.stats-tab-content').forEach(el => {
-      el.style.display = 'none';
-    });
-  }
+  // Hide all stats tab contents
+  document.querySelectorAll('.stats-tab-content').forEach(el => {
+    el.style.display = 'none';
+  });
   
   // Remove active class from all tab buttons
   document.querySelectorAll('.stats-tab-button').forEach(btn => {
     btn.classList.remove('active');
   });
   
-  // Show selected tab content for the current year
+  // Show selected tab content
   let contentId;
   let tabButtonId;
   
@@ -587,57 +510,18 @@ window.showPlayerComparisonTab = function(tab){
   } else if (tab === 'defense') {
     contentId = 'defense-rankings-content';
     tabButtonId = 'player-comparison-tab-defense';
-  } else if (tab === 'draft') {
-    contentId = 'draft-pick-value-content';
-    tabButtonId = 'player-comparison-tab-draft';
   }
   
-  // Find the content within the active year container
-  const content = activeYearContainer ? activeYearContainer.querySelector(`#${contentId}`) : null;
+  const content = document.getElementById(contentId);
   const tabButton = document.getElementById(tabButtonId);
   
   if (content) content.style.display = 'block';
   if (tabButton) tabButton.classList.add('active');
 };
 
-window.switchPlayerComparisonYear = function(year){
-  // Hide all year content containers
-  document.querySelectorAll('.player-comparisons-year-content').forEach(el => {
-    el.style.display = 'none';
-  });
-  
-  // Remove active class from all year buttons
-  document.querySelectorAll('.player-year-btn').forEach(btn => {
-    btn.classList.remove('active');
-  });
-  
-  // Show selected year content
-  const yearContainer = document.getElementById(`player-comparisons-year-${year}`);
-  const yearButton = document.getElementById(`player-year-${year}-btn`);
-  
-  if (yearContainer) {
-    yearContainer.style.display = 'block';
-    
-    // Show the currently active tab for this year
-    const activeTabButton = document.querySelector('.stats-tab-button.active');
-    if (activeTabButton) {
-      const tabName = activeTabButton.id.replace('player-comparison-tab-', '');
-      showPlayerComparisonTab(tabName);
-    } else {
-      // Default to WR tab if no tab is active
-      showPlayerComparisonTab('wr');
-    }
-  }
-  
-  if (yearButton) {
-    yearButton.classList.add('active');
-  }
-};
-
 window.showTotalYearStats = function(){
   // Hide weekly matchups navigation elements first
   hideMatchups();
-  hideHomePage();
   
   // Hide all other shared pages (but NOT total-year-stats-content)
   const idsToHide = [
@@ -661,7 +545,6 @@ window.showTeamPages = function(){
   try {
     // Hide weekly matchups navigation elements first
     hideMatchups();
-    hideHomePage();
     
     // Hide all other shared pages (but NOT team-pages-content)
     const idsToHide = [
@@ -705,13 +588,6 @@ function hideMatchups(){
   }
 }
 
-function hideHomePage(){
-  const homePage = document.getElementById("home-page-content");
-  if (homePage) {
-    homePage.style.display = "none";
-  }
-}
-
 function showOnly(id){
   const el = document.getElementById(id);
   if (el) el.style.display = "block";
@@ -748,170 +624,21 @@ window.closeTargetsModal = function(){
 };
 
 window.showTeam = function(teamId){
-  try {
-    if (!teamId) {
-      console.error("showTeam: teamId is required");
-      return;
-    }
-    document.querySelectorAll(".team-content").forEach(c=>c.style.display="none");
-    document.querySelectorAll(".team-tab-button").forEach(b=>b.classList.remove("active"));
-    const content = document.getElementById(`team-${teamId}-content`);
-    const btn = document.getElementById(`team-tab-${teamId}`);
-    if (content) content.style.display="block";
-    if (btn) btn.classList.add("active");
-    
-    // If showing standings, default to first year (2025)
-    if (teamId === 'standings') {
-      if (typeof window.showTeamYear === 'function') {
-        showTeamYear('standings', 2025);
-      }
-    } else {
-      // For regular teams, default to Stats view and 2025 year
-      if (typeof window.showTeamView === 'function') {
-        showTeamView(teamId, 'stats');
-      }
-      if (typeof window.showTeamViewYear === 'function') {
-        showTeamViewYear(teamId, 'stats', 2025);
-      }
-    }
-  } catch (error) {
-    console.error("Error in showTeam:", error);
-  }
-};
-
-window.showTeamView = function(teamId, view){
-  try {
-    if (!teamId || !view) {
-      console.error("showTeamView: teamId and view are required");
-      return;
-    }
-    // Switch between Stats and Roster views for a team
-    const teamIdStr = String(teamId);
-    
-    // Hide all view contents for this team
-    const teamContent = document.getElementById(`team-${teamIdStr}-content`);
-    if (teamContent) {
-      teamContent.querySelectorAll(".team-view-content").forEach(c=>c.style.display="none");
-      teamContent.querySelectorAll(".stats-tab-button").forEach(b=>b.classList.remove("active"));
-    }
-    
-    // Show selected view
-    const viewContent = document.getElementById(`team-${teamIdStr}-view-${view}`);
-    const viewBtn = document.getElementById(`team-${teamIdStr}-view-${view}-tab`);
-    
-    if (viewContent) {
-      viewContent.style.display = "block";
-      
-      // Show the default year (2025) for this view
-      const defaultYearBtn = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-2025-tab`);
-      if (defaultYearBtn && typeof window.showTeamViewYear === 'function') {
-        showTeamViewYear(teamId, view, 2025);
-      }
-    }
-    
-    if (viewBtn) viewBtn.classList.add("active");
-  } catch (error) {
-    console.error("Error in showTeamView:", error);
-  }
-};
-
-window.showTeamViewYear = function(teamId, view, year){
-  try {
-    if (!teamId || !view || year === undefined || year === null) {
-      console.error("showTeamViewYear: teamId, view, and year are required");
-      return;
-    }
-    // Switch years within a view (Stats or Roster)
-    const teamIdStr = String(teamId);
-    const yearStr = String(year);
-    
-    // Hide all year contents for this view
-    const viewContent = document.getElementById(`team-${teamIdStr}-view-${view}`);
-    if (viewContent) {
-      viewContent.querySelectorAll(".team-year-content").forEach(c=>c.style.display="none");
-      viewContent.querySelectorAll(".year-tab-button").forEach(b=>b.classList.remove("active"));
-      
-      // Show selected year
-      const yearContent = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-${yearStr}-content`);
-      const yearBtn = viewContent.querySelector(`#team-${teamIdStr}-${view}-year-${yearStr}-tab`);
-      
-      if (yearContent) yearContent.style.display = "block";
-      if (yearBtn) yearBtn.classList.add("active");
-    }
-  } catch (error) {
-    console.error("Error in showTeamViewYear:", error);
-  }
-};
-
-window.switchRosterSort = function(teamId, year, sortType){
-  try {
-    if (!teamId || !year || !sortType) {
-      console.error("switchRosterSort: teamId, year, and sortType are required");
-      return;
-    }
-    // Switch between position and points sorting for roster
-    const teamIdStr = String(teamId);
-    const yearStr = String(year);
-    
-    // Hide all sort contents
-    const positionContent = document.getElementById(`roster-${teamIdStr}-${yearStr}-position-content`);
-    const pointsContent = document.getElementById(`roster-${teamIdStr}-${yearStr}-points-content`);
-    
-    // Remove active class from all sort buttons
-    const positionBtn = document.getElementById(`roster-${teamIdStr}-${yearStr}-sort-position`);
-    const pointsBtn = document.getElementById(`roster-${teamIdStr}-${yearStr}-sort-points`);
-    
-    if (positionContent) positionContent.style.display = "none";
-    if (pointsContent) pointsContent.style.display = "none";
-    if (positionBtn) positionBtn.classList.remove("active");
-    if (pointsBtn) pointsBtn.classList.remove("active");
-    
-    // Show selected sort
-    if (sortType === 'position') {
-      if (positionContent) positionContent.style.display = "block";
-      if (positionBtn) positionBtn.classList.add("active");
-    } else if (sortType === 'points') {
-      if (pointsContent) pointsContent.style.display = "block";
-      if (pointsBtn) pointsBtn.classList.add("active");
-    }
-  } catch (error) {
-    console.error("Error in switchRosterSort:", error);
-  }
+  document.querySelectorAll(".team-content").forEach(c=>c.style.display="none");
+  document.querySelectorAll(".team-tab-button").forEach(b=>b.classList.remove("active"));
+  const content = document.getElementById(`team-${teamId}-content`);
+  const btn = document.getElementById(`team-tab-${teamId}`);
+  if (content) content.style.display="block";
+  if (btn) btn.classList.add("active");
 };
 
 window.showTeamYear = function(teamId, year){
-  try {
-    if (!teamId || year === undefined || year === null) {
-      console.error("showTeamYear: teamId and year are required");
-      return;
-    }
-    // Legacy function for standings - still works for backwards compatibility
-    // Handle both numeric team IDs and string IDs like 'standings' or 'total'
-    const teamIdStr = String(teamId);
-    const yearStr = String(year);
-    
-    // Check if this is the new structure (with views) or old structure (standings)
-    const viewContent = document.getElementById(`team-${teamIdStr}-view-stats`);
-    if (viewContent) {
-      // New structure - use showTeamViewYear
-      if (typeof window.showTeamViewYear === 'function') {
-        showTeamViewYear(teamId, 'stats', year);
-      }
-    } else {
-      // Old structure (standings) - use original logic
-      const teamContent = document.getElementById(`team-${teamIdStr}-content`);
-      if (teamContent) {
-        teamContent.querySelectorAll(".team-year-content").forEach(c=>c.style.display="none");
-        teamContent.querySelectorAll(".year-tab-button").forEach(b=>b.classList.remove("active"));
-      }
-      const content = document.getElementById(`team-${teamIdStr}-year-${yearStr}-content`);
-      const btn = document.getElementById(`team-${teamIdStr}-year-${yearStr}-tab`);
-      if (content) content.style.display="block";
-      if (btn) btn.classList.add("active");
-    }
-  } catch (error) {
-    console.error("Error in showTeamYear:", error);
-  }
+  document.querySelectorAll(`#team-${teamId}-content .team-year-content`).forEach(c=>c.style.display="none");
+  document.querySelectorAll(`#team-${teamId}-content .year-tab-button`).forEach(b=>b.classList.remove("active"));
+  const content = document.getElementById(`team-${teamId}-year-${year}-content`);
+  const btn = document.getElementById(`team-${teamId}-year-${year}-tab`);
+  if (content) content.style.display="block";
+  if (btn) btn.classList.add("active");
 };
 
 window.showDefenseBreakdown = function(defense){
@@ -937,21 +664,6 @@ if (typeof window.showTotalYearStats !== 'function') {
 }
 if (typeof window.showTeamPages !== 'function') {
   console.error("ERROR: showTeamPages is not defined!");
-}
-if (typeof window.showTeam !== 'function') {
-  console.error("ERROR: showTeam is not defined!");
-}
-if (typeof window.showTeamView !== 'function') {
-  console.error("ERROR: showTeamView is not defined!");
-}
-if (typeof window.showTeamViewYear !== 'function') {
-  console.error("ERROR: showTeamViewYear is not defined!");
-}
-if (typeof window.showTeamYear !== 'function') {
-  console.error("ERROR: showTeamYear is not defined!");
-}
-if (typeof window.switchRosterSort !== 'function') {
-  console.error("ERROR: switchRosterSort is not defined!");
 }
 console.log("app.js loaded - all functions should be available");
 

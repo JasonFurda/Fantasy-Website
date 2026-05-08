@@ -3,12 +3,18 @@ Generate HTML file with tabbed interface for all weeks' matchups
 """
 
 from espn_api.football import League
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # League configuration
-LEAGUE_ID = 953181335
+LEAGUE_ID = int(os.getenv("ESPN_LEAGUE_ID"))
 YEAR = 2025
-ESPN_S2 = 'AEAXwngCrt5PQ2zc%2F2Si2z%2B8Syo4oDo1hs6gSsDACboeC7WNVJT5EWC1Hiu6gueWZgnEDv3IL%2FdPldXwm7f4PvTW4p7WEe8w20SfVmN3utCymMrKJExo5PSQtO62xFh2kIh9cPE0ZCQZxrPX%2F7kjSmfT5Mo2qlDq3dEBbMHJIIG3nJ03FDHzz8xalcpdf1M9ZcEFsOrDGKSJX%2BxlL18puksn9M2ACEzL0El8oFJcGA3mYGsIgreBQGwKa1ZKcsnJZegXIDhasPTrGqXk%2Fv81oGUdAYQzVmKwJfxadoywCRETwg7wnQpu8UpRcwVj9nCsDYHjeU%2BysosGhneVWtLFGKzf'
-SWID = '{EC9E2E2E-468A-4AD9-B5CD-19E1D66BBF09}'
+ESPN_S2 = os.getenv("ESPN_S2")
+SWID = os.getenv("ESPN_SWID")
 
 def get_owner_name(team):
     """Get owner display name from team"""

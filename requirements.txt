@@ -1,0 +1,3 @@
+python-dotenv>=1.0.0
+# Newer supabase (2.17+) can pull storage3 2.x -> pyiceberg (native build; fails on Windows without MSVC / some Python versions).
+supabase>=2.0.0,<2.17
