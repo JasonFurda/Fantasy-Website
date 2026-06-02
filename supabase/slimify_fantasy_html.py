@@ -22,7 +22,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ---------- League configuration ----------
 LEAGUE_ID = int(os.getenv("ESPN_LEAGUE_ID"))
