@@ -120,8 +120,8 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
 
       {/* The 3D vertical wheel (left/center) */}
       <div
-        className="relative z-10 flex h-full items-center pl-[4vw]"
-        style={{ perspective: "1300px" }}
+        className="relative z-10 flex h-full w-[60vw] items-center pl-[5vw]"
+        style={{ perspective: "1300px", perspectiveOrigin: "45% 50%" }}
       >
         <div
           className="relative"
