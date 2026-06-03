@@ -18,8 +18,7 @@ export type WheelTeam = {
 };
 
 const IDLE_SPEED = 0.08; // deg per frame before any selection
-const RADIUS = 330; // px — size of the wheel
-const ITEM_WIDTH = 460; // px
+const RADIUS = 185; // px — controls how tightly the names stack
 
 export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
   const n = teams.length;
@@ -127,7 +126,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
         <div
           className="relative"
           style={{
-            width: ITEM_WIDTH,
+            width: "55vw",
             height: RADIUS * 2,
             transformStyle: "preserve-3d",
             transform: `rotateX(${rotation}deg)`,
@@ -136,24 +135,23 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
           {teams.map((team, i) => {
             const a = ((i * step + rotation) * Math.PI) / 180;
             const cos = Math.cos(a);
-            const visible = cos > -0.15;
+            const visible = cos > -0.2;
             const isSel = selected === i;
             return (
               <button
                 key={team.espnId}
                 onClick={() => selectIndex(i)}
                 aria-label={team.name}
-                className="absolute left-0 top-1/2 flex w-full items-center justify-start rounded-2xl border-2 px-7 py-5 text-left font-black tracking-tight"
+                className="absolute left-0 top-1/2 whitespace-nowrap text-left font-black tracking-tight"
                 style={{
                   backfaceVisibility: "hidden",
+                  transformOrigin: "0% 50%",
                   transform: `translateY(-50%) rotateX(${i * step}deg) translateZ(${RADIUS}px)`,
-                  opacity: visible ? Math.max(0.15, Math.pow((cos + 1) / 2, 1.5)) : 0,
+                  opacity: visible ? Math.max(0.12, Math.pow((cos + 1) / 2, 1.6)) : 0,
                   pointerEvents: visible ? "auto" : "none",
-                  borderColor: team.color,
-                  backgroundColor: isSel ? team.color : `${team.color}26`,
-                  color: isSel ? "#0b0f14" : "var(--foreground)",
-                  fontSize: "clamp(1.75rem, 4vw, 3rem)",
-                  boxShadow: isSel ? `0 0 40px ${team.color}99` : "none",
+                  color: isSel ? team.color : "var(--foreground)",
+                  fontSize: "clamp(2rem, 5vw, 4rem)",
+                  textShadow: isSel ? `0 0 32px ${team.color}aa` : "none",
                 }}
               >
                 {team.name.trim()}
