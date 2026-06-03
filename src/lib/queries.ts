@@ -150,6 +150,76 @@ export async function getCurrentFranchises(): Promise<Team[]> {
   return [...teams].sort((a, b) => a.espn_id - b.espn_id);
 }
 
+export type FranchiseSummary = {
+  espnId: number;
+  latestName: string;
+  owner: string;
+  seasonsPlayed: number;
+  titles: number;
+  latest: {
+    year: number;
+    record: string;
+    rank: number;
+    teamCount: number;
+    pointsFor: number;
+  } | null;
+};
+
+/**
+ * Light per-franchise stats for everyone in the most recent season, computed in
+ * a single pass over all seasons (one teams + one matchups query per year).
+ */
+export async function getFranchiseSummaries(): Promise<FranchiseSummary[]> {
+  const seasons = await getSeasons();
+  if (seasons.length === 0) return [];
+
+  const perYear = await Promise.all(
+    seasons.map(async (s) => {
+      const [teams, matchups] = await Promise.all([
+        getTeams(s.year),
+        getMatchups(s.year),
+      ]);
+      return { year: s.year, standings: buildStandings(teams, matchups) };
+    }),
+  );
+
+  const latestYear = Math.max(...seasons.map((s) => s.year));
+  const byEspn = new Map<number, FranchiseSummary>();
+
+  for (const { year, standings } of perYear) {
+    for (const st of standings) {
+      const espnId = st.team.espn_id;
+      let f = byEspn.get(espnId);
+      if (!f) {
+        f = {
+          espnId,
+          latestName: st.team.name,
+          owner: st.team.owner,
+          seasonsPlayed: 0,
+          titles: 0,
+          latest: null,
+        };
+        byEspn.set(espnId, f);
+      }
+      f.seasonsPlayed++;
+      if (st.rank === 1) f.titles++;
+      if (year === latestYear) {
+        f.latestName = st.team.name;
+        f.owner = st.team.owner;
+        f.latest = {
+          year,
+          record: `${st.wins}-${st.losses}${st.ties ? `-${st.ties}` : ""}`,
+          rank: st.rank,
+          teamCount: standings.length,
+          pointsFor: st.pointsFor,
+        };
+      }
+    }
+  }
+
+  return [...byEspn.values()].sort((a, b) => a.espnId - b.espnId);
+}
+
 /** One franchise (by espn_id) with its per-season record across all years. */
 export async function getFranchise(espnId: number): Promise<Franchise | null> {
   const { data: rows } = await supabase
