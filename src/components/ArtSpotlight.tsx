@@ -31,12 +31,12 @@ export default function ArtSpotlight({
 
   return (
     <section
-      className="relative"
+      className="relative flex h-full flex-col"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       aria-roledescription="carousel"
     >
-      <div className="relative h-[clamp(440px,78vh,820px)] overflow-hidden rounded-2xl border border-border bg-surface-2">
+      <div className="relative min-h-[440px] flex-1 overflow-hidden rounded-2xl border border-border bg-surface-2">
         {art.map((piece, i) => (
           <Image
             key={piece.src}

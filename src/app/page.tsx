@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 async function RecapHome() {
   const { recap } = homepageConfig;
   return (
-    <main className="mx-auto max-w-7xl px-6 py-12">
-      <div className="grid gap-10 lg:grid-cols-2 lg:items-start">
+    <main className="mx-auto max-w-[1800px] px-8 py-12">
+      <div className="grid gap-10 lg:grid-cols-[1.5fr_1fr] lg:items-stretch">
         <ArtSpotlight art={recap.art} rotationMs={recap.artRotationMs} />
 
         <div className="flex flex-col gap-8">
