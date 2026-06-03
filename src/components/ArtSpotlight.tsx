@@ -36,7 +36,7 @@ export default function ArtSpotlight({
       onMouseLeave={() => setPaused(false)}
       aria-roledescription="carousel"
     >
-      <div className="relative h-[clamp(320px,55vh,600px)] overflow-hidden rounded-2xl border border-border bg-surface-2">
+      <div className="relative h-[clamp(440px,78vh,820px)] overflow-hidden rounded-2xl border border-border bg-surface-2">
         {art.map((piece, i) => (
           <Image
             key={piece.src}

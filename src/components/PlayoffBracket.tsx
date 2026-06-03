@@ -7,7 +7,7 @@ function GameCard({ game, champion }: { game: BracketGame; champion: string }) {
   ];
   return (
     <div className="rounded-lg border border-border bg-surface">
-      <div className="border-b border-border px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+      <div className="border-b border-border px-4 py-2 text-sm font-medium uppercase tracking-wide text-muted">
         {game.round}
       </div>
       {rows.map((r) => {
@@ -15,7 +15,7 @@ function GameCard({ game, champion }: { game: BracketGame; champion: string }) {
         return (
           <div
             key={r.name}
-            className={`flex items-center justify-between px-3 py-2 text-sm ${
+            className={`flex items-center justify-between px-4 py-3 text-base ${
               r.won ? "font-semibold" : "text-muted"
             }`}
           >
@@ -50,7 +50,7 @@ export default function PlayoffBracket({
 
   return (
     <section>
-      <h2 className="mb-4 text-xl font-bold tracking-tight">Playoff Bracket</h2>
+      <h2 className="mb-5 text-2xl font-bold tracking-tight">Playoff Bracket</h2>
       <div className="grid gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:items-center">
         {rounds.map((r, i) => (
           <div key={`${r.round}-${i}`} className="flex flex-col gap-4">
