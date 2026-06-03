@@ -119,3 +119,76 @@ export function winPct(s: Standing): number {
   if (games === 0) return 0;
   return (s.wins + s.ties * 0.5) / games;
 }
+
+export type FranchiseSeason = {
+  year: number;
+  name: string;
+  owner: string;
+  teamId: number;
+  rank: number;
+  teamCount: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  isChampionByRecord: boolean;
+};
+
+export type Franchise = {
+  espnId: number;
+  latestName: string;
+  owner: string;
+  seasons: FranchiseSeason[]; // newest first
+};
+
+/** All teams from the most recent season — the franchise roster shown on /teams. */
+export async function getCurrentFranchises(): Promise<Team[]> {
+  const seasons = await getSeasons();
+  if (seasons.length === 0) return [];
+  const teams = await getTeams(seasons[0].year);
+  return [...teams].sort((a, b) => a.espn_id - b.espn_id);
+}
+
+/** One franchise (by espn_id) with its per-season record across all years. */
+export async function getFranchise(espnId: number): Promise<Franchise | null> {
+  const { data: rows } = await supabase
+    .from("teams")
+    .select("id, espn_id, year, name, owner")
+    .eq("espn_id", espnId)
+    .order("year", { ascending: false });
+
+  const teamRows = (rows as Team[]) ?? [];
+  if (teamRows.length === 0) return null;
+
+  const seasons: FranchiseSeason[] = [];
+  for (const row of teamRows) {
+    const [yearTeams, matchups] = await Promise.all([
+      getTeams(row.year),
+      getMatchups(row.year),
+    ]);
+    const standings = buildStandings(yearTeams, matchups);
+    const mine = standings.find((s) => s.team.id === row.id);
+    seasons.push({
+      year: row.year,
+      name: row.name,
+      owner: row.owner,
+      teamId: row.id,
+      rank: mine?.rank ?? 0,
+      teamCount: standings.length,
+      wins: mine?.wins ?? 0,
+      losses: mine?.losses ?? 0,
+      ties: mine?.ties ?? 0,
+      pointsFor: mine?.pointsFor ?? 0,
+      pointsAgainst: mine?.pointsAgainst ?? 0,
+      isChampionByRecord: mine?.rank === 1,
+    });
+  }
+
+  return {
+    espnId,
+    latestName: teamRows[0].name,
+    owner: teamRows[0].owner,
+    seasons,
+  };
+}
