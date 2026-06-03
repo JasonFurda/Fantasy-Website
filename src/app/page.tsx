@@ -11,23 +11,22 @@ export const dynamic = "force-dynamic";
 async function RecapHome() {
   const { recap } = homepageConfig;
   return (
-    <main className="mx-auto max-w-5xl px-5 py-10">
-      <ArtSpotlight art={recap.art} rotationMs={recap.artRotationMs} />
+    <main className="mx-auto max-w-6xl px-5 py-10">
+      <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+        <ArtSpotlight art={recap.art} rotationMs={recap.artRotationMs} />
 
-      <div className="mt-10">
-        <ChampionBanner
-          year={recap.seasonYear}
-          teamName={recap.champion.teamName}
-          owner={recap.champion.owner}
-          blurb={recap.champion.blurb}
-        />
-      </div>
-
-      <div className="mt-10">
-        <PlayoffBracket
-          bracket={recap.bracket}
-          champion={recap.champion.teamName}
-        />
+        <div className="flex flex-col gap-8">
+          <ChampionBanner
+            year={recap.seasonYear}
+            teamName={recap.champion.teamName}
+            owner={recap.champion.owner}
+            blurb={recap.champion.blurb}
+          />
+          <PlayoffBracket
+            bracket={recap.bracket}
+            champion={recap.champion.teamName}
+          />
+        </div>
       </div>
 
       <p className="mt-10 text-center text-sm text-muted">

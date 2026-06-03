@@ -28,7 +28,6 @@ export default function ArtSpotlight({
   }, [paused, art.length, rotationMs]);
 
   if (art.length === 0) return null;
-  const current = art[index];
 
   return (
     <section
@@ -51,19 +50,6 @@ export default function ArtSpotlight({
             }`}
           />
         ))}
-
-        {/* Caption */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-5">
-          <p className="text-xs font-medium uppercase tracking-wide text-accent">
-            League Art
-          </p>
-          <h3 className="text-lg font-semibold text-white drop-shadow">
-            {current.title}
-          </h3>
-          {current.caption && (
-            <p className="text-sm text-white/80">{current.caption}</p>
-          )}
-        </div>
 
         {/* Arrows */}
         <button
