@@ -8,6 +8,7 @@ const TABS = [
   { key: "fraud", label: "Fraud Watch" },
   { key: "club200", label: "200 Club" },
   { key: "sub100", label: "Sub-100 Club" },
+  { key: "mismanage", label: "Mismanagement" },
 ] as const;
 
 function TeamCell({ team }: { team: { espn_id: number; name: string; owner: string } | null }) {
@@ -209,6 +210,63 @@ export default async function YearStatsPage({
             Single-week team scores under 100 — the games to forget.
           </p>
           <GameTable rows={stats.subClub} year={year} />
+        </>
+      )}
+
+      {tab === "mismanage" && (
+        <>
+          <p className="mb-4 max-w-2xl text-sm text-muted">
+            Teams ranked by percentage of optimal points scored — how well they
+            set their lineups. Lower means more points left on the bench. Worst
+            first.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-4 py-3 font-medium">#</th>
+                  <th className="px-4 py-3 font-medium">Team</th>
+                  <th className="px-4 py-3 text-right font-medium">% Optimal</th>
+                  <th className="px-4 py-3 text-right font-medium">Max</th>
+                  <th className="px-4 py-3 text-right font-medium">Actual</th>
+                  <th className="px-4 py-3 text-right font-medium">Left</th>
+                  <th className="px-4 py-3 text-right font-medium">Avg/wk</th>
+                  <th className="px-4 py-3 text-right font-medium">Record</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.mismanage.map((m, i) => (
+                  <tr
+                    key={m.team.id}
+                    className="border-b border-border/60 last:border-0"
+                  >
+                    <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <TeamCell team={m.team} />
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold tabular-nums">
+                      {m.pctOptimal.toFixed(1)}%
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted">
+                      {m.maxPoints.toFixed(1)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {m.actualPoints.toFixed(1)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-red-400">
+                      {m.pointsLeft.toFixed(1)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted">
+                      {m.avgPerWeek.toFixed(1)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted">
+                      {m.record}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </main>

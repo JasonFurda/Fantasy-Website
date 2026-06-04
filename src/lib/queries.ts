@@ -216,11 +216,46 @@ export type GameRow = {
   matchupId: number;
 };
 
+export type MismanageRow = {
+  team: Team;
+  record: string;
+  pctOptimal: number; // 0-100
+  maxPoints: number;
+  actualPoints: number;
+  pointsLeft: number;
+  avgPerWeek: number;
+};
+
 export type YearStats = {
   fraud: FraudRow[];
   club200: GameRow[];
   subClub: GameRow[];
+  mismanage: MismanageRow[];
 };
+
+type OptPlayer = { points: number; eligible: string[]; slot: string; isBench: boolean };
+
+/** Best possible starting points given the slots the team actually started. */
+function optimalPoints(players: OptPlayer[]): number {
+  const width = (s: string) => s.split("/").length;
+  const slots = players
+    .filter((p) => !p.isBench)
+    .map((p) => ({ slot: p.slot, w: width(p.slot), filled: false }));
+  const cands = [...players].sort((a, b) => b.points - a.points);
+  let total = 0;
+  for (const p of cands) {
+    let best: (typeof slots)[number] | null = null;
+    for (const s of slots) {
+      if (s.filled) continue;
+      if (p.eligible.includes(s.slot) && (!best || s.w < best.w)) best = s;
+    }
+    if (best) {
+      best.filled = true;
+      total += p.points;
+    }
+  }
+  return total;
+}
 
 /** Season-level stat leaderboards for one year. */
 export async function getYearStats(year: number): Promise<YearStats> {
@@ -294,7 +329,89 @@ export async function getYearStats(year: number): Promise<YearStats> {
     .filter((g) => g.team && g.score > 0 && g.score < 100)
     .sort((a, b) => a.score - b.score);
 
-  return { fraud, club200, subClub };
+  // --- Mismanagement (% of optimal points) ---
+  const playedIds = matchups
+    .filter((m) => (m.home_score ?? 0) !== 0 || (m.away_score ?? 0) !== 0)
+    .map((m) => m.id);
+  const matchupSide = new Map<number, { home: number; away: number }>();
+  for (const m of matchups) {
+    matchupSide.set(m.id, { home: m.home_team_id, away: m.away_team_id });
+  }
+
+  const recordByTeam = new Map<number, string>(
+    standings.map((s) => [
+      s.team.id,
+      `${s.wins}-${s.losses}${s.ties ? `-${s.ties}` : ""}`,
+    ]),
+  );
+
+  // teamId -> { week -> OptPlayer[] }
+  const teamWeeks = new Map<number, Map<number, OptPlayer[]>>();
+  const weekByMatchup = new Map<number, number>(
+    matchups.map((m) => [m.id, m.week]),
+  );
+
+  if (playedIds.length > 0) {
+    const { data: slotRaw } = await supabase
+      .from("player_slots")
+      .select("matchup_id, team_side, points, slot, is_bench, eligible_slots")
+      .in("matchup_id", playedIds);
+    const rows = (slotRaw ?? []) as {
+      matchup_id: number;
+      team_side: "home" | "away";
+      points: number | null;
+      slot: string;
+      is_bench: boolean | null;
+      eligible_slots: string[] | null;
+    }[];
+
+    for (const r of rows) {
+      const sides = matchupSide.get(r.matchup_id);
+      if (!sides) continue;
+      const teamId = r.team_side === "home" ? sides.home : sides.away;
+      const week = weekByMatchup.get(r.matchup_id) ?? 0;
+      let wm = teamWeeks.get(teamId);
+      if (!wm) {
+        wm = new Map();
+        teamWeeks.set(teamId, wm);
+      }
+      const arr = wm.get(week) ?? [];
+      arr.push({
+        points: Number(r.points ?? 0),
+        eligible: Array.isArray(r.eligible_slots) ? r.eligible_slots : [],
+        slot: r.slot,
+        isBench: !!r.is_bench,
+      });
+      wm.set(week, arr);
+    }
+  }
+
+  const mismanage: MismanageRow[] = [];
+  for (const [teamId, weeks] of teamWeeks) {
+    const team = teamById.get(teamId);
+    if (!team) continue;
+    let actual = 0;
+    let optimal = 0;
+    for (const players of weeks.values()) {
+      actual += players
+        .filter((p) => !p.isBench)
+        .reduce((a, p) => a + p.points, 0);
+      optimal += optimalPoints(players);
+    }
+    const pointsLeft = optimal - actual;
+    mismanage.push({
+      team,
+      record: recordByTeam.get(teamId) ?? "",
+      pctOptimal: optimal > 0 ? (actual / optimal) * 100 : 100,
+      maxPoints: optimal,
+      actualPoints: actual,
+      pointsLeft,
+      avgPerWeek: weeks.size ? pointsLeft / weeks.size : 0,
+    });
+  }
+  mismanage.sort((a, b) => a.pctOptimal - b.pctOptimal); // worst first
+
+  return { fraud, club200, subClub, mismanage };
 }
 
 export type SlotRow = {

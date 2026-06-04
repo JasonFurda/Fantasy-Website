@@ -125,6 +125,8 @@ def _player_slot_rows(
                 "team_side": team_side,
                 "sort_idx": sort_idx,
                 "slot": str(p.get("slot", "")),
+                "position": str(p.get("position", "")),
+                "eligible_slots": p.get("eligibleSlots") or [],
                 "player_name": str(p.get("name", "Unknown")),
                 "pro_team": str(p.get("proTeam", "")),
                 "opponent": str(p.get("opp", "")),
