@@ -35,9 +35,6 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
       style={{ backgroundColor: perfBg(p.points, p.projected) }}
     >
       <div className="truncate text-sm font-medium">{p.playerName}</div>
-      <div className="truncate text-xs text-muted">
-        {[p.proTeam, p.opponent].filter(Boolean).join(" ")}
-      </div>
     </div>
   );
 }

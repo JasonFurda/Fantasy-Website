@@ -330,13 +330,9 @@ export async function getYearStats(year: number): Promise<YearStats> {
     .sort((a, b) => a.score - b.score);
 
   // --- Mismanagement (% of optimal points) ---
-  // Regular-season weeks only, so "actual" matches each team's PF.
+  // All played weeks, including playoffs (mismanagement spans the whole season).
   const playedIds = matchups
-    .filter(
-      (m) =>
-        ((m.home_score ?? 0) !== 0 || (m.away_score ?? 0) !== 0) &&
-        !isPlayoffWeek(m.year, m.week),
-    )
+    .filter((m) => (m.home_score ?? 0) !== 0 || (m.away_score ?? 0) !== 0)
     .map((m) => m.id);
   const matchupSide = new Map<number, { home: number; away: number }>();
   for (const m of matchups) {
