@@ -20,16 +20,5 @@ export default async function TeamsPage() {
     seasons: f.seasonsPlayed,
   }));
 
-  return (
-    <div className="w-full">
-      <div className="mx-auto max-w-6xl px-6 pt-10">
-        <h1 className="text-3xl font-bold tracking-tight">Teams</h1>
-        <p className="mt-2 text-sm text-muted">
-          {wheelTeams.length} teams · spin the wheel
-        </p>
-      </div>
-
-      <TeamWheel teams={wheelTeams} />
-    </div>
-  );
+  return <TeamWheel teams={wheelTeams} />;
 }

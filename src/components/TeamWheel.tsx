@@ -82,7 +82,13 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
   const selectedTeam = selected != null ? teams[selected] : null;
 
   return (
-    <section className="relative h-[88vh] min-h-[620px] w-full overflow-hidden bg-background">
+    <section className="relative h-[calc(100vh-3.5rem)] min-h-[620px] w-full overflow-hidden bg-background">
+      {/* page title overlay */}
+      <div className="absolute left-[5vw] top-6 z-20">
+        <h1 className="text-2xl font-bold tracking-tight drop-shadow">Teams</h1>
+        <p className="text-sm text-muted">{n} teams · spin the wheel</p>
+      </div>
+
       {/* Gigantic background art for the selected team */}
       <div className="absolute inset-0">
         {selectedTeam ? (
@@ -113,9 +119,9 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
             </div>
           )
         ) : null}
-        {/* readability overlay */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/70 to-background/30" />
-        <div className="absolute inset-0 bg-background/30" />
+        {/* readability overlay — keep the left (wheel) legible, let the art shine */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/35 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-background/70 to-transparent" />
       </div>
 
       {/* The 3D vertical wheel (left/center) */}
