@@ -195,6 +195,108 @@ export async function getAllTimeStandings(): Promise<Standing[]> {
     }));
 }
 
+export type FraudRow = {
+  team: Team;
+  record: string;
+  winPct: number; // 0-100
+  pointsFor: number;
+  pointsAgainst: number;
+  pfPercentile: number;
+  paPercentile: number;
+  fraudScore: number;
+};
+
+export type GameRow = {
+  team: Team;
+  score: number;
+  week: number;
+  opponent: Team | null;
+  opponentScore: number;
+  won: boolean;
+  matchupId: number;
+};
+
+export type YearStats = {
+  fraud: FraudRow[];
+  club200: GameRow[];
+  subClub: GameRow[];
+};
+
+/** Season-level stat leaderboards for one year. */
+export async function getYearStats(year: number): Promise<YearStats> {
+  const [teams, matchups] = await Promise.all([
+    getTeams(year),
+    getMatchups(year),
+  ]);
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+  const standings = buildStandings(teams, matchups); // regular season
+
+  // --- Fraud Watch (matches the original formula) ---
+  const pfs = standings.map((s) => s.pointsFor);
+  const pas = standings.map((s) => s.pointsAgainst);
+  const minPF = Math.min(...pfs);
+  const maxPF = Math.max(...pfs);
+  const minPA = Math.min(...pas);
+  const maxPA = Math.max(...pas);
+  const pct = (v: number, lo: number, hi: number) =>
+    hi > lo ? ((v - lo) / (hi - lo)) * 100 : 50;
+
+  const fraud: FraudRow[] = standings
+    .map((s) => {
+      const games = s.wins + s.losses + s.ties;
+      const winPct = games ? (s.wins / games) * 100 : 0;
+      const pfPercentile = pct(s.pointsFor, minPF, maxPF);
+      const paPercentile = pct(s.pointsAgainst, minPA, maxPA);
+      return {
+        team: s.team,
+        record: `${s.wins}-${s.losses}${s.ties ? `-${s.ties}` : ""}`,
+        winPct,
+        pointsFor: s.pointsFor,
+        pointsAgainst: s.pointsAgainst,
+        pfPercentile,
+        paPercentile,
+        fraudScore: winPct - pfPercentile * 0.75 - paPercentile * 0.5,
+      };
+    })
+    .sort((a, b) => b.fraudScore - a.fraudScore);
+
+  // --- 200 Club / Sub-100 Club (single-game team scores, all weeks) ---
+  const games: GameRow[] = [];
+  for (const m of matchups) {
+    const hs = m.home_score ?? 0;
+    const as = m.away_score ?? 0;
+    if (hs === 0 && as === 0) continue; // unplayed
+    const home = teamById.get(m.home_team_id) ?? null;
+    const away = teamById.get(m.away_team_id) ?? null;
+    games.push({
+      team: home!,
+      score: hs,
+      week: m.week,
+      opponent: away,
+      opponentScore: as,
+      won: hs > as,
+      matchupId: m.id,
+    });
+    games.push({
+      team: away!,
+      score: as,
+      week: m.week,
+      opponent: home,
+      opponentScore: hs,
+      won: as > hs,
+      matchupId: m.id,
+    });
+  }
+  const club200 = games
+    .filter((g) => g.team && g.score >= 200)
+    .sort((a, b) => b.score - a.score);
+  const subClub = games
+    .filter((g) => g.team && g.score > 0 && g.score < 100)
+    .sort((a, b) => a.score - b.score);
+
+  return { fraud, club200, subClub };
+}
+
 export type SlotRow = {
   slot: string;
   playerName: string;

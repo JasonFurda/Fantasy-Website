@@ -23,6 +23,7 @@ const NAV = [
   { href: "/standings", label: "Standings" },
   { href: "/matchups", label: "Matchups" },
   { href: "/teams", label: "Teams" },
+  { href: "/year-stats", label: "Year Stats" },
 ];
 
 export default function RootLayout({
