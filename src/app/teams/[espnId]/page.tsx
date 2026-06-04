@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFranchise, getFranchiseRoster } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
+import { championshipsFor } from "@/lib/league-config";
 import RosterByYear from "@/components/RosterByYear";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default async function TeamPage({
   const games = wins + losses + ties;
   const winPct = games ? (wins + ties * 0.5) / games : 0;
   const totalPF = franchise.seasons.reduce((a, s) => a + s.pointsFor, 0);
-  const titles = franchise.seasons.filter((s) => s.isChampionByRecord).length;
+  const titles = championshipsFor(espnId);
   const ranks = franchise.seasons.map((s) => s.rank).filter((r) => r > 0);
   const bestFinish = ranks.length ? Math.min(...ranks) : 0;
   const avgPlacement = ranks.length
@@ -190,7 +191,7 @@ export default async function TeamPage({
                     <td className="px-4 py-3 font-medium">{s.year}</td>
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-1.5">
-                        {s.isChampionByRecord && <span aria-hidden>🏆</span>}
+                        {s.isChampion && <span aria-hidden>🏆</span>}
                         {s.name.trim()}
                       </span>
                     </td>

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { isPlayoffWeek } from "@/lib/league-config";
+import { isPlayoffWeek, isChampion, championshipsFor } from "@/lib/league-config";
 
 export type Season = {
   year: number;
@@ -134,7 +134,7 @@ export type FranchiseSeason = {
   ties: number;
   pointsFor: number;
   pointsAgainst: number;
-  isChampionByRecord: boolean;
+  isChampion: boolean;
 };
 
 export type Franchise = {
@@ -204,7 +204,6 @@ export async function getFranchiseSummaries(): Promise<FranchiseSummary[]> {
         byEspn.set(espnId, f);
       }
       f.seasonsPlayed++;
-      if (st.rank === 1) f.titles++;
       if (year === latestYear) {
         f.latestName = st.team.name;
         f.owner = st.team.owner;
@@ -217,6 +216,10 @@ export async function getFranchiseSummaries(): Promise<FranchiseSummary[]> {
         };
       }
     }
+  }
+
+  for (const f of byEspn.values()) {
+    f.titles = championshipsFor(f.espnId);
   }
 
   return [...byEspn.values()].sort((a, b) => a.espnId - b.espnId);
@@ -253,7 +256,7 @@ export async function getFranchise(espnId: number): Promise<Franchise | null> {
       ties: mine?.ties ?? 0,
       pointsFor: mine?.pointsFor ?? 0,
       pointsAgainst: mine?.pointsAgainst ?? 0,
-      isChampionByRecord: mine?.rank === 1,
+      isChampion: isChampion(espnId, row.year),
     });
   }
 
