@@ -8,11 +8,21 @@ import type { MatchupDetail, SlotRow } from "@/lib/queries";
 function perfBg(points: number, projected: number | null): string | undefined {
   if (projected == null || projected <= 0) return undefined;
   const ratio = (points - projected) / projected;
-  const t = Math.max(-1, Math.min(1, ratio / 0.5)); // -1..1
-  if (t === 0) return undefined;
-  const a = Math.abs(t);
-  const hue = t > 0 ? 145 : 0; // green vs red
-  return `hsla(${hue}, 80%, 45%, ${(0.12 + a * 0.4).toFixed(2)})`;
+
+  // Doubled their projection or better → light blue.
+  if (ratio >= 1.0) return "hsla(200, 90%, 60%, 0.55)";
+
+  const DEAD = 0.1; // within ±10% of projection → no color
+  const FULL = 0.8; // ~80% over/under → full intensity
+  if (Math.abs(ratio) < DEAD) return undefined;
+
+  const a = Math.min(1, (Math.abs(ratio) - DEAD) / (FULL - DEAD));
+  const eased = a * a; // reserve the brightest colors for exceptional games
+  const hue = ratio > 0 ? 145 : 0; // green vs red
+  const sat = 55 + eased * 35;
+  const light = 50 - eased * 6;
+  const alpha = 0.1 + eased * 0.5;
+  return `hsla(${hue}, ${sat}%, ${light}%, ${alpha.toFixed(2)})`;
 }
 
 function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }) {
