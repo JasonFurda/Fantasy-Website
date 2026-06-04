@@ -162,7 +162,9 @@ export default async function YearStatsPage({
                   <th className="px-4 py-3 text-right font-medium">Record</th>
                   <th className="px-4 py-3 text-right font-medium">PF</th>
                   <th className="px-4 py-3 text-right font-medium">PA</th>
-                  <th className="px-4 py-3 text-right font-medium">Fraud</th>
+                  <th className="px-4 py-3 text-right font-medium">
+                    Fraud Score
+                  </th>
                 </tr>
               </thead>
               <tbody>

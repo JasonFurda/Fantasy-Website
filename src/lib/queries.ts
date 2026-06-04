@@ -330,8 +330,13 @@ export async function getYearStats(year: number): Promise<YearStats> {
     .sort((a, b) => a.score - b.score);
 
   // --- Mismanagement (% of optimal points) ---
+  // Regular-season weeks only, so "actual" matches each team's PF.
   const playedIds = matchups
-    .filter((m) => (m.home_score ?? 0) !== 0 || (m.away_score ?? 0) !== 0)
+    .filter(
+      (m) =>
+        ((m.home_score ?? 0) !== 0 || (m.away_score ?? 0) !== 0) &&
+        !isPlayoffWeek(m.year, m.week),
+    )
     .map((m) => m.id);
   const matchupSide = new Map<number, { home: number; away: number }>();
   for (const m of matchups) {
@@ -352,18 +357,25 @@ export async function getYearStats(year: number): Promise<YearStats> {
   );
 
   if (playedIds.length > 0) {
-    const { data: slotRaw } = await supabase
-      .from("player_slots")
-      .select("matchup_id, team_side, points, slot, is_bench, eligible_slots")
-      .in("matchup_id", playedIds);
-    const rows = (slotRaw ?? []) as {
+    type SlotQueryRow = {
       matchup_id: number;
       team_side: "home" | "away";
       points: number | null;
       slot: string;
       is_bench: boolean | null;
       eligible_slots: string[] | null;
-    }[];
+    };
+    // Fetch in matchup-id chunks to stay under the 1000-row response cap.
+    const rows: SlotQueryRow[] = [];
+    const CHUNK = 20;
+    for (let i = 0; i < playedIds.length; i += CHUNK) {
+      const chunk = playedIds.slice(i, i + CHUNK);
+      const { data } = await supabase
+        .from("player_slots")
+        .select("matchup_id, team_side, points, slot, is_bench, eligible_slots")
+        .in("matchup_id", chunk);
+      if (data) rows.push(...(data as SlotQueryRow[]));
+    }
 
     for (const r of rows) {
       const sides = matchupSide.get(r.matchup_id);
