@@ -17,14 +17,14 @@ export type TeamMeta = {
 // /public/art folder, guessed by owner nickname, just to preview the look.
 // Swap them for each team's real art when you have it.
 export const teamMeta: Record<number, TeamMeta> = {
-  1: { color: "#f43f5e", art: "/art/mich-vs-viola-playoffs.jpg" }, // Festive7 — Straight Dak'n it
-  3: { color: "#f59e0b", art: "/art/me-vs-duck-playoffs.jpg" }, // jasonsexybod — duckrunners
-  4: { color: "#a16207", art: "/art/me-v-brum.png" }, // drasktic — Brown Squad
-  5: { color: "#8b5cf6", art: "/art/jason-vs-west-2.jpg" }, // ESPNfan… — Bell Milers
-  6: { color: "#06b6d4", art: "/art/me-v-mich.png" }, // espn62403996 — MCDC
-  7: { color: "#ec4899", art: "/art/me-v-sauce.png" }, // sauc3 — Sauce
-  10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — Jaxjigba (2025 champion)
-  11: { color: "#3b82f6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — Bell Meyers
+  1: { color: "#f97316", art: "/art/mich-vs-viola-playoffs.jpg" }, // Festive7 — orange
+  3: { color: "#7c4a21", art: "/art/me-vs-duck-playoffs.jpg" }, // jasonsexybod — brown
+  4: { color: "#dc2626", art: "/art/me-v-brum.png" }, // drasktic — red
+  5: { color: "#ffb7c5", art: "/art/jason-vs-west-2.jpg" }, // ESPNfan2807758783 — sakura pink
+  6: { color: "#1e3a8a", art: "/art/me-v-mich.png" }, // espn62403996 — dark blue
+  7: { color: "#9333ea", art: "/art/me-v-sauce.png" }, // sauc3 — purple
+  10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — gold
+  11: { color: "#3b82f6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — (unchanged) blue
 };
 
 // Fallback colors for franchises without an explicit entry (e.g. future teams).
