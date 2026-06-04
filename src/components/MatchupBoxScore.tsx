@@ -1,9 +1,29 @@
 import type { MatchupDetail, SlotRow } from "@/lib/queries";
 
+/**
+ * Performance vs projection as a background tint on a player's entry.
+ * Green = overperform, red = underperform; deeper as the deviation grows
+ * (±50% of projected = full intensity).
+ */
+function perfBg(points: number, projected: number | null): string | undefined {
+  if (projected == null || projected <= 0) return undefined;
+  const ratio = (points - projected) / projected;
+  const t = Math.max(-1, Math.min(1, ratio / 0.5)); // -1..1
+  if (t === 0) return undefined;
+  const a = Math.abs(t);
+  const hue = t > 0 ? 145 : 0; // green vs red
+  return `hsla(${hue}, 80%, 45%, ${(0.12 + a * 0.4).toFixed(2)})`;
+}
+
 function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }) {
   if (!p) return <div className="flex-1" />;
   return (
-    <div className={`flex-1 ${align === "right" ? "text-right" : "text-left"}`}>
+    <div
+      className={`min-w-0 flex-1 rounded-md px-2 py-1 ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
+      style={{ backgroundColor: perfBg(p.points, p.projected) }}
+    >
       <div className="truncate text-sm font-medium">{p.playerName}</div>
       <div className="truncate text-xs text-muted">
         {[p.proTeam, p.opponent].filter(Boolean).join(" ")}
@@ -12,29 +32,11 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
   );
 }
 
-/**
- * Color a player's points by performance vs projection. Green = overperform,
- * red = underperform; deeper as the deviation grows (±50% projected = full).
- */
-function perfColor(points: number, projected: number | null): string | undefined {
-  if (projected == null || projected <= 0) return undefined;
-  const ratio = (points - projected) / projected;
-  const t = Math.max(-1, Math.min(1, ratio / 0.5)); // -1..1
-  if (t === 0) return undefined;
-  const a = Math.abs(t);
-  const hue = t > 0 ? 145 : 0; // green vs red
-  return `hsl(${hue}, ${45 + a * 45}%, ${70 - a * 22}%)`;
-}
-
 function Pts({ p, win }: { p: SlotRow | null; win: boolean }) {
   if (!p) return <div className="w-16 shrink-0" />;
-  const color = perfColor(p.points, p.projected);
   return (
     <div className="w-16 shrink-0 text-center">
-      <div
-        className={`tabular-nums ${win ? "font-bold" : ""}`}
-        style={{ color }}
-      >
+      <div className={`tabular-nums ${win ? "font-bold" : ""}`}>
         {p.points.toFixed(1)}
       </div>
       {p.projected != null && (
@@ -97,14 +99,14 @@ function TeamHeader({
   return (
     <div className={align === "right" ? "text-right" : "text-left"}>
       <div
-        className="inline-block h-1.5 w-10 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      <div className="mt-1 text-lg font-bold tracking-tight">{name}</div>
+        className="mt-1 text-lg font-bold tracking-tight"
+        style={{ color }}
+      >
+        {name}
+      </div>
       <div className="text-xs text-muted">{owner}</div>
       <div
-        className={`mt-1 text-4xl font-black tabular-nums ${winner ? "" : "text-foreground/70"}`}
-        style={winner ? { color } : undefined}
+        className={`mt-1 text-4xl font-black tabular-nums ${winner ? "" : "text-foreground/60"}`}
       >
         {score.toFixed(1)}
       </div>

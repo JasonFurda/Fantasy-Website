@@ -119,10 +119,7 @@ export default async function MatchupsPage({
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: teamColor(away?.espn_id ?? 0) }}
                   />
-                  <span
-                    className={aWin ? "font-semibold" : ""}
-                    style={{ color: teamColor(away?.espn_id ?? 0) }}
-                  >
+                  <span className={aWin ? "font-semibold" : ""}>
                     {away?.name.trim() ?? "—"}
                   </span>
                 </span>
@@ -136,10 +133,7 @@ export default async function MatchupsPage({
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: teamColor(home?.espn_id ?? 0) }}
                   />
-                  <span
-                    className={!aWin ? "font-semibold" : ""}
-                    style={{ color: teamColor(home?.espn_id ?? 0) }}
-                  >
+                  <span className={!aWin ? "font-semibold" : ""}>
                     {home?.name.trim() ?? "—"}
                   </span>
                 </span>
