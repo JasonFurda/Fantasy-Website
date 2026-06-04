@@ -127,6 +127,74 @@ export function winPct(s: Standing): number {
   return (s.wins + s.ties * 0.5) / games;
 }
 
+/** Aggregate regular-season standings across every season, by franchise (espn_id). */
+export async function getAllTimeStandings(): Promise<Standing[]> {
+  const seasons = await getSeasons();
+  if (seasons.length === 0) return [];
+
+  const perYear = await Promise.all(
+    seasons.map(async (s) => {
+      const [teams, matchups] = await Promise.all([
+        getTeams(s.year),
+        getMatchups(s.year),
+      ]);
+      return { year: s.year, standings: buildStandings(teams, matchups) };
+    }),
+  );
+
+  const latestYear = Math.max(...seasons.map((s) => s.year));
+  const agg = new Map<
+    number,
+    {
+      team: Team;
+      wins: number;
+      losses: number;
+      ties: number;
+      pointsFor: number;
+      pointsAgainst: number;
+    }
+  >();
+
+  for (const { year, standings } of perYear) {
+    for (const st of standings) {
+      const espnId = st.team.espn_id;
+      let row = agg.get(espnId);
+      if (!row) {
+        row = {
+          team: st.team,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
+        };
+        agg.set(espnId, row);
+      }
+      row.wins += st.wins;
+      row.losses += st.losses;
+      row.ties += st.ties;
+      row.pointsFor += st.pointsFor;
+      row.pointsAgainst += st.pointsAgainst;
+      if (year === latestYear) row.team = st.team; // use most recent name/owner
+    }
+  }
+
+  return [...agg.values()]
+    .sort(
+      (a, b) =>
+        b.wins - a.wins || a.losses - b.losses || b.pointsFor - a.pointsFor,
+    )
+    .map((r, i) => ({
+      rank: i + 1,
+      team: { ...r.team, id: r.team.espn_id }, // stable key for the table
+      wins: r.wins,
+      losses: r.losses,
+      ties: r.ties,
+      pointsFor: r.pointsFor,
+      pointsAgainst: r.pointsAgainst,
+    }));
+}
+
 export type FranchiseSeason = {
   year: number;
   name: string;
