@@ -1,5 +1,10 @@
 import { supabase } from "@/lib/supabase";
-import { isPlayoffWeek, isChampion, championshipsFor } from "@/lib/league-config";
+import {
+  isPlayoffWeek,
+  isChampion,
+  championshipsFor,
+  finalPlacement,
+} from "@/lib/league-config";
 
 export type Season = {
   year: number;
@@ -210,7 +215,7 @@ export async function getFranchiseSummaries(): Promise<FranchiseSummary[]> {
         f.latest = {
           year,
           record: `${st.wins}-${st.losses}${st.ties ? `-${st.ties}` : ""}`,
-          rank: st.rank,
+          rank: finalPlacement(st.team.espn_id, year) ?? st.rank,
           teamCount: standings.length,
           pointsFor: st.pointsFor,
         };
@@ -249,7 +254,7 @@ export async function getFranchise(espnId: number): Promise<Franchise | null> {
       name: row.name,
       owner: row.owner,
       teamId: row.id,
-      rank: mine?.rank ?? 0,
+      rank: finalPlacement(espnId, row.year) ?? mine?.rank ?? 0,
       teamCount: standings.length,
       wins: mine?.wins ?? 0,
       losses: mine?.losses ?? 0,

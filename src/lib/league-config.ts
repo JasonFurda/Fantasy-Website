@@ -37,3 +37,19 @@ export function isChampion(espnId: number, year: number): boolean {
 export function championshipsFor(espnId: number): number {
   return Object.values(CHAMPIONS_BY_YEAR).filter((id) => id === espnId).length;
 }
+
+/**
+ * Final placement per year (playoff results), keyed by year → espn_id → finish.
+ * These are the real end-of-year standings, derived from the playoff bracket
+ * (weeks 15-16: top-4 championship bracket, seeds 5-8 consolation bracket).
+ * EDIT/add each season once the playoffs finish. When a year is absent (e.g. a
+ * season still in progress), the site falls back to regular-season rank.
+ */
+export const FINAL_PLACEMENT_BY_YEAR: Record<number, Record<number, number>> = {
+  2024: { 10: 1, 3: 2, 7: 3, 11: 4, 5: 5, 6: 6, 4: 7, 1: 8 },
+  2025: { 10: 1, 4: 2, 1: 3, 6: 4, 5: 5, 7: 6, 11: 7, 3: 8 },
+};
+
+export function finalPlacement(espnId: number, year: number): number | null {
+  return FINAL_PLACEMENT_BY_YEAR[year]?.[espnId] ?? null;
+}
