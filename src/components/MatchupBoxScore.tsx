@@ -29,7 +29,7 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
   if (!p) return <div className="flex-1" />;
   return (
     <div
-      className={`min-w-0 flex-1 rounded-md px-2 py-1 ${
+      className={`min-w-0 flex-1 rounded-md px-3 py-2.5 ${
         align === "right" ? "text-right" : "text-left"
       }`}
       style={{ backgroundColor: perfBg(p.points, p.projected) }}
@@ -67,7 +67,7 @@ function Row({
   const a = away?.points ?? 0;
   const h = home?.points ?? 0;
   return (
-    <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2 last:border-0">
+    <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1 last:border-0">
       <PlayerName p={away} align="right" />
       <Pts p={away} win={a > h} />
       <div className="w-12 shrink-0 text-center text-xs font-semibold uppercase text-muted">
