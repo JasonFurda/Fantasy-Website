@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isPlayoffWeek } from "@/lib/league-config";
 
 export type Season = {
   year: number;
@@ -83,6 +84,7 @@ export function buildStandings(teams: Team[], matchups: Matchup[]): Standing[] {
 
   for (const m of matchups) {
     if (!isPlayed(m)) continue;
+    if (isPlayoffWeek(m.year, m.week)) continue; // regular-season records only
     const home = acc.get(m.home_team_id);
     const away = acc.get(m.away_team_id);
     if (!home || !away) continue;
@@ -275,8 +277,6 @@ export type FranchiseRoster = {
   topScorers: { name: string; points: number }[]; // top 3 across all years
 };
 
-const BENCH_SLOTS = new Set(["BE", "BN", "IR"]);
-
 /**
  * Roster + scoring for a franchise. player_slots link to matchups by
  * (matchup_id, team_side), so we map each of the team's matchups to the side it
@@ -311,7 +311,7 @@ export async function getFranchiseRoster(
 
   const { data: slotsRaw } = await supabase
     .from("player_slots")
-    .select("matchup_id, team_side, player_name, points, slot")
+    .select("matchup_id, team_side, player_name, points, slot, is_bench")
     .in("matchup_id", [...matchupInfo.keys()]);
   const slots =
     (slotsRaw as {
@@ -320,6 +320,7 @@ export async function getFranchiseRoster(
       player_name: string;
       points: number | null;
       slot: string;
+      is_bench: boolean | null;
     }[]) ?? [];
 
   // year -> player -> aggregate
@@ -332,6 +333,7 @@ export async function getFranchiseRoster(
   for (const s of slots) {
     const info = matchupInfo.get(s.matchup_id);
     if (!info || s.team_side !== info.side) continue; // not our team's slot
+    if (s.is_bench) continue; // benched points didn't score for the team
     const pts = Number(s.points ?? 0);
 
     let yearMap = byYearMap.get(info.year);
@@ -346,9 +348,7 @@ export async function getFranchiseRoster(
     }
     p.points += pts;
     p.weeks += 1;
-    if (!BENCH_SLOTS.has(s.slot)) {
-      p.slotCounts.set(s.slot, (p.slotCounts.get(s.slot) ?? 0) + 1);
-    }
+    p.slotCounts.set(s.slot, (p.slotCounts.get(s.slot) ?? 0) + 1);
 
     totalByPlayer.set(s.player_name, (totalByPlayer.get(s.player_name) ?? 0) + pts);
   }
@@ -374,11 +374,13 @@ export async function getFranchiseRoster(
             weeks: agg.weeks,
           };
         })
+        .filter((p) => p.points > 0)
         .sort((a, b) => b.points - a.points),
     }));
 
   const topScorers = [...totalByPlayer.entries()]
     .map(([name, points]) => ({ name, points }))
+    .filter((p) => p.points > 0)
     .sort((a, b) => b.points - a.points)
     .slice(0, 3);
 
