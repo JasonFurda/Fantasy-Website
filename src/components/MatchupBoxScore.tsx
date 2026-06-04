@@ -12,14 +12,36 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
   );
 }
 
+/**
+ * Color a player's points by performance vs projection. Green = overperform,
+ * red = underperform; deeper as the deviation grows (±50% projected = full).
+ */
+function perfColor(points: number, projected: number | null): string | undefined {
+  if (projected == null || projected <= 0) return undefined;
+  const ratio = (points - projected) / projected;
+  const t = Math.max(-1, Math.min(1, ratio / 0.5)); // -1..1
+  if (t === 0) return undefined;
+  const a = Math.abs(t);
+  const hue = t > 0 ? 145 : 0; // green vs red
+  return `hsl(${hue}, ${45 + a * 45}%, ${70 - a * 22}%)`;
+}
+
 function Pts({ p, win }: { p: SlotRow | null; win: boolean }) {
+  if (!p) return <div className="w-16 shrink-0" />;
+  const color = perfColor(p.points, p.projected);
   return (
-    <div
-      className={`w-14 shrink-0 text-center tabular-nums ${
-        win ? "font-bold" : "text-foreground/80"
-      }`}
-    >
-      {p ? p.points.toFixed(1) : "—"}
+    <div className="w-16 shrink-0 text-center">
+      <div
+        className={`tabular-nums ${win ? "font-bold" : ""}`}
+        style={{ color }}
+      >
+        {p.points.toFixed(1)}
+      </div>
+      {p.projected != null && (
+        <div className="text-[10px] tabular-nums text-muted">
+          proj {p.projected.toFixed(1)}
+        </div>
+      )}
     </div>
   );
 }

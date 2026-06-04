@@ -38,7 +38,9 @@ export default async function MatchupsPage({
 
   const weeks = [...new Set(matchups.map((m) => m.week))].sort((a, b) => a - b);
   const week =
-    sp.week && weeks.includes(Number(sp.week)) ? Number(sp.week) : weeks[0];
+    sp.week && weeks.includes(Number(sp.week))
+      ? Number(sp.week)
+      : (weeks[weeks.length - 1] ?? 1); // default to the latest week
 
   const weekMatchups = matchups
     .filter((m) => m.week === week)
@@ -117,7 +119,10 @@ export default async function MatchupsPage({
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: teamColor(away?.espn_id ?? 0) }}
                   />
-                  <span className={aWin ? "font-semibold" : ""}>
+                  <span
+                    className={aWin ? "font-semibold" : ""}
+                    style={{ color: teamColor(away?.espn_id ?? 0) }}
+                  >
                     {away?.name.trim() ?? "—"}
                   </span>
                 </span>
@@ -131,7 +136,10 @@ export default async function MatchupsPage({
                     className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: teamColor(home?.espn_id ?? 0) }}
                   />
-                  <span className={!aWin ? "font-semibold" : ""}>
+                  <span
+                    className={!aWin ? "font-semibold" : ""}
+                    style={{ color: teamColor(home?.espn_id ?? 0) }}
+                  >
                     {home?.name.trim() ?? "—"}
                   </span>
                 </span>
