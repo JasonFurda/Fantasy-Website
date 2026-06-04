@@ -195,6 +195,115 @@ export async function getAllTimeStandings(): Promise<Standing[]> {
     }));
 }
 
+export type SlotRow = {
+  slot: string;
+  playerName: string;
+  proTeam: string | null;
+  opponent: string | null;
+  points: number;
+  projected: number | null;
+  isBench: boolean;
+  side: "home" | "away";
+};
+
+export type MatchupDetail = {
+  id: number;
+  year: number;
+  week: number;
+  homeTeam: Team | null;
+  awayTeam: Team | null;
+  homeScore: number;
+  awayScore: number;
+  homeProjected: number | null;
+  awayProjected: number | null;
+  away: { starters: SlotRow[]; bench: SlotRow[] };
+  home: { starters: SlotRow[]; bench: SlotRow[] };
+};
+
+export async function getMatchupDetail(
+  matchupId: number,
+): Promise<MatchupDetail | null> {
+  const { data: mRaw } = await supabase
+    .from("matchups")
+    .select(
+      "id, year, week, home_team_id, away_team_id, home_score, away_score, home_projected, away_projected",
+    )
+    .eq("id", matchupId)
+    .maybeSingle();
+  if (!mRaw) return null;
+  const m = mRaw as {
+    id: number;
+    year: number;
+    week: number;
+    home_team_id: number;
+    away_team_id: number;
+    home_score: number | null;
+    away_score: number | null;
+    home_projected: number | null;
+    away_projected: number | null;
+  };
+
+  const { data: teamRows } = await supabase
+    .from("teams")
+    .select("id, espn_id, year, name, owner")
+    .in("id", [m.home_team_id, m.away_team_id]);
+  const teams = (teamRows as Team[]) ?? [];
+  const homeTeam = teams.find((t) => t.id === m.home_team_id) ?? null;
+  const awayTeam = teams.find((t) => t.id === m.away_team_id) ?? null;
+
+  const { data: slotRaw } = await supabase
+    .from("player_slots")
+    .select(
+      "team_side, slot, player_name, pro_team, opponent, points, projected, is_bench, sort_idx",
+    )
+    .eq("matchup_id", matchupId)
+    .order("sort_idx", { ascending: true });
+
+  const rows = (slotRaw ?? []) as {
+    team_side: "home" | "away";
+    slot: string;
+    player_name: string;
+    pro_team: string | null;
+    opponent: string | null;
+    points: number | null;
+    projected: number | null;
+    is_bench: boolean | null;
+  }[];
+
+  const make = (side: "home" | "away") => {
+    const all = rows
+      .filter((r) => r.team_side === side)
+      .map<SlotRow>((r) => ({
+        slot: r.slot,
+        playerName: r.player_name,
+        proTeam: r.pro_team,
+        opponent: r.opponent,
+        points: Number(r.points ?? 0),
+        projected: r.projected == null ? null : Number(r.projected),
+        isBench: !!r.is_bench,
+        side,
+      }));
+    return {
+      starters: all.filter((r) => !r.isBench),
+      bench: all.filter((r) => r.isBench),
+    };
+  };
+
+  return {
+    id: m.id,
+    year: m.year,
+    week: m.week,
+    homeTeam,
+    awayTeam,
+    homeScore: Number(m.home_score ?? 0),
+    awayScore: Number(m.away_score ?? 0),
+    homeProjected: m.home_projected == null ? null : Number(m.home_projected),
+    awayProjected: m.away_projected == null ? null : Number(m.away_projected),
+    away: make("away"),
+    home: make("home"),
+  };
+}
+
 export type FranchiseSeason = {
   year: number;
   name: string;
