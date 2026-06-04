@@ -1,8 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getFranchise } from "@/lib/queries";
+import { getFranchise, getFranchiseRoster } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
+import RosterByYear from "@/components/RosterByYear";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,10 @@ export default async function TeamPage({
   const espnId = Number(espnIdParam);
   if (!Number.isFinite(espnId)) notFound();
 
-  const franchise = await getFranchise(espnId);
+  const [franchise, roster] = await Promise.all([
+    getFranchise(espnId),
+    getFranchiseRoster(espnId),
+  ]);
   if (!franchise) notFound();
 
   const color = teamColor(espnId);
@@ -37,26 +41,29 @@ export default async function TeamPage({
   const titles = franchise.seasons.filter((s) => s.isChampionByRecord).length;
   const ranks = franchise.seasons.map((s) => s.rank).filter((r) => r > 0);
   const bestFinish = ranks.length ? Math.min(...ranks) : 0;
-  const avgPF = franchise.seasons.length
-    ? totalPF / franchise.seasons.length
+  const avgPlacement = ranks.length
+    ? ranks.reduce((a, r) => a + r, 0) / ranks.length
     : 0;
 
   const stats = [
     {
-      label: "All-time record",
+      label: "Overall record",
       value: `${wins}-${losses}${ties ? `-${ties}` : ""}`,
     },
     { label: "Win %", value: winPct.toFixed(3).replace(/^0/, "") },
-    { label: "Championships", value: titles > 0 ? `🏆 ${titles}` : "0" },
+    {
+      label: "Avg placement",
+      value: avgPlacement ? avgPlacement.toFixed(1) : "—",
+    },
     { label: "Best finish", value: bestFinish ? ordinal(bestFinish) : "—" },
+    { label: "Championships", value: titles > 0 ? `🏆 ${titles}` : "0" },
     { label: "Total points", value: totalPF.toFixed(0) },
-    { label: "Avg pts / season", value: avgPF.toFixed(1) },
   ];
 
   return (
     <main style={{ ["--team" as string]: color }}>
       {/* Hero */}
-      <header className="relative h-[42vh] min-h-[300px] w-full overflow-hidden">
+      <header className="relative h-[58vh] min-h-[360px] w-full overflow-hidden">
         {art ? (
           <Image src={art} alt="" fill priority sizes="100vw" className="object-cover" />
         ) : (
@@ -67,15 +74,16 @@ export default async function TeamPage({
             }}
           />
         )}
+        {/* gradual fade into the page background */}
         <div
           className="absolute inset-0"
           style={{
-            background: `linear-gradient(to top, var(--background) 8%, transparent 60%), linear-gradient(to right, ${color}40, transparent 70%)`,
+            background: `linear-gradient(to top, var(--background) 0%, color-mix(in srgb, var(--background) 80%, transparent) 22%, transparent 78%), linear-gradient(to right, ${color}33, transparent 65%)`,
           }}
         />
 
         <div className="absolute inset-x-0 bottom-0">
-          <div className="mx-auto max-w-5xl px-6 pb-6">
+          <div className="mx-auto max-w-5xl px-6 pb-8">
             <Link
               href="/teams"
               className="text-sm text-white/80 drop-shadow transition-colors hover:text-white"
@@ -100,9 +108,10 @@ export default async function TeamPage({
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        {/* Career stats */}
+      <div className="mx-auto max-w-5xl space-y-12 px-6 py-10">
+        {/* Section 1: Career totals */}
         <section>
+          <h2 className="mb-4 text-xl font-bold tracking-tight">Career totals</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {stats.map((s) => (
               <div
@@ -118,10 +127,45 @@ export default async function TeamPage({
               </div>
             ))}
           </div>
+
+          {/* Top 3 scorers */}
+          <h3 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-wide text-muted">
+            Top scorers (all-time)
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {roster.topScorers.map((p, i) => (
+              <div
+                key={p.name}
+                className="flex items-center gap-3 rounded-xl border bg-surface p-4"
+                style={{ borderColor: i === 0 ? color : "var(--border)" }}
+              >
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-[#0b0f14]"
+                  style={{ backgroundColor: color, opacity: 1 - i * 0.25 }}
+                >
+                  {i + 1}
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{p.name}</div>
+                  <div className="text-sm tabular-nums text-muted">
+                    {p.points.toFixed(1)} pts
+                  </div>
+                </div>
+              </div>
+            ))}
+            {roster.topScorers.length === 0 && (
+              <p className="text-sm text-muted">No player data available.</p>
+            )}
+          </div>
+        </section>
+
+        {/* Section 2: Roster (toggle by year) */}
+        <section>
+          <RosterByYear byYear={roster.byYear} color={color} />
         </section>
 
         {/* Season history */}
-        <section className="mt-10">
+        <section>
           <h2 className="mb-4 text-xl font-bold tracking-tight">
             Season history
           </h2>

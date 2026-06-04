@@ -262,3 +262,125 @@ export async function getFranchise(espnId: number): Promise<Franchise | null> {
     seasons,
   };
 }
+
+export type RosterPlayer = {
+  name: string;
+  position: string;
+  points: number;
+  weeks: number;
+};
+
+export type FranchiseRoster = {
+  byYear: { year: number; players: RosterPlayer[] }[]; // newest first
+  topScorers: { name: string; points: number }[]; // top 3 across all years
+};
+
+const BENCH_SLOTS = new Set(["BE", "BN", "IR"]);
+
+/**
+ * Roster + scoring for a franchise. player_slots link to matchups by
+ * (matchup_id, team_side), so we map each of the team's matchups to the side it
+ * played, keep only those slots, and aggregate points per player.
+ */
+export async function getFranchiseRoster(
+  espnId: number,
+): Promise<FranchiseRoster> {
+  const { data: teamRowsRaw } = await supabase
+    .from("teams")
+    .select("id, year")
+    .eq("espn_id", espnId);
+  const teamRows = (teamRowsRaw as { id: number; year: number }[]) ?? [];
+  if (teamRows.length === 0) return { byYear: [], topScorers: [] };
+
+  const teamIds = teamRows.map((t) => t.id);
+  const idList = teamIds.join(",");
+
+  const { data: msRaw } = await supabase
+    .from("matchups")
+    .select("id, year, home_team_id, away_team_id")
+    .or(`home_team_id.in.(${idList}),away_team_id.in.(${idList})`);
+  const matchups = (msRaw as Matchup[]) ?? [];
+  if (matchups.length === 0) return { byYear: [], topScorers: [] };
+
+  const idSet = new Set(teamIds);
+  const matchupInfo = new Map<number, { year: number; side: "home" | "away" }>();
+  for (const m of matchups) {
+    const side = idSet.has(m.home_team_id) ? "home" : "away";
+    matchupInfo.set(m.id, { year: m.year, side });
+  }
+
+  const { data: slotsRaw } = await supabase
+    .from("player_slots")
+    .select("matchup_id, team_side, player_name, points, slot")
+    .in("matchup_id", [...matchupInfo.keys()]);
+  const slots =
+    (slotsRaw as {
+      matchup_id: number;
+      team_side: "home" | "away";
+      player_name: string;
+      points: number | null;
+      slot: string;
+    }[]) ?? [];
+
+  // year -> player -> aggregate
+  const byYearMap = new Map<
+    number,
+    Map<string, { points: number; weeks: number; slotCounts: Map<string, number> }>
+  >();
+  const totalByPlayer = new Map<string, number>();
+
+  for (const s of slots) {
+    const info = matchupInfo.get(s.matchup_id);
+    if (!info || s.team_side !== info.side) continue; // not our team's slot
+    const pts = Number(s.points ?? 0);
+
+    let yearMap = byYearMap.get(info.year);
+    if (!yearMap) {
+      yearMap = new Map();
+      byYearMap.set(info.year, yearMap);
+    }
+    let p = yearMap.get(s.player_name);
+    if (!p) {
+      p = { points: 0, weeks: 0, slotCounts: new Map() };
+      yearMap.set(s.player_name, p);
+    }
+    p.points += pts;
+    p.weeks += 1;
+    if (!BENCH_SLOTS.has(s.slot)) {
+      p.slotCounts.set(s.slot, (p.slotCounts.get(s.slot) ?? 0) + 1);
+    }
+
+    totalByPlayer.set(s.player_name, (totalByPlayer.get(s.player_name) ?? 0) + pts);
+  }
+
+  const byYear = [...byYearMap.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, players]) => ({
+      year,
+      players: [...players.entries()]
+        .map(([name, agg]) => {
+          let position = "BE";
+          let best = 0;
+          for (const [slot, count] of agg.slotCounts) {
+            if (count > best) {
+              best = count;
+              position = slot;
+            }
+          }
+          return {
+            name,
+            position,
+            points: agg.points,
+            weeks: agg.weeks,
+          };
+        })
+        .sort((a, b) => b.points - a.points),
+    }));
+
+  const topScorers = [...totalByPlayer.entries()]
+    .map(([name, points]) => ({ name, points }))
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 3);
+
+  return { byYear, topScorers };
+}
