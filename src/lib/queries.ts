@@ -1045,19 +1045,24 @@ export async function getFranchiseRoster(
   // names on the roster in each year's final week (any slot, incl. bench)
   const finalRoster = new Map<number, Set<string>>();
 
-  const { data: slotsRaw } = await supabase
-    .from("player_slots")
-    .select("matchup_id, team_side, player_name, points, slot, is_bench")
-    .in("matchup_id", [...matchupInfo.keys()]);
-  const slots =
-    (slotsRaw as {
-      matchup_id: number;
-      team_side: "home" | "away";
-      player_name: string;
-      points: number | null;
-      slot: string;
-      is_bench: boolean | null;
-    }[]) ?? [];
+  type SlotQ = {
+    matchup_id: number;
+    team_side: "home" | "away";
+    player_name: string;
+    points: number | null;
+    slot: string;
+    is_bench: boolean | null;
+  };
+  // Chunk by matchup id to stay under the 1000-row response cap.
+  const slots: SlotQ[] = [];
+  const mIds = [...matchupInfo.keys()];
+  for (let i = 0; i < mIds.length; i += 20) {
+    const { data } = await supabase
+      .from("player_slots")
+      .select("matchup_id, team_side, player_name, points, slot, is_bench")
+      .in("matchup_id", mIds.slice(i, i + 20));
+    if (data) slots.push(...(data as SlotQ[]));
+  }
 
   // year -> player -> aggregate
   const byYearMap = new Map<
