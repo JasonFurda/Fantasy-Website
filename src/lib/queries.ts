@@ -1050,7 +1050,7 @@ export async function getFranchiseRoster(
     team_side: "home" | "away";
     player_name: string;
     points: number | null;
-    slot: string;
+    position: string | null;
     is_bench: boolean | null;
   };
   // Chunk by matchup id to stay under the 1000-row response cap.
@@ -1059,7 +1059,7 @@ export async function getFranchiseRoster(
   for (let i = 0; i < mIds.length; i += 20) {
     const { data } = await supabase
       .from("player_slots")
-      .select("matchup_id, team_side, player_name, points, slot, is_bench")
+      .select("matchup_id, team_side, player_name, points, position, is_bench")
       .in("matchup_id", mIds.slice(i, i + 20));
     if (data) slots.push(...(data as SlotQ[]));
   }
@@ -1067,7 +1067,7 @@ export async function getFranchiseRoster(
   // year -> player -> aggregate
   const byYearMap = new Map<
     number,
-    Map<string, { points: number; weeks: number; slotCounts: Map<string, number> }>
+    Map<string, { points: number; weeks: number; posCounts: Map<string, number> }>
   >();
   const totalByPlayer = new Map<string, number>();
 
@@ -1095,12 +1095,12 @@ export async function getFranchiseRoster(
     }
     let p = yearMap.get(s.player_name);
     if (!p) {
-      p = { points: 0, weeks: 0, slotCounts: new Map() };
+      p = { points: 0, weeks: 0, posCounts: new Map() };
       yearMap.set(s.player_name, p);
     }
     p.points += pts;
     p.weeks += 1;
-    p.slotCounts.set(s.slot, (p.slotCounts.get(s.slot) ?? 0) + 1);
+    if (s.position) p.posCounts.set(s.position, (p.posCounts.get(s.position) ?? 0) + 1);
 
     totalByPlayer.set(s.player_name, (totalByPlayer.get(s.player_name) ?? 0) + pts);
   }
@@ -1111,12 +1111,12 @@ export async function getFranchiseRoster(
       year,
       players: [...players.entries()]
         .map(([name, agg]) => {
-          let position = "BE";
+          let position = "";
           let best = 0;
-          for (const [slot, count] of agg.slotCounts) {
+          for (const [pos, count] of agg.posCounts) {
             if (count > best) {
               best = count;
-              position = slot;
+              position = pos;
             }
           }
           return {
