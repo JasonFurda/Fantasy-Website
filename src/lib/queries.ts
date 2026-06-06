@@ -580,6 +580,7 @@ export type DraftValueRow = {
   name: string;
   position: string;
   fantasyTeam: { name: string; espnId: number } | null;
+  originalDrafter: { name: string; espnId: number } | null;
   nflTeam: string;
   totalPts: number;
   round: number;
@@ -590,7 +591,11 @@ export type DraftValueRow = {
 
 /** Draft Pick Value for TE/RB/WR: value = (total points)^2 * sqrt(draft position). */
 export async function getDraftValue(year: number): Promise<DraftValueRow[]> {
-  const teamCount = (await getTeams(year)).length || 8;
+  const yearTeams = await getTeams(year);
+  const teamCount = yearTeams.length || 8;
+  const nameByEspn = new Map<number, string>(
+    yearTeams.map((t) => [t.espn_id, t.name.trim()]),
+  );
 
   const positions = ["WR", "RB", "TE"];
   const compByPos = await Promise.all(
@@ -608,12 +613,13 @@ export async function getDraftValue(year: number): Promise<DraftValueRow[]> {
 
   const { data: draftRaw } = await supabase
     .from("draft_picks")
-    .select("player_name, round, pick")
+    .select("player_name, round, pick, drafted_by")
     .eq("year", year);
   const draft = (draftRaw ?? []) as {
     player_name: string;
     round: number;
     pick: number;
+    drafted_by: number | null;
   }[];
 
   const out: DraftValueRow[] = [];
@@ -621,11 +627,16 @@ export async function getDraftValue(year: number): Promise<DraftValueRow[]> {
     const p = players.get(d.player_name);
     if (!p) continue; // not a TE/RB/WR who appeared
     const overall = (d.round - 1) * teamCount + d.pick;
-    const value = Math.pow(p.row.totalPts, 2) * Math.sqrt(overall);
+    const value = (Math.pow(p.row.totalPts, 2) * Math.sqrt(overall)) / 1000;
+    const drafter =
+      d.drafted_by != null && nameByEspn.has(d.drafted_by)
+        ? { name: nameByEspn.get(d.drafted_by)!, espnId: d.drafted_by }
+        : null;
     out.push({
       name: d.player_name,
       position: p.pos,
       fantasyTeam: p.row.fantasyTeam,
+      originalDrafter: drafter,
       nflTeam: p.row.nflTeam,
       totalPts: p.row.totalPts,
       round: d.round,

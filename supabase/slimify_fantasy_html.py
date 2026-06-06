@@ -129,10 +129,13 @@ def build_year_json(league, all_weeks_data, year):
             name = getattr(pick, "playerName", None)
             if not name:
                 continue
+            team = getattr(pick, "team", None)
+            drafted_by = getattr(team, "team_id", None) if team else None
             draft.append({
                 "playerName": name,
                 "round": int(getattr(pick, "round_num", 0) or 0),
                 "pick": int(getattr(pick, "round_pick", 0) or 0),
+                "draftedBy": int(drafted_by) if drafted_by is not None else None,
             })
     except Exception as e:
         print(f"  Warning: draft error {e}")

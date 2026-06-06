@@ -304,6 +304,7 @@ export default async function PlayerComparisonsPage({
                   <th className="px-3 py-3 font-medium">Player</th>
                   <th className="px-3 py-3 font-medium">Pos</th>
                   <th className="px-3 py-3 font-medium">Fantasy</th>
+                  <th className="px-3 py-3 font-medium">Original Drafter</th>
                   <th className="px-3 py-3 text-right font-medium">Draft</th>
                   <th className="px-3 py-3 text-right font-medium">Rd/Pk</th>
                   <th className="px-3 py-3 text-right font-medium">Pts</th>
@@ -339,6 +340,26 @@ export default async function PlayerComparisonsPage({
                         <span className="text-muted">—</span>
                       )}
                     </td>
+                    <td className="px-3 py-2">
+                      {r.originalDrafter ? (
+                        <Link
+                          href={`/teams/${r.originalDrafter.espnId}`}
+                          className="flex items-center gap-1.5 whitespace-nowrap hover:underline"
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: teamColor(
+                                r.originalDrafter.espnId,
+                              ),
+                            }}
+                          />
+                          {r.originalDrafter.name}
+                        </Link>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {r.overall}
                     </td>
@@ -349,7 +370,7 @@ export default async function PlayerComparisonsPage({
                       {r.totalPts.toFixed(1)}
                     </td>
                     <td className="px-3 py-2 text-right font-bold tabular-nums">
-                      {Math.round(r.value).toLocaleString()}
+                      {r.value.toFixed(1)}
                     </td>
                   </tr>
                 ))}

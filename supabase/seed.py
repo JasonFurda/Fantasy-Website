@@ -177,6 +177,7 @@ def sync_year_payload(client: Client, payload: dict[str, Any]) -> None:
                 "player_name": name,
                 "round": int(d.get("round", 0) or 0),
                 "pick": int(d.get("pick", 0) or 0),
+                "drafted_by": d.get("draftedBy"),
             }
         )
     if rows:
