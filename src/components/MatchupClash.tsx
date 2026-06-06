@@ -27,13 +27,13 @@ export default function MatchupClash({
     side: "left" | "right";
   }) => (
     <div
-      className={`absolute inset-y-0 w-3/5 ${side === "left" ? "left-0" : "right-0"}`}
+      className={`absolute inset-y-0 w-1/2 ${side === "left" ? "left-0" : "right-0"}`}
       style={{
         animation: `${side === "left" ? "clashInLeft" : "clashInRight"} 0.7s cubic-bezier(0.2,0.8,0.2,1) both`,
       }}
     >
       {art ? (
-        <Image src={art} alt="" fill sizes="60vw" className="object-cover" priority />
+        <Image src={art} alt="" fill sizes="50vw" className="object-cover" priority />
       ) : (
         <div
           className="h-full w-full"
@@ -42,11 +42,11 @@ export default function MatchupClash({
           }}
         />
       )}
-      {/* blend the inner edge toward the page background */}
+      {/* soft seam where the two halves meet */}
       <div
-        className="absolute inset-0"
+        className={`absolute inset-y-0 w-24 ${side === "left" ? "right-0" : "left-0"}`}
         style={{
-          background: `linear-gradient(to ${side === "left" ? "right" : "left"}, transparent 30%, var(--background))`,
+          background: `linear-gradient(to ${side === "left" ? "right" : "left"}, transparent, var(--background))`,
         }}
       />
     </div>

@@ -19,7 +19,7 @@ export default function TeamArt({
 
   return (
     <div
-      className={`relative aspect-square w-full overflow-hidden rounded-2xl border ${className}`}
+      className={`relative aspect-video w-full overflow-hidden rounded-2xl border ${className}`}
       style={{ borderColor: `${color}66` }}
     >
       {src ? (
