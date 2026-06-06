@@ -35,11 +35,15 @@ export default function StandingsTable({
             return (
               <tr
                 key={s.team.id}
-                className="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-2"
+                className={`border-b border-border/60 last:border-0 transition-colors ${
+                  MEDALS[s.rank]
+                    ? "font-medium [&>td]:text-[#0b0f14]"
+                    : "hover:bg-surface-2"
+                }`}
+                style={medalStyle(s.rank)}
               >
                 <td
                   className={`px-4 py-3 tabular-nums ${MEDALS[s.rank] ? "font-bold" : "text-muted"}`}
-                  style={medalStyle(s.rank)}
                 >
                   {s.rank}
                 </td>

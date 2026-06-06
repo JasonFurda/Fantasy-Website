@@ -68,15 +68,19 @@ export default async function PowerRankingsPage({
             {rows.map((r) => (
               <tr
                 key={r.team.id}
-                className="border-b border-border/60 last:border-0 hover:bg-surface-2"
+                className={`border-b border-border/60 last:border-0 ${
+                  MEDALS[r.rank]
+                    ? "font-medium [&>td]:text-[#0b0f14]"
+                    : "hover:bg-surface-2"
+                }`}
+                style={
+                  MEDALS[r.rank]
+                    ? { backgroundColor: MEDALS[r.rank] }
+                    : undefined
+                }
               >
                 <td
                   className={`px-4 py-3 tabular-nums ${MEDALS[r.rank] ? "font-bold" : "text-muted"}`}
-                  style={
-                    MEDALS[r.rank]
-                      ? { backgroundColor: MEDALS[r.rank], color: "#0b0f14" }
-                      : undefined
-                  }
                 >
                   {r.rank}
                 </td>
