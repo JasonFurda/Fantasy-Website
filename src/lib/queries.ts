@@ -777,6 +777,55 @@ export async function getMatchupDetail(
   };
 }
 
+export type PowerGame = { week: number; score: number; weight: number };
+export type PowerRow = {
+  rank: number;
+  team: Team;
+  power: number;
+  games: PowerGame[]; // most recent first (up to 5)
+};
+
+/**
+ * Power rankings: sum of a team's 3 most recent game scores, plus half of the
+ * 4th and 5th most recent. Uses all played games (regular season + playoffs).
+ */
+export async function getPowerRankings(year: number): Promise<PowerRow[]> {
+  const [teams, matchups] = await Promise.all([getTeams(year), getMatchups(year)]);
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+
+  const byTeam = new Map<number, { week: number; score: number }[]>();
+  const push = (tid: number, week: number, score: number) => {
+    const arr = byTeam.get(tid) ?? [];
+    arr.push({ week, score });
+    byTeam.set(tid, arr);
+  };
+  for (const m of matchups) {
+    const hs = m.home_score ?? 0;
+    const as = m.away_score ?? 0;
+    if (hs === 0 && as === 0) continue; // unplayed
+    push(m.home_team_id, m.week, hs);
+    push(m.away_team_id, m.week, as);
+  }
+
+  const WEIGHTS = [1, 1, 1, 0.5, 0.5];
+  const rows = [...byTeam.entries()]
+    .map(([tid, list]) => {
+      const recent = [...list].sort((a, b) => b.week - a.week).slice(0, 5);
+      const games: PowerGame[] = recent.map((g, i) => ({
+        week: g.week,
+        score: g.score,
+        weight: WEIGHTS[i] ?? 0,
+      }));
+      const power = games.reduce((sum, g) => sum + g.score * g.weight, 0);
+      return { team: teamById.get(tid)!, power, games };
+    })
+    .filter((r) => r.team)
+    .sort((a, b) => b.power - a.power)
+    .map((r, i) => ({ rank: i + 1, ...r }));
+
+  return rows;
+}
+
 export type FranchiseSeason = {
   year: number;
   name: string;
