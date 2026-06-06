@@ -1,5 +1,15 @@
 import { type Standing, winPct } from "@/lib/queries";
 
+const MEDALS: Record<number, string> = {
+  1: "#f5c518", // gold
+  2: "#c4ccd4", // silver
+  3: "#cd7f32", // bronze
+};
+function medalStyle(rank: number) {
+  const c = MEDALS[rank];
+  return c ? { backgroundColor: c, color: "#0b0f14" } : undefined;
+}
+
 export default function StandingsTable({
   standings,
 }: {
@@ -27,7 +37,12 @@ export default function StandingsTable({
                 key={s.team.id}
                 className="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-2"
               >
-                <td className="px-4 py-3 text-muted tabular-nums">{s.rank}</td>
+                <td
+                  className={`px-4 py-3 tabular-nums ${MEDALS[s.rank] ? "font-bold" : "text-muted"}`}
+                  style={medalStyle(s.rank)}
+                >
+                  {s.rank}
+                </td>
                 <td className="px-4 py-3">
                   <div className="font-medium">{s.team.name}</div>
                   <div className="text-xs text-muted">{s.team.owner}</div>

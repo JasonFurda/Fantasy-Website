@@ -4,6 +4,12 @@ import { teamColor } from "@/lib/teams-config";
 
 export const dynamic = "force-dynamic";
 
+const MEDALS: Record<number, string> = {
+  1: "#f5c518", // gold
+  2: "#c4ccd4", // silver
+  3: "#cd7f32", // bronze
+};
+
 export default async function PowerRankingsPage({
   searchParams,
 }: {
@@ -64,7 +70,16 @@ export default async function PowerRankingsPage({
                 key={r.team.id}
                 className="border-b border-border/60 last:border-0 hover:bg-surface-2"
               >
-                <td className="px-4 py-3 text-muted tabular-nums">{r.rank}</td>
+                <td
+                  className={`px-4 py-3 tabular-nums ${MEDALS[r.rank] ? "font-bold" : "text-muted"}`}
+                  style={
+                    MEDALS[r.rank]
+                      ? { backgroundColor: MEDALS[r.rank], color: "#0b0f14" }
+                      : undefined
+                  }
+                >
+                  {r.rank}
+                </td>
                 <td className="px-4 py-3">
                   <Link
                     href={`/teams/${r.team.espn_id}`}
