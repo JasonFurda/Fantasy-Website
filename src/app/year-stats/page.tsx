@@ -42,8 +42,8 @@ function GameTable({
   if (rows.length === 0)
     return <p className="text-sm text-muted">Nothing here yet.</p>;
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <table className="w-full min-w-[40rem] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
             <th className="px-4 py-3 font-medium">#</th>
@@ -173,8 +173,8 @@ export default async function YearStatsPage({
             scored and an easy schedule (low points against) means a higher
             score. Regular season only.
           </p>
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+            <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-4 py-3 font-medium">#</th>
@@ -242,8 +242,8 @@ export default async function YearStatsPage({
             set their lineups. Lower means more points left on the bench. Worst
             first.
           </p>
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+            <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-4 py-3 font-medium">#</th>

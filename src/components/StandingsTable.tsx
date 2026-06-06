@@ -12,8 +12,8 @@ export default function StandingsTable({
   standings: Standing[];
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-surface">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <table className="w-full min-w-[34rem] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
             <th className="px-4 py-3 font-medium">#</th>

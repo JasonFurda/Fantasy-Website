@@ -171,8 +171,8 @@ export default async function TeamPage({
           <h2 className="mb-4 text-xl font-bold tracking-tight">
             Season history
           </h2>
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+            <table className="w-full min-w-[36rem] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-4 py-3 font-medium">Year</th>
