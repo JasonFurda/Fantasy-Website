@@ -87,10 +87,11 @@ export default async function TeamPage({
           <div className="mx-auto max-w-5xl px-6 pb-8">
             <Link
               href="/teams"
-              className="text-sm text-white/80 drop-shadow transition-colors hover:text-white"
+              className="inline-block text-sm text-white/80 drop-shadow transition-colors hover:text-white"
             >
               ← All teams
             </Link>
+            <br />
             <div
               className="mt-3 inline-block rounded-full px-3 py-1 text-sm font-semibold"
               style={{ backgroundColor: color, color: "#0b0f14" }}
