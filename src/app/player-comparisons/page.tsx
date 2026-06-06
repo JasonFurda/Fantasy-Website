@@ -88,7 +88,7 @@ const EXTRA: Record<string, Col[]> = {
 export default async function PlayerComparisonsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; pos?: string }>;
+  searchParams: Promise<{ year?: string; pos?: string; sel?: string }>;
 }) {
   const seasons = await getSeasons();
   if (seasons.length === 0) {
@@ -105,6 +105,7 @@ export default async function PlayerComparisonsPage({
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
   const isDraft = sp.pos === "draft";
   const posDef = POSITIONS.find((p) => p.key === sp.pos) ?? POSITIONS[0];
+  const sel = sp.sel ?? null;
 
   const rows = isDraft ? [] : await getPlayerComparison(year, posDef.pos);
   const draftRows = isDraft ? await getDraftValue(year) : [];
@@ -199,7 +200,17 @@ export default async function PlayerComparisonsPage({
               >
                 <td className="px-3 py-2 text-muted tabular-nums">{i + 1}</td>
                 <td className="px-3 py-2 font-medium whitespace-nowrap">
-                  {r.name}
+                  {r.nflTeam ? (
+                    <Link
+                      href={`/player-comparisons?year=${year}&pos=${posDef.key}&sel=${encodeURIComponent(r.nflTeam)}`}
+                      scroll={false}
+                      className="hover:text-accent hover:underline"
+                    >
+                      {r.name}
+                    </Link>
+                  ) : (
+                    r.name
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   {r.fantasyTeam ? (
@@ -235,13 +246,22 @@ export default async function PlayerComparisonsPage({
         <p className="mt-4 text-sm text-muted">No players found.</p>
       )}
 
-      {distribution.length > 0 && (
+      {rows.length > 0 && (
         <section className="mt-10">
-          <h2 className="mb-4 text-lg font-bold tracking-tight">
-            By NFL team — {hasTargets ? "target & points share" : "points share"}
+          <h2 className="mb-2 text-lg font-bold tracking-tight">
+            {hasTargets ? "Target & points share" : "Points share"}
+            {sel ? ` — ${sel}` : ""}
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {distribution.map((d) => (
+          {!sel && (
+            <p className="mb-4 text-sm text-muted">
+              Click a player&apos;s name above to see their NFL team&apos;s
+              share.
+            </p>
+          )}
+          <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {distribution
+              .filter((d) => d.nfl === sel)
+              .map((d) => (
               <div
                 key={d.nfl}
                 className="rounded-xl border border-border bg-surface p-3"
@@ -306,7 +326,7 @@ export default async function PlayerComparisonsPage({
                   <th className="px-3 py-3 font-medium">Fantasy</th>
                   <th className="px-3 py-3 font-medium">Original Drafter</th>
                   <th className="px-3 py-3 text-right font-medium">Draft</th>
-                  <th className="px-3 py-3 text-right font-medium">Rd/Pk</th>
+                  <th className="px-3 py-3 text-right font-medium">Round</th>
                   <th className="px-3 py-3 text-right font-medium">Pts</th>
                   <th className="px-3 py-3 text-right font-medium">Value</th>
                 </tr>
@@ -364,7 +384,7 @@ export default async function PlayerComparisonsPage({
                       {r.overall}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-muted">
-                      {r.round}.{r.pick}
+                      {r.round}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {r.totalPts.toFixed(1)}
