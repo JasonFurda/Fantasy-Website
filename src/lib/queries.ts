@@ -198,6 +198,9 @@ export async function getAllTimeStandings(): Promise<Standing[]> {
 export type FraudRow = {
   team: Team;
   record: string;
+  wins: number;
+  losses: number;
+  ties: number;
   winPct: number; // 0-100
   pointsFor: number;
   pointsAgainst: number;
@@ -208,6 +211,7 @@ export type FraudRow = {
 
 export type GameRow = {
   team: Team;
+  year: number;
   score: number;
   week: number;
   opponent: Team | null;
@@ -224,6 +228,7 @@ export type MismanageRow = {
   actualPoints: number;
   pointsLeft: number;
   avgPerWeek: number;
+  weeks: number;
 };
 
 export type YearStats = {
@@ -285,6 +290,9 @@ export async function getYearStats(year: number): Promise<YearStats> {
       return {
         team: s.team,
         record: `${s.wins}-${s.losses}${s.ties ? `-${s.ties}` : ""}`,
+        wins: s.wins,
+        losses: s.losses,
+        ties: s.ties,
         winPct,
         pointsFor: s.pointsFor,
         pointsAgainst: s.pointsAgainst,
@@ -305,6 +313,7 @@ export async function getYearStats(year: number): Promise<YearStats> {
     const away = teamById.get(m.away_team_id) ?? null;
     games.push({
       team: home!,
+      year,
       score: hs,
       week: m.week,
       opponent: away,
@@ -314,6 +323,7 @@ export async function getYearStats(year: number): Promise<YearStats> {
     });
     games.push({
       team: away!,
+      year,
       score: as,
       week: m.week,
       opponent: home,
@@ -415,9 +425,126 @@ export async function getYearStats(year: number): Promise<YearStats> {
       actualPoints: actual,
       pointsLeft,
       avgPerWeek: weeks.size ? pointsLeft / weeks.size : 0,
+      weeks: weeks.size,
     });
   }
   mismanage.sort((a, b) => a.pctOptimal - b.pctOptimal); // worst first
+
+  return { fraud, club200, subClub, mismanage };
+}
+
+/** All-time aggregation of the year-stat leaderboards across every season. */
+export async function getAllTimeStats(): Promise<YearStats> {
+  const seasons = await getSeasons(); // newest first
+  const per = await Promise.all(seasons.map((s) => getYearStats(s.year)));
+
+  // Clubs: just combine every season's single-game feats.
+  const club200 = per
+    .flatMap((p) => p.club200)
+    .sort((a, b) => b.score - a.score);
+  const subClub = per
+    .flatMap((p) => p.subClub)
+    .sort((a, b) => a.score - b.score);
+
+  // Fraud: aggregate W-L and PF/PA by franchise, then recompute percentiles.
+  type FAgg = {
+    team: Team;
+    wins: number;
+    losses: number;
+    ties: number;
+    pf: number;
+    pa: number;
+  };
+  const fMap = new Map<number, FAgg>();
+  for (const p of per) {
+    for (const f of p.fraud) {
+      const id = f.team.espn_id;
+      let a = fMap.get(id);
+      if (!a) {
+        a = { team: f.team, wins: 0, losses: 0, ties: 0, pf: 0, pa: 0 };
+        fMap.set(id, a); // first seen = latest season (per is newest first)
+      }
+      a.wins += f.wins;
+      a.losses += f.losses;
+      a.ties += f.ties;
+      a.pf += f.pointsFor;
+      a.pa += f.pointsAgainst;
+    }
+  }
+  const fAggs = [...fMap.values()];
+  const pfs = fAggs.map((a) => a.pf);
+  const pas = fAggs.map((a) => a.pa);
+  const minPF = Math.min(...pfs);
+  const maxPF = Math.max(...pfs);
+  const minPA = Math.min(...pas);
+  const maxPA = Math.max(...pas);
+  const pct = (v: number, lo: number, hi: number) =>
+    hi > lo ? ((v - lo) / (hi - lo)) * 100 : 50;
+  const fraud: FraudRow[] = fAggs
+    .map((a) => {
+      const games = a.wins + a.losses + a.ties;
+      const winPct = games ? (a.wins / games) * 100 : 0;
+      const pfPercentile = pct(a.pf, minPF, maxPF);
+      const paPercentile = pct(a.pa, minPA, maxPA);
+      return {
+        team: a.team,
+        record: `${a.wins}-${a.losses}${a.ties ? `-${a.ties}` : ""}`,
+        wins: a.wins,
+        losses: a.losses,
+        ties: a.ties,
+        winPct,
+        pointsFor: a.pf,
+        pointsAgainst: a.pa,
+        pfPercentile,
+        paPercentile,
+        fraudScore: winPct - pfPercentile * 0.75 - paPercentile * 0.5,
+      };
+    })
+    .sort((a, b) => b.fraudScore - a.fraudScore);
+
+  // Mismanagement: aggregate optimal/actual/weeks by franchise.
+  type MAgg = {
+    team: Team;
+    actual: number;
+    max: number;
+    weeks: number;
+    record: string;
+  };
+  const mMap = new Map<number, MAgg>();
+  for (const p of per) {
+    for (const m of p.mismanage) {
+      const id = m.team.espn_id;
+      let a = mMap.get(id);
+      if (!a) {
+        a = { team: m.team, actual: 0, max: 0, weeks: 0, record: "" };
+        mMap.set(id, a);
+      }
+      a.actual += m.actualPoints;
+      a.max += m.maxPoints;
+      a.weeks += m.weeks;
+    }
+  }
+  const recordByEspn = new Map(
+    fAggs.map((a) => [
+      a.team.espn_id,
+      `${a.wins}-${a.losses}${a.ties ? `-${a.ties}` : ""}`,
+    ]),
+  );
+  const mismanage: MismanageRow[] = [...mMap.values()]
+    .map((a) => {
+      const pointsLeft = a.max - a.actual;
+      return {
+        team: a.team,
+        record: recordByEspn.get(a.team.espn_id) ?? "",
+        pctOptimal: a.max > 0 ? (a.actual / a.max) * 100 : 100,
+        maxPoints: a.max,
+        actualPoints: a.actual,
+        pointsLeft,
+        avgPerWeek: a.weeks ? pointsLeft / a.weeks : 0,
+        weeks: a.weeks,
+      };
+    })
+    .sort((a, b) => a.pctOptimal - b.pctOptimal);
 
   return { fraud, club200, subClub, mismanage };
 }

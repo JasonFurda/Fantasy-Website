@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { getSeasons, getYearStats, type GameRow } from "@/lib/queries";
+import {
+  getSeasons,
+  getYearStats,
+  getAllTimeStats,
+  type GameRow,
+} from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +32,15 @@ function TeamCell({ team }: { team: { espn_id: number; name: string; owner: stri
   );
 }
 
-function GameTable({ rows, year }: { rows: GameRow[]; year: number }) {
+function GameTable({
+  rows,
+  showYear,
+}: {
+  rows: GameRow[];
+  showYear?: boolean;
+}) {
   if (rows.length === 0)
-    return <p className="text-sm text-muted">Nothing here for {year}.</p>;
+    return <p className="text-sm text-muted">Nothing here yet.</p>;
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
       <table className="w-full text-sm">
@@ -38,7 +49,9 @@ function GameTable({ rows, year }: { rows: GameRow[]; year: number }) {
             <th className="px-4 py-3 font-medium">#</th>
             <th className="px-4 py-3 font-medium">Team</th>
             <th className="px-4 py-3 text-right font-medium">Score</th>
-            <th className="px-4 py-3 text-right font-medium">Week</th>
+            <th className="px-4 py-3 text-right font-medium">
+              {showYear ? "Yr · Wk" : "Week"}
+            </th>
             <th className="px-4 py-3 font-medium">Opponent</th>
             <th className="px-4 py-3 text-right font-medium">Opp</th>
             <th className="px-4 py-3 text-center font-medium">Result</th>
@@ -59,7 +72,7 @@ function GameTable({ rows, year }: { rows: GameRow[]; year: number }) {
                 {g.score.toFixed(1)}
               </td>
               <td className="px-4 py-3 text-right tabular-nums text-muted">
-                {g.week}
+                {showYear ? `${g.year} · ${g.week}` : g.week}
               </td>
               <td className="px-4 py-3 text-muted">
                 <TeamCell team={g.opponent} />
@@ -74,7 +87,7 @@ function GameTable({ rows, year }: { rows: GameRow[]; year: number }) {
               </td>
               <td className="px-4 py-3 text-right">
                 <Link
-                  href={`/matchups?year=${year}&week=${g.week}&m=${g.matchupId}`}
+                  href={`/matchups?year=${g.year}&week=${g.week}&m=${g.matchupId}`}
                   className="text-xs text-muted hover:text-foreground"
                 >
                   View →
@@ -104,11 +117,12 @@ export default async function YearStatsPage({
 
   const sp = await searchParams;
   const years = seasons.map((s) => s.year);
+  const isAllTime = sp.year === "all";
   const year =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "fraud";
 
-  const stats = await getYearStats(year);
+  const stats = isAllTime ? await getAllTimeStats() : await getYearStats(year);
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -126,11 +140,17 @@ export default async function YearStatsPage({
             <Link
               key={y}
               href={`/year-stats?year=${y}&tab=${tab}`}
-              className={tabCls(y === year)}
+              className={tabCls(!isAllTime && y === year)}
             >
               {y}
             </Link>
           ))}
+          <Link
+            href={`/year-stats?year=all&tab=${tab}`}
+            className={tabCls(isAllTime)}
+          >
+            All-time
+          </Link>
         </nav>
       </div>
 
@@ -138,7 +158,7 @@ export default async function YearStatsPage({
         {TABS.map((t) => (
           <Link
             key={t.key}
-            href={`/year-stats?year=${year}&tab=${t.key}`}
+            href={`/year-stats?year=${isAllTime ? "all" : year}&tab=${t.key}`}
             className={tabCls(t.key === tab)}
           >
             {t.label}
@@ -202,7 +222,7 @@ export default async function YearStatsPage({
           <p className="mb-4 max-w-2xl text-sm text-muted">
             Single-week team scores of 200 or more.
           </p>
-          <GameTable rows={stats.club200} year={year} />
+          <GameTable rows={stats.club200} showYear={isAllTime} />
         </>
       )}
 
@@ -211,7 +231,7 @@ export default async function YearStatsPage({
           <p className="mb-4 max-w-2xl text-sm text-muted">
             Single-week team scores under 100 — the games to forget.
           </p>
-          <GameTable rows={stats.subClub} year={year} />
+          <GameTable rows={stats.subClub} showYear={isAllTime} />
         </>
       )}
 
