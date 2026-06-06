@@ -34,15 +34,17 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
       }`}
       style={{ backgroundColor: perfBg(p.points, p.projected) }}
     >
-      <div className="truncate text-sm font-medium">{p.playerName}</div>
+      <div className="text-sm font-medium leading-tight break-words hyphens-auto">
+        {p.playerName}
+      </div>
     </div>
   );
 }
 
 function Pts({ p, win }: { p: SlotRow | null; win: boolean }) {
-  if (!p) return <div className="w-16 shrink-0" />;
+  if (!p) return <div className="w-12 shrink-0 sm:w-16" />;
   return (
-    <div className="w-16 shrink-0 text-center">
+    <div className="w-12 shrink-0 text-center sm:w-16">
       <div className={`tabular-nums ${win ? "font-bold" : ""}`}>
         {p.points.toFixed(1)}
       </div>
@@ -70,7 +72,7 @@ function Row({
     <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1 last:border-0">
       <PlayerName p={away} align="right" />
       <Pts p={away} win={a > h} />
-      <div className="w-12 shrink-0 text-center text-xs font-semibold uppercase text-muted">
+      <div className="w-9 shrink-0 text-center text-[10px] font-semibold uppercase text-muted sm:w-12 sm:text-xs">
         {slot}
       </div>
       <Pts p={home} win={h > a} />
