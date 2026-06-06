@@ -17,6 +17,37 @@ export default function RosterByYear({
   }
 
   const active = byYear.find((y) => y.year === year) ?? byYear[0];
+  const ended = active.players.filter((p) => p.endedOnTeam);
+  const former = active.players.filter((p) => !p.endedOnTeam);
+
+  const table = (players: typeof active.players) => (
+    <div className="overflow-hidden rounded-xl border border-border bg-surface">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+            <th className="px-4 py-3 font-medium">Player</th>
+            <th className="px-4 py-3 font-medium">Pos</th>
+            <th className="px-4 py-3 text-right font-medium">Weeks</th>
+            <th className="px-4 py-3 text-right font-medium">Points</th>
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((p) => (
+            <tr key={p.name} className="border-b border-border/60 last:border-0">
+              <td className="px-4 py-3 font-medium">{p.name}</td>
+              <td className="px-4 py-3 text-muted">{p.position}</td>
+              <td className="px-4 py-3 text-right tabular-nums text-muted">
+                {p.weeks}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums">
+                {p.points.toFixed(1)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <div>
@@ -43,35 +74,16 @@ export default function RosterByYear({
         </nav>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-              <th className="px-4 py-3 font-medium">Player</th>
-              <th className="px-4 py-3 font-medium">Pos</th>
-              <th className="px-4 py-3 text-right font-medium">Weeks</th>
-              <th className="px-4 py-3 text-right font-medium">Points</th>
-            </tr>
-          </thead>
-          <tbody>
-            {active.players.map((p) => (
-              <tr
-                key={p.name}
-                className="border-b border-border/60 last:border-0"
-              >
-                <td className="px-4 py-3 font-medium">{p.name}</td>
-                <td className="px-4 py-3 text-muted">{p.position}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-muted">
-                  {p.weeks}
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums">
-                  {p.points.toFixed(1)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {table(ended)}
+
+      {former.length > 0 && (
+        <div className="mt-6">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+            Left during the season
+          </h3>
+          {table(former)}
+        </div>
+      )}
     </div>
   );
 }

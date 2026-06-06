@@ -995,6 +995,7 @@ export type RosterPlayer = {
   position: string;
   points: number;
   weeks: number;
+  endedOnTeam: boolean; // on the roster in the season's final week
 };
 
 export type FranchiseRoster = {
@@ -1022,17 +1023,27 @@ export async function getFranchiseRoster(
 
   const { data: msRaw } = await supabase
     .from("matchups")
-    .select("id, year, home_team_id, away_team_id")
+    .select("id, year, week, home_team_id, away_team_id")
     .or(`home_team_id.in.(${idList}),away_team_id.in.(${idList})`);
   const matchups = (msRaw as Matchup[]) ?? [];
   if (matchups.length === 0) return { byYear: [], topScorers: [] };
 
   const idSet = new Set(teamIds);
-  const matchupInfo = new Map<number, { year: number; side: "home" | "away" }>();
+  const matchupInfo = new Map<
+    number,
+    { year: number; week: number; side: "home" | "away" }
+  >();
+  const maxWeekByYear = new Map<number, number>();
   for (const m of matchups) {
     const side = idSet.has(m.home_team_id) ? "home" : "away";
-    matchupInfo.set(m.id, { year: m.year, side });
+    matchupInfo.set(m.id, { year: m.year, week: m.week, side });
+    maxWeekByYear.set(
+      m.year,
+      Math.max(maxWeekByYear.get(m.year) ?? 0, m.week),
+    );
   }
+  // names on the roster in each year's final week (any slot, incl. bench)
+  const finalRoster = new Map<number, Set<string>>();
 
   const { data: slotsRaw } = await supabase
     .from("player_slots")
@@ -1058,6 +1069,17 @@ export async function getFranchiseRoster(
   for (const s of slots) {
     const info = matchupInfo.get(s.matchup_id);
     if (!info || s.team_side !== info.side) continue; // not our team's slot
+
+    // final-week roster membership (any slot)
+    if (info.week === maxWeekByYear.get(info.year)) {
+      let set = finalRoster.get(info.year);
+      if (!set) {
+        set = new Set();
+        finalRoster.set(info.year, set);
+      }
+      set.add(s.player_name);
+    }
+
     if (s.is_bench) continue; // benched points didn't score for the team
     const pts = Number(s.points ?? 0);
 
@@ -1097,6 +1119,7 @@ export async function getFranchiseRoster(
             position,
             points: agg.points,
             weeks: agg.weeks,
+            endedOnTeam: finalRoster.get(year)?.has(name) ?? false,
           };
         })
         .filter((p) => p.points > 0)
