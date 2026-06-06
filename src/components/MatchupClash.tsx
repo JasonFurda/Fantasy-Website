@@ -1,10 +1,10 @@
 import Image from "next/image";
 
 /**
- * Decorative entrance: the two teams' art slide in from the sides, clash in the
- * middle with a flash, then the whole overlay fades out. Purely visual —
- * pointer-events-none so it never blocks clicks or navigation. Remounts (and
- * replays) whenever the matchup changes via a `key` on the parent.
+ * Full-page background for a matchup: the two teams' art slide in from the
+ * sides, clash in the middle with a flash, then STAY as a dimmed split
+ * backdrop behind all the UI. Fixed + pointer-events-none, so it never blocks
+ * clicks. Remounts (replays the entrance) when the matchup changes via `key`.
  */
 export default function MatchupClash({
   awayArt,
@@ -29,11 +29,11 @@ export default function MatchupClash({
     <div
       className={`absolute inset-y-0 w-3/5 ${side === "left" ? "left-0" : "right-0"}`}
       style={{
-        animation: `${side === "left" ? "clashInLeft" : "clashInRight"} 0.6s cubic-bezier(0.2,0.8,0.2,1) both`,
+        animation: `${side === "left" ? "clashInLeft" : "clashInRight"} 0.7s cubic-bezier(0.2,0.8,0.2,1) both`,
       }}
     >
       {art ? (
-        <Image src={art} alt="" fill sizes="60vw" className="object-cover" />
+        <Image src={art} alt="" fill sizes="60vw" className="object-cover" priority />
       ) : (
         <div
           className="h-full w-full"
@@ -42,11 +42,11 @@ export default function MatchupClash({
           }}
         />
       )}
-      {/* fade the meeting edge toward center */}
+      {/* blend the inner edge toward the page background */}
       <div
         className="absolute inset-0"
         style={{
-          background: `linear-gradient(to ${side === "left" ? "right" : "left"}, transparent, var(--background))`,
+          background: `linear-gradient(to ${side === "left" ? "right" : "left"}, transparent 30%, var(--background))`,
         }}
       />
     </div>
@@ -55,18 +55,22 @@ export default function MatchupClash({
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-2xl"
-      style={{ animation: "clashFade 1.5s ease-out both" }}
+      className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
     >
       <Half art={awayArt} color={awayColor} side="left" />
       <Half art={homeArt} color={homeColor} side="right" />
-      {/* center clash flash */}
+
+      {/* keep the art subtle so the UI stays readable */}
+      <div className="absolute inset-0 bg-background/55" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-transparent to-background" />
+
+      {/* one-shot center clash flash */}
       <div
-        className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full"
         style={{
           background:
-            "radial-gradient(circle, rgba(255,255,255,0.9), transparent 65%)",
-          animation: "clashFlash 0.9s ease-out both",
+            "radial-gradient(circle, rgba(255,255,255,0.85), transparent 65%)",
+          animation: "clashFlash 0.95s ease-out both",
         }}
       />
     </div>

@@ -62,8 +62,18 @@ export default async function MatchupsPage({
     }`;
 
   return (
-    <main className="mx-auto max-w-4xl px-5 py-10">
-      <h1 className="text-2xl font-bold tracking-tight">Matchups</h1>
+    <>
+      {detail && (
+        <MatchupClash
+          key={detail.id}
+          awayArt={teamArt(detail.awayTeam?.espn_id ?? 0)}
+          homeArt={teamArt(detail.homeTeam?.espn_id ?? 0)}
+          awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
+          homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
+        />
+      )}
+      <main className="relative z-10 mx-auto max-w-4xl px-5 py-10">
+        <h1 className="text-2xl font-bold tracking-tight">Matchups</h1>
 
       {/* Year */}
       <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -148,26 +158,18 @@ export default async function MatchupsPage({
       </div>
 
       {/* Box score */}
-      <div className="relative mt-8">
+      <div className="mt-8">
         {detail ? (
-          <>
-            <MatchupBoxScore
-              detail={detail}
-              awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
-              homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
-            />
-            <MatchupClash
-              key={detail.id}
-              awayArt={teamArt(detail.awayTeam?.espn_id ?? 0)}
-              homeArt={teamArt(detail.homeTeam?.espn_id ?? 0)}
-              awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
-              homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
-            />
-          </>
+          <MatchupBoxScore
+            detail={detail}
+            awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
+            homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
+          />
         ) : (
           <p className="text-sm text-muted">No matchup selected.</p>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }
