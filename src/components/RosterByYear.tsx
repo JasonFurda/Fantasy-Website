@@ -12,6 +12,15 @@ const POS_ORDER: Record<string, number> = {
   "D/ST": 5,
 };
 
+const POS_COLORS: Record<string, string> = {
+  QB: "#f2576e", // red/pink
+  RB: "#27c08a", // green
+  WR: "#58a7ff", // blue
+  TE: "#ffae58", // orange
+  K: "#c067ff", // purple
+  "D/ST": "#b9844f", // brown
+};
+
 type SortMode = "points" | "position";
 
 export default function RosterByYear({
@@ -58,7 +67,21 @@ export default function RosterByYear({
           {players.map((p) => (
             <tr key={p.name} className="border-b border-border/60 last:border-0">
               <td className="px-4 py-3 font-medium">{p.name}</td>
-              <td className="px-4 py-3 text-muted">{p.position}</td>
+              <td className="px-4 py-3">
+                {p.position ? (
+                  <span
+                    className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold"
+                    style={{
+                      backgroundColor: `${POS_COLORS[p.position] ?? "#6b7280"}26`,
+                      color: POS_COLORS[p.position] ?? "#9ca3af",
+                    }}
+                  >
+                    {p.position}
+                  </span>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
+              </td>
               <td className="px-4 py-3 text-right tabular-nums text-muted">
                 {p.weeks}
               </td>
