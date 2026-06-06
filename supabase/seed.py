@@ -258,6 +258,30 @@ def sync_year_payload(client: Client, payload: dict[str, Any]) -> None:
             client.table("player_slots").insert(slot_rows).execute()
 
 
+def sync_free_agents(client: Client, year: int, fa_list: list[dict[str, Any]]) -> None:
+    """Replace the free-agent stat lines for a year."""
+    client.table("free_agents").delete().eq("year", year).execute()
+    seen: set[str] = set()
+    rows = []
+    for f in fa_list:
+        name = str(f.get("playerName", "")).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        rows.append(
+            {
+                "year": year,
+                "player_name": name,
+                "position": str(f.get("position", "")),
+                "pro_team": str(f.get("proTeam", "")),
+                "total_points": float(f.get("points", 0) or 0),
+                "stats": f.get("stats") or {},
+            }
+        )
+    if rows:
+        client.table("free_agents").upsert(rows, on_conflict="year,player_name").execute()
+
+
 def _read_year_json(root: Path, year: int) -> dict[str, Any]:
     path = root / f"data-{year}.json"
     if not path.is_file():

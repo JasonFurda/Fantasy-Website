@@ -143,6 +143,36 @@ def build_year_json(league, all_weeks_data, year):
 
     return out
 
+
+def build_free_agents(league):
+    """Season stat lines for unrostered players (free agents / waivers)."""
+    out = []
+    seen = set()
+    week = getattr(league, "current_week", None) or 1
+    for pos in ["QB", "RB", "WR", "TE", "K", "D/ST"]:
+        try:
+            fas = league.free_agents(week=week, size=250, position=pos)
+        except Exception as e:
+            print(f"  Free agents {pos}: error {e}")
+            continue
+        for p in fas:
+            name = getattr(p, "name", None)
+            if not name or name in seen:
+                continue
+            season = (getattr(p, "stats", {}) or {}).get(0, {}) or {}
+            pts = season.get("points", 0) or 0
+            if not pts:
+                continue  # skip zero-production noise
+            seen.add(name)
+            out.append({
+                "playerName": name,
+                "position": getattr(p, "position", "") or pos,
+                "proTeam": getattr(p, "proTeam", "") or "",
+                "points": round(float(pts), 2),
+                "stats": season.get("breakdown", {}) or {},
+            })
+    return out
+
 def get_fantasy_art_images():
     """Get list of images from the fantasy-art folder"""
     fantasy_art_path = os.path.join(os.path.dirname(__file__), "fantasy-art")

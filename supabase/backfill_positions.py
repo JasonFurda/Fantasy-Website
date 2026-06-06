@@ -28,7 +28,7 @@ def main() -> None:
             sys.path.insert(0, str(p))
 
     import slimify_fantasy_html as slim
-    from seed import create_supabase_client, sync_year_payload
+    from seed import create_supabase_client, sync_year_payload, sync_free_agents
     from espn_api.football import League
 
     if not slim.ESPN_S2 or not slim.SWID:
@@ -63,6 +63,11 @@ def main() -> None:
         print(f"  Wrote data-{year}.json")
 
         sync_year_payload(client, payload)
+
+        fa = slim.build_free_agents(league)
+        sync_free_agents(client, year, fa)
+        print(f"  Free agents: {len(fa)}")
+
         now = datetime.now(timezone.utc).isoformat()
         client.table("seasons").update(
             {"current_week": last_week, "updated_at": now}

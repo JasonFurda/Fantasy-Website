@@ -25,10 +25,10 @@ const ratio = (a: number, b: number, d = 1) => (b ? (a / b).toFixed(d) : "—");
 const pctRatio = (a: number, b: number) => (b ? `${((a / b) * 100).toFixed(1)}%` : "—");
 
 const COMMON: Col[] = [
-  { label: "G", get: (r) => String(r.games), right: true },
+  { label: "G", get: (r) => (r.games ? String(r.games) : "—"), right: true },
   { label: "Total", get: (r) => n(r.totalPts, 1), right: true },
-  { label: "Avg", get: (r) => n(r.avgPts, 1), right: true },
-  { label: "Var", get: (r) => n(r.variance, 1), right: true },
+  { label: "Avg", get: (r) => (r.games ? n(r.avgPts, 1) : "—"), right: true },
+  { label: "Var", get: (r) => (r.games ? n(r.variance, 1) : "—"), right: true },
 ];
 
 const EXTRA: Record<string, Col[]> = {

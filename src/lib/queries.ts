@@ -573,6 +573,32 @@ export async function getPlayerComparison(
     });
   }
 
+  // Add free agents (never rostered) for this position.
+  const rostered = new Set(out.map((r) => r.name));
+  const { data: faRaw } = await supabase
+    .from("free_agents")
+    .select("player_name, pro_team, total_points, stats")
+    .eq("year", year)
+    .eq("position", position);
+  for (const fa of (faRaw ?? []) as {
+    player_name: string;
+    pro_team: string;
+    total_points: number;
+    stats: Record<string, number> | null;
+  }[]) {
+    if (rostered.has(fa.player_name)) continue;
+    out.push({
+      name: fa.player_name,
+      fantasyTeam: null, // free agent
+      nflTeam: fa.pro_team,
+      games: 0,
+      totalPts: Number(fa.total_points),
+      avgPts: 0,
+      variance: 0,
+      s: fa.stats ?? {},
+    });
+  }
+
   return out.sort((x, y) => y.totalPts - x.totalPts);
 }
 
