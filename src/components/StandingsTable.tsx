@@ -33,17 +33,21 @@ export default function StandingsTable({
                 key={s.team.id}
                 className="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-2"
               >
-                <td className="px-4 py-3 tabular-nums">
-                  {MEDALS[s.rank] ? (
-                    <span
-                      className="inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold text-[#0b0f14] shadow"
-                      style={{ backgroundColor: MEDALS[s.rank] }}
-                    >
-                      {s.rank}
-                    </span>
-                  ) : (
-                    <span className="text-muted">{s.rank}</span>
-                  )}
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-sm tabular-nums ${
+                      MEDALS[s.rank]
+                        ? "font-bold text-[#0b0f14] shadow"
+                        : "text-muted"
+                    }`}
+                    style={
+                      MEDALS[s.rank]
+                        ? { backgroundColor: MEDALS[s.rank] }
+                        : undefined
+                    }
+                  >
+                    {s.rank}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="font-medium">{s.team.name}</div>
