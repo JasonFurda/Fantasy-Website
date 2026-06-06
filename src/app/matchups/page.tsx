@@ -6,8 +6,9 @@ import {
   getMatchupDetail,
   type Team,
 } from "@/lib/queries";
-import { teamColor } from "@/lib/teams-config";
+import { teamColor, teamArt } from "@/lib/teams-config";
 import MatchupBoxScore from "@/components/MatchupBoxScore";
+import MatchupClash from "@/components/MatchupClash";
 
 export const dynamic = "force-dynamic";
 
@@ -147,13 +148,22 @@ export default async function MatchupsPage({
       </div>
 
       {/* Box score */}
-      <div className="mt-8">
+      <div className="relative mt-8">
         {detail ? (
-          <MatchupBoxScore
-            detail={detail}
-            awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
-            homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
-          />
+          <>
+            <MatchupBoxScore
+              detail={detail}
+              awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
+              homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
+            />
+            <MatchupClash
+              key={detail.id}
+              awayArt={teamArt(detail.awayTeam?.espn_id ?? 0)}
+              homeArt={teamArt(detail.homeTeam?.espn_id ?? 0)}
+              awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
+              homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
+            />
+          </>
         ) : (
           <p className="text-sm text-muted">No matchup selected.</p>
         )}

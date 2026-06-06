@@ -38,3 +38,57 @@ body {
     opacity: 1;
   }
 }
+
+@keyframes clashInLeft {
+  0% {
+    transform: translateX(-115%);
+  }
+  60% {
+    transform: translateX(0);
+  }
+  72% {
+    transform: translateX(5%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes clashInRight {
+  0% {
+    transform: translateX(115%);
+  }
+  60% {
+    transform: translateX(0);
+  }
+  72% {
+    transform: translateX(-5%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes clashFade {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes clashFlash {
+  0%,
+  52% {
+    opacity: 0;
+  }
+  62% {
+    opacity: 0.65;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
