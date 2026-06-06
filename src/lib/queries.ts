@@ -422,6 +422,160 @@ export async function getYearStats(year: number): Promise<YearStats> {
   return { fraud, club200, subClub, mismanage };
 }
 
+export type PlayerCompRow = {
+  name: string;
+  fantasyTeam: { name: string; espnId: number } | null;
+  nflTeam: string;
+  games: number;
+  totalPts: number;
+  avgPts: number;
+  variance: number;
+  s: Record<string, number>; // summed raw NFL stats
+};
+
+const COMP_STAT_KEYS = [
+  "receivingTargets",
+  "receivingReceptions",
+  "receivingYards",
+  "receivingTouchdowns",
+  "rushingAttempts",
+  "rushingYards",
+  "rushingTouchdowns",
+  "passingYards",
+  "passingTouchdowns",
+  "passingInterceptions",
+  "passingCompletions",
+  "passingAttempts",
+  "lostFumbles",
+  "madeFieldGoals",
+  "attemptedFieldGoals",
+  "madeExtraPoints",
+  "defensiveSacks",
+  "defensiveInterceptions",
+  "defensiveTouchdowns",
+  "defensivePointsAllowed",
+];
+
+/** Per-player season aggregates for one position, ranked by total fantasy points. */
+export async function getPlayerComparison(
+  year: number,
+  position: string,
+): Promise<PlayerCompRow[]> {
+  const [matchups, teams] = await Promise.all([
+    getMatchups(year),
+    getTeams(year),
+  ]);
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+  const sideOf = new Map<number, { home: number; away: number }>();
+  for (const m of matchups)
+    sideOf.set(m.id, { home: m.home_team_id, away: m.away_team_id });
+  const ids = matchups.map((m) => m.id);
+  if (ids.length === 0) return [];
+
+  type Raw = {
+    player_name: string;
+    pro_team: string | null;
+    points: number | null;
+    game_played: number | null;
+    is_bench: boolean | null;
+    team_side: "home" | "away";
+    matchup_id: number;
+    stats: Record<string, number> | null;
+  };
+
+  const rows: Raw[] = [];
+  const CHUNK = 20;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("player_slots")
+      .select(
+        "player_name, pro_team, points, game_played, is_bench, team_side, matchup_id, stats",
+      )
+      .eq("position", position)
+      .in("matchup_id", ids.slice(i, i + CHUNK));
+    if (data) rows.push(...(data as Raw[]));
+  }
+
+  type Agg = {
+    name: string;
+    pts: number;
+    weekly: number[];
+    games: number;
+    s: Record<string, number>;
+    teamCounts: Map<number, number>;
+    proCounts: Map<string, number>;
+  };
+  const byPlayer = new Map<string, Agg>();
+
+  for (const r of rows) {
+    let a = byPlayer.get(r.player_name);
+    if (!a) {
+      a = {
+        name: r.player_name,
+        pts: 0,
+        weekly: [],
+        games: 0,
+        s: {},
+        teamCounts: new Map(),
+        proCounts: new Map(),
+      };
+      byPlayer.set(r.player_name, a);
+    }
+    const pts = Number(r.points ?? 0);
+    a.pts += pts;
+    a.weekly.push(pts);
+    if ((r.game_played ?? 0) > 0) a.games += 1;
+    const st = r.stats ?? {};
+    for (const k of COMP_STAT_KEYS) {
+      const v = Number(st[k] ?? 0);
+      if (v) a.s[k] = (a.s[k] ?? 0) + v;
+    }
+    const sides = sideOf.get(r.matchup_id);
+    if (sides) {
+      const tid = r.team_side === "home" ? sides.home : sides.away;
+      a.teamCounts.set(tid, (a.teamCounts.get(tid) ?? 0) + 1);
+    }
+    if (r.pro_team)
+      a.proCounts.set(r.pro_team, (a.proCounts.get(r.pro_team) ?? 0) + 1);
+  }
+
+  const mode = <T,>(m: Map<T, number>): T | null => {
+    let best: T | null = null;
+    let n = -1;
+    for (const [k, c] of m)
+      if (c > n) {
+        n = c;
+        best = k;
+      }
+    return best;
+  };
+
+  const out: PlayerCompRow[] = [];
+  for (const a of byPlayer.values()) {
+    const games = a.games || a.weekly.length;
+    const mean = a.weekly.length
+      ? a.weekly.reduce((x, y) => x + y, 0) / a.weekly.length
+      : 0;
+    const variance = a.weekly.length
+      ? a.weekly.reduce((x, y) => x + (y - mean) ** 2, 0) / a.weekly.length
+      : 0;
+    const tid = mode(a.teamCounts);
+    const team = tid != null ? teamById.get(tid) : null;
+    out.push({
+      name: a.name,
+      fantasyTeam: team ? { name: team.name.trim(), espnId: team.espn_id } : null,
+      nflTeam: mode(a.proCounts) ?? "",
+      games,
+      totalPts: a.pts,
+      avgPts: games ? a.pts / games : 0,
+      variance,
+      s: a.s,
+    });
+  }
+
+  return out.sort((x, y) => y.totalPts - x.totalPts);
+}
+
 export type SlotRow = {
   slot: string;
   playerName: string;

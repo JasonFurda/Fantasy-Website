@@ -24,6 +24,7 @@ const NAV = [
   { href: "/matchups", label: "Matchups" },
   { href: "/teams", label: "Teams" },
   { href: "/year-stats", label: "Year Stats" },
+  { href: "/player-comparisons", label: "Players" },
 ];
 
 export default function RootLayout({

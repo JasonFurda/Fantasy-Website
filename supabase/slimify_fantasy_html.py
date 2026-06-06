@@ -52,6 +52,7 @@ def player_to_dict(p):
         "slot": getattr(p, "slot_position", "") or getattr(p, "lineupSlot", ""),
         "position": getattr(p, "position", "") or "",
         "eligibleSlots": list(getattr(p, "eligibleSlots", []) or []),
+        "stats": getattr(p, "breakdown", {}) or {},
         "name": getattr(p, "name", "Unknown"),
         "proTeam": getattr(p, "proTeam", "") or "",
         "opp": "BYE" if getattr(p, "on_bye_week", False) else getattr(p, "pro_opponent", "") or "",
