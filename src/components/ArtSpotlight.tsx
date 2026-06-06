@@ -11,23 +11,35 @@ export default function ArtSpotlight({
   art: ArtPiece[];
   rotationMs: number;
 }) {
+  const [items, setItems] = useState(art);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
+  // Shuffle on mount (client only) so the order is randomized each visit.
+  useEffect(() => {
+    const a = [...art];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    setItems(a);
+    setIndex(0);
+  }, [art]);
+
   const go = useCallback(
-    (next: number) => setIndex((next + art.length) % art.length),
-    [art.length],
+    (next: number) => setIndex((next + items.length) % items.length),
+    [items.length],
   );
 
   useEffect(() => {
-    if (paused || art.length <= 1) return;
+    if (paused || items.length <= 1) return;
     const id = setInterval(() => {
-      setIndex((i) => (i + 1) % art.length);
+      setIndex((i) => (i + 1) % items.length);
     }, rotationMs);
     return () => clearInterval(id);
-  }, [paused, art.length, rotationMs]);
+  }, [paused, items.length, rotationMs]);
 
-  if (art.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <section
@@ -37,7 +49,7 @@ export default function ArtSpotlight({
       aria-roledescription="carousel"
     >
       <div className="relative min-h-[440px] flex-1 overflow-hidden rounded-2xl border border-border bg-surface-2">
-        {art.map((piece, i) => (
+        {items.map((piece, i) => (
           <Image
             key={piece.src}
             src={piece.src}
@@ -74,7 +86,7 @@ export default function ArtSpotlight({
 
       {/* Dots */}
       <div className="mt-3 flex flex-wrap justify-center gap-2">
-        {art.map((piece, i) => (
+        {items.map((piece, i) => (
           <button
             key={piece.src}
             onClick={() => setIndex(i)}
