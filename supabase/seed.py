@@ -258,6 +258,34 @@ def sync_year_payload(client: Client, payload: dict[str, Any]) -> None:
             client.table("player_slots").insert(slot_rows).execute()
 
 
+def sync_player_season(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
+    """Replace full-season player stat lines for a year (rostered + free agents)."""
+    client.table("player_season").delete().eq("year", year).execute()
+    seen: set[str] = set()
+    rows = []
+    for f in rows_in:
+        name = str(f.get("playerName", "")).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        rows.append(
+            {
+                "year": year,
+                "player_name": name,
+                "position": str(f.get("position", "")),
+                "pro_team": str(f.get("proTeam", "")),
+                "total_points": float(f.get("points", 0) or 0),
+                "games": int(f.get("games", 0) or 0),
+                "stats": f.get("stats") or {},
+            }
+        )
+    # insert in batches
+    for i in range(0, len(rows), 500):
+        client.table("player_season").upsert(
+            rows[i : i + 500], on_conflict="year,player_name"
+        ).execute()
+
+
 def sync_free_agents(client: Client, year: int, fa_list: list[dict[str, Any]]) -> None:
     """Replace the free-agent stat lines for a year."""
     client.table("free_agents").delete().eq("year", year).execute()

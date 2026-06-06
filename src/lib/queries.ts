@@ -550,54 +550,48 @@ export async function getPlayerComparison(
     return best;
   };
 
-  const out: PlayerCompRow[] = [];
-  for (const a of byPlayer.values()) {
-    const games = a.games || a.weekly.length;
-    const mean = a.weekly.length
-      ? a.weekly.reduce((x, y) => x + y, 0) / a.weekly.length
-      : 0;
-    const variance = a.weekly.length
-      ? a.weekly.reduce((x, y) => x + (y - mean) ** 2, 0) / a.weekly.length
-      : 0;
-    const tid = mode(a.teamCounts);
-    const team = tid != null ? teamById.get(tid) : null;
-    out.push({
-      name: a.name,
-      fantasyTeam: team ? { name: team.name.trim(), espnId: team.espn_id } : null,
-      nflTeam: mode(a.proCounts) ?? "",
-      games,
-      totalPts: a.pts,
-      avgPts: games ? a.pts / games : 0,
-      variance,
-      s: a.s,
-    });
-  }
-
-  // Add free agents (never rostered) for this position.
-  const rostered = new Set(out.map((r) => r.name));
-  const { data: faRaw } = await supabase
-    .from("free_agents")
-    .select("player_name, pro_team, total_points, stats")
+  // Full-season totals + stats for everyone (rostered + free agents).
+  const { data: psRaw } = await supabase
+    .from("player_season")
+    .select("player_name, pro_team, total_points, games, stats")
     .eq("year", year)
     .eq("position", position);
-  for (const fa of (faRaw ?? []) as {
+  const ps = (psRaw ?? []) as {
     player_name: string;
     pro_team: string;
     total_points: number;
+    games: number;
     stats: Record<string, number> | null;
-  }[]) {
-    if (rostered.has(fa.player_name)) continue;
-    out.push({
-      name: fa.player_name,
-      fantasyTeam: null, // free agent
-      nflTeam: fa.pro_team,
-      games: 0,
-      totalPts: Number(fa.total_points),
-      avgPts: 0,
-      variance: 0,
-      s: fa.stats ?? {},
-    });
-  }
+  }[];
+
+  const out: PlayerCompRow[] = ps.map((r) => {
+    const a = byPlayer.get(r.player_name);
+    let fantasyTeam: { name: string; espnId: number } | null = null;
+    if (a) {
+      const tid = mode(a.teamCounts);
+      const team = tid != null ? teamById.get(tid) : null;
+      if (team) fantasyTeam = { name: team.name.trim(), espnId: team.espn_id };
+    }
+    const weekly = a?.weekly ?? [];
+    const mean = weekly.length
+      ? weekly.reduce((x, y) => x + y, 0) / weekly.length
+      : 0;
+    const variance = weekly.length
+      ? weekly.reduce((x, y) => x + (y - mean) ** 2, 0) / weekly.length
+      : 0;
+    const games = r.games || 0;
+    const totalPts = Number(r.total_points);
+    return {
+      name: r.player_name,
+      fantasyTeam,
+      nflTeam: r.pro_team,
+      games,
+      totalPts,
+      avgPts: games ? totalPts / games : 0,
+      variance,
+      s: r.stats ?? {},
+    };
+  });
 
   return out.sort((x, y) => y.totalPts - x.totalPts);
 }

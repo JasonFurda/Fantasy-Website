@@ -28,7 +28,11 @@ const COMMON: Col[] = [
   { label: "G", get: (r) => (r.games ? String(r.games) : "—"), right: true },
   { label: "Total", get: (r) => n(r.totalPts, 1), right: true },
   { label: "Avg", get: (r) => (r.games ? n(r.avgPts, 1) : "—"), right: true },
-  { label: "Var", get: (r) => (r.games ? n(r.variance, 1) : "—"), right: true },
+  {
+    label: "Var",
+    get: (r) => (r.fantasyTeam ? n(r.variance, 1) : "—"),
+    right: true,
+  },
 ];
 
 const EXTRA: Record<string, Col[]> = {

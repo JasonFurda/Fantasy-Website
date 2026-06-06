@@ -144,6 +144,68 @@ def build_year_json(league, all_weeks_data, year):
     return out
 
 
+def build_player_season(league, payload):
+    """Full-season stat lines for everyone who appeared (rostered) + free agents."""
+    # distinct rostered names from the season payload
+    names = set()
+    for games in (payload.get("weeks") or {}).values():
+        if not isinstance(games, list):
+            continue
+        for m in games:
+            for side in ("away", "home"):
+                for pl in (m.get(side, {}).get("lineup") or []):
+                    nm = pl.get("name")
+                    if nm:
+                        names.add(nm)
+
+    id_by_name = {}
+    for nm in names:
+        pid = league.player_map.get(nm)
+        if isinstance(pid, int):
+            id_by_name[nm] = pid
+
+    def line_from_player(pl):
+        season = (getattr(pl, "stats", {}) or {}).get(0, {}) or {}
+        bd = season.get("breakdown", {}) or {}
+        return {
+            "playerName": getattr(pl, "name", ""),
+            "position": getattr(pl, "position", "") or "",
+            "proTeam": getattr(pl, "proTeam", "") or "",
+            "points": round(float(season.get("points", 0) or 0), 2),
+            "games": int(float(bd.get("210", 0) or 0)),
+            "stats": bd,
+        }
+
+    out = {}
+    ids = list(id_by_name.values())
+    CHUNK = 40
+    for i in range(0, len(ids), CHUNK):
+        chunk = ids[i:i + CHUNK]
+        try:
+            res = league.player_info(playerId=chunk)
+        except Exception as e:
+            print(f"  player_season chunk error {e}")
+            continue
+        if res is None:
+            continue
+        if not isinstance(res, list):
+            res = [res]
+        for pl in res:
+            nm = getattr(pl, "name", None)
+            if nm:
+                out[nm] = line_from_player(pl)
+
+    # free agents (full season already)
+    for f in build_free_agents(league):
+        nm = f["playerName"]
+        if nm in out:
+            continue
+        bd = f.get("stats") or {}
+        out[nm] = {**f, "games": int(float(bd.get("210", 0) or 0))}
+
+    return list(out.values())
+
+
 def build_free_agents(league):
     """Season stat lines for unrostered players (free agents / waivers)."""
     out = []
