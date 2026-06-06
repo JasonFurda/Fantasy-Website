@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 const NAV = [
   { href: "/", label: "Home" },
   { href: "/standings", label: "Standings" },
-  { href: "/power-rankings", label: "Power" },
+  { href: "/power-rankings", label: "Power Rankings" },
   { href: "/matchups", label: "Matchups" },
   { href: "/teams", label: "Teams" },
   { href: "/year-stats", label: "Year Stats" },

@@ -777,17 +777,16 @@ export async function getMatchupDetail(
   };
 }
 
-export type PowerGame = { week: number; score: number; weight: number };
 export type PowerRow = {
   rank: number;
   team: Team;
-  power: number;
-  games: PowerGame[]; // most recent first (up to 5)
+  change: number | null; // rank change vs previous week (+ = moved up); null = new
 };
 
 /**
  * Power rankings: sum of a team's 3 most recent game scores, plus half of the
  * 4th and 5th most recent. Uses all played games (regular season + playoffs).
+ * `change` compares the current ranking to the ranking as of the prior week.
  */
 export async function getPowerRankings(year: number): Promise<PowerRow[]> {
   const [teams, matchups] = await Promise.all([getTeams(year), getMatchups(year)]);
@@ -799,31 +798,50 @@ export async function getPowerRankings(year: number): Promise<PowerRow[]> {
     arr.push({ week, score });
     byTeam.set(tid, arr);
   };
+  let maxWeek = 0;
   for (const m of matchups) {
     const hs = m.home_score ?? 0;
     const as = m.away_score ?? 0;
     if (hs === 0 && as === 0) continue; // unplayed
     push(m.home_team_id, m.week, hs);
     push(m.away_team_id, m.week, as);
+    if (m.week > maxWeek) maxWeek = m.week;
   }
 
   const WEIGHTS = [1, 1, 1, 0.5, 0.5];
-  const rows = [...byTeam.entries()]
-    .map(([tid, list]) => {
-      const recent = [...list].sort((a, b) => b.week - a.week).slice(0, 5);
-      const games: PowerGame[] = recent.map((g, i) => ({
-        week: g.week,
-        score: g.score,
-        weight: WEIGHTS[i] ?? 0,
-      }));
-      const power = games.reduce((sum, g) => sum + g.score * g.weight, 0);
-      return { team: teamById.get(tid)!, power, games };
-    })
-    .filter((r) => r.team)
-    .sort((a, b) => b.power - a.power)
-    .map((r, i) => ({ rank: i + 1, ...r }));
+  // Ordered team ids by power, considering only games up to `cutoff`.
+  const orderAt = (cutoff: number): number[] =>
+    [...byTeam.entries()]
+      .map(([tid, list]) => {
+        const recent = list
+          .filter((g) => g.week <= cutoff)
+          .sort((a, b) => b.week - a.week)
+          .slice(0, 5);
+        const power = recent.reduce(
+          (sum, g, i) => sum + g.score * (WEIGHTS[i] ?? 0),
+          0,
+        );
+        return { tid, power, played: recent.length };
+      })
+      .filter((r) => r.played > 0)
+      .sort((a, b) => b.power - a.power)
+      .map((r) => r.tid);
 
-  return rows;
+  const current = orderAt(maxWeek);
+  const prev = orderAt(maxWeek - 1);
+  const prevRank = new Map<number, number>(prev.map((tid, i) => [tid, i + 1]));
+
+  return current
+    .map((tid, i) => {
+      const rank = i + 1;
+      const pr = prevRank.get(tid);
+      return {
+        rank,
+        team: teamById.get(tid)!,
+        change: pr == null ? null : pr - rank,
+      };
+    })
+    .filter((r) => r.team);
 }
 
 export type FranchiseSeason = {

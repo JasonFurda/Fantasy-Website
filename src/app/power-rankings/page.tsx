@@ -34,13 +34,8 @@ export default async function PowerRankingsPage({
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-10">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Power Rankings</h1>
-          <p className="mt-1 text-sm text-muted">
-            Last 3 games scored in full, plus ½ of the 4th &amp; 5th most recent.
-          </p>
-        </div>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <h1 className="text-2xl font-bold tracking-tight">Power Rankings</h1>
         <nav className="flex gap-1 rounded-lg border border-border bg-surface p-1">
           {years.map((y) => (
             <Link
@@ -54,14 +49,13 @@ export default async function PowerRankingsPage({
         </nav>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
               <th className="px-4 py-3 font-medium">#</th>
               <th className="px-4 py-3 font-medium">Team</th>
-              <th className="px-4 py-3 text-right font-medium">Power</th>
-              <th className="px-4 py-3 font-medium">Recent games (newest →)</th>
+              <th className="px-4 py-3 text-right font-medium">Last week</th>
             </tr>
           </thead>
           <tbody>
@@ -83,26 +77,16 @@ export default async function PowerRankingsPage({
                     {r.team.name.trim()}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-right text-lg font-bold tabular-nums">
-                  {r.power.toFixed(1)}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {r.games.map((g) => (
-                      <span
-                        key={g.week}
-                        title={`Week ${g.week}${g.weight < 1 ? " (½ weight)" : ""}`}
-                        className={`rounded-md px-2 py-0.5 text-xs tabular-nums ${
-                          g.weight < 1
-                            ? "bg-surface-2 text-muted"
-                            : "bg-surface-2 text-foreground"
-                        }`}
-                      >
-                        {g.weight < 1 ? "½×" : ""}
-                        {g.score.toFixed(1)}
-                      </span>
-                    ))}
-                  </div>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {r.change == null ? (
+                    <span className="text-muted">—</span>
+                  ) : r.change > 0 ? (
+                    <span className="text-accent">▲ {r.change}</span>
+                  ) : r.change < 0 ? (
+                    <span className="text-red-400">▼ {Math.abs(r.change)}</span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
                 </td>
               </tr>
             ))}
