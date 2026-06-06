@@ -123,6 +123,21 @@ def build_year_json(league, all_weeks_data, year):
 
         out["weeks"][week] = matchups
 
+    draft = []
+    try:
+        for pick in (getattr(league, "draft", []) or []):
+            name = getattr(pick, "playerName", None)
+            if not name:
+                continue
+            draft.append({
+                "playerName": name,
+                "round": int(getattr(pick, "round_num", 0) or 0),
+                "pick": int(getattr(pick, "round_pick", 0) or 0),
+            })
+    except Exception as e:
+        print(f"  Warning: draft error {e}")
+    out["draft"] = draft
+
     return out
 
 def get_fantasy_art_images():

@@ -161,6 +161,27 @@ def sync_year_payload(client: Client, payload: dict[str, Any]) -> None:
         on_conflict="year",
     ).execute()
 
+    # Draft picks (one row per drafted player for the year)
+    draft_rows = payload.get("draft") or []
+    client.table("draft_picks").delete().eq("year", year).execute()
+    seen: set[str] = set()
+    rows = []
+    for d in draft_rows:
+        name = str(d.get("playerName", "")).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        rows.append(
+            {
+                "year": year,
+                "player_name": name,
+                "round": int(d.get("round", 0) or 0),
+                "pick": int(d.get("pick", 0) or 0),
+            }
+        )
+    if rows:
+        client.table("draft_picks").upsert(rows, on_conflict="year,player_name").execute()
+
     teams_meta = _collect_teams_from_weeks(weeks)
     if teams_meta:
         team_rows = [

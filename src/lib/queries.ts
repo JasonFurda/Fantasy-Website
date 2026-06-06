@@ -576,6 +576,67 @@ export async function getPlayerComparison(
   return out.sort((x, y) => y.totalPts - x.totalPts);
 }
 
+export type DraftValueRow = {
+  name: string;
+  position: string;
+  fantasyTeam: { name: string; espnId: number } | null;
+  nflTeam: string;
+  totalPts: number;
+  round: number;
+  pick: number;
+  overall: number;
+  value: number;
+};
+
+/** Draft Pick Value for TE/RB/WR: value = (total points)^2 * sqrt(draft position). */
+export async function getDraftValue(year: number): Promise<DraftValueRow[]> {
+  const teamCount = (await getTeams(year)).length || 8;
+
+  const positions = ["WR", "RB", "TE"];
+  const compByPos = await Promise.all(
+    positions.map((p) => getPlayerComparison(year, p)),
+  );
+  const players = new Map<
+    string,
+    { pos: string; row: PlayerCompRow }
+  >();
+  compByPos.forEach((rows, idx) => {
+    for (const r of rows) {
+      if (!players.has(r.name)) players.set(r.name, { pos: positions[idx], row: r });
+    }
+  });
+
+  const { data: draftRaw } = await supabase
+    .from("draft_picks")
+    .select("player_name, round, pick")
+    .eq("year", year);
+  const draft = (draftRaw ?? []) as {
+    player_name: string;
+    round: number;
+    pick: number;
+  }[];
+
+  const out: DraftValueRow[] = [];
+  for (const d of draft) {
+    const p = players.get(d.player_name);
+    if (!p) continue; // not a TE/RB/WR who appeared
+    const overall = (d.round - 1) * teamCount + d.pick;
+    const value = Math.pow(p.row.totalPts, 2) * Math.sqrt(overall);
+    out.push({
+      name: d.player_name,
+      position: p.pos,
+      fantasyTeam: p.row.fantasyTeam,
+      nflTeam: p.row.nflTeam,
+      totalPts: p.row.totalPts,
+      round: d.round,
+      pick: d.pick,
+      overall,
+      value,
+    });
+  }
+  return out.sort((a, b) => b.value - a.value);
+}
+
 export type SlotRow = {
   slot: string;
   playerName: string;

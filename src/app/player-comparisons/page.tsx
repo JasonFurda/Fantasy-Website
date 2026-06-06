@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { getSeasons, getPlayerComparison, type PlayerCompRow } from "@/lib/queries";
+import {
+  getSeasons,
+  getPlayerComparison,
+  getDraftValue,
+  type PlayerCompRow,
+} from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 
 export const dynamic = "force-dynamic";
@@ -98,11 +103,31 @@ export default async function PlayerComparisonsPage({
   const years = seasons.map((s) => s.year);
   const year =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
-  const posDef =
-    POSITIONS.find((p) => p.key === sp.pos) ?? POSITIONS[0];
+  const isDraft = sp.pos === "draft";
+  const posDef = POSITIONS.find((p) => p.key === sp.pos) ?? POSITIONS[0];
 
-  const rows = await getPlayerComparison(year, posDef.pos);
+  const rows = isDraft ? [] : await getPlayerComparison(year, posDef.pos);
+  const draftRows = isDraft ? await getDraftValue(year) : [];
   const cols = [...COMMON, ...(EXTRA[posDef.pos] ?? [])];
+  const hasTargets = ["WR", "RB", "TE"].includes(posDef.pos);
+
+  // Per-NFL-team distribution (group the comparison rows by NFL team)
+  const byNfl = new Map<string, PlayerCompRow[]>();
+  if (!isDraft) {
+    for (const r of rows) {
+      if (!r.nflTeam) continue;
+      const arr = byNfl.get(r.nflTeam) ?? [];
+      arr.push(r);
+      byNfl.set(r.nflTeam, arr);
+    }
+  }
+  const distribution = [...byNfl.entries()]
+    .map(([nfl, players]) => {
+      const totTgt = players.reduce((a, p) => a + (p.s.receivingTargets || 0), 0);
+      const totPts = players.reduce((a, p) => a + p.totalPts, 0);
+      return { nfl, players, totTgt, totPts };
+    })
+    .sort((a, b) => b.totPts - a.totPts);
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -133,13 +158,21 @@ export default async function PlayerComparisonsPage({
           <Link
             key={p.key}
             href={`/player-comparisons?year=${year}&pos=${p.key}`}
-            className={tabCls(p.key === posDef.key)}
+            className={tabCls(!isDraft && p.key === posDef.key)}
           >
             {p.label}
           </Link>
         ))}
+        <Link
+          href={`/player-comparisons?year=${year}&pos=draft`}
+          className={tabCls(isDraft)}
+        >
+          Draft Value
+        </Link>
       </nav>
 
+      {!isDraft && (
+        <>
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
@@ -200,6 +233,133 @@ export default async function PlayerComparisonsPage({
       </div>
       {rows.length === 0 && (
         <p className="mt-4 text-sm text-muted">No players found.</p>
+      )}
+
+      {distribution.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-4 text-lg font-bold tracking-tight">
+            By NFL team — {hasTargets ? "target & points share" : "points share"}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {distribution.map((d) => (
+              <div
+                key={d.nfl}
+                className="rounded-xl border border-border bg-surface p-3"
+              >
+                <div className="mb-2 text-sm font-semibold">{d.nfl}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-muted">
+                      <th className="py-1 font-medium">Player</th>
+                      {hasTargets && (
+                        <th className="py-1 text-right font-medium">Tgt%</th>
+                      )}
+                      <th className="py-1 text-right font-medium">Pts</th>
+                      <th className="py-1 text-right font-medium">Pts%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.players.map((p) => (
+                      <tr key={p.name} className="border-t border-border/40">
+                        <td className="truncate py-1 pr-2">{p.name}</td>
+                        {hasTargets && (
+                          <td className="py-1 text-right tabular-nums text-muted">
+                            {d.totTgt
+                              ? `${(((p.s.receivingTargets || 0) / d.totTgt) * 100).toFixed(0)}%`
+                              : "—"}
+                          </td>
+                        )}
+                        <td className="py-1 text-right tabular-nums">
+                          {p.totalPts.toFixed(0)}
+                        </td>
+                        <td className="py-1 text-right tabular-nums text-muted">
+                          {d.totPts
+                            ? `${((p.totalPts / d.totPts) * 100).toFixed(0)}%`
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+        </>
+      )}
+
+      {isDraft && (
+        <>
+          <p className="mb-4 max-w-2xl text-sm text-muted">
+            TE/RB/WR ranked by draft value = (total points)² × √(draft
+            position). Higher means more production relative to how late they
+            were drafted.
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-3 py-3 font-medium">#</th>
+                  <th className="px-3 py-3 font-medium">Player</th>
+                  <th className="px-3 py-3 font-medium">Pos</th>
+                  <th className="px-3 py-3 font-medium">Fantasy</th>
+                  <th className="px-3 py-3 text-right font-medium">Draft</th>
+                  <th className="px-3 py-3 text-right font-medium">Rd/Pk</th>
+                  <th className="px-3 py-3 text-right font-medium">Pts</th>
+                  <th className="px-3 py-3 text-right font-medium">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draftRows.map((r, i) => (
+                  <tr
+                    key={r.name}
+                    className="border-b border-border/60 last:border-0 hover:bg-surface-2"
+                  >
+                    <td className="px-3 py-2 text-muted tabular-nums">{i + 1}</td>
+                    <td className="px-3 py-2 font-medium whitespace-nowrap">
+                      {r.name}
+                    </td>
+                    <td className="px-3 py-2 text-muted">{r.position}</td>
+                    <td className="px-3 py-2">
+                      {r.fantasyTeam ? (
+                        <Link
+                          href={`/teams/${r.fantasyTeam.espnId}`}
+                          className="flex items-center gap-1.5 whitespace-nowrap hover:underline"
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: teamColor(r.fantasyTeam.espnId),
+                            }}
+                          />
+                          {r.fantasyTeam.name}
+                        </Link>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {r.overall}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted">
+                      {r.round}.{r.pick}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {r.totalPts.toFixed(1)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums">
+                      {Math.round(r.value).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {draftRows.length === 0 && (
+            <p className="mt-4 text-sm text-muted">No draft data.</p>
+          )}
+        </>
       )}
     </main>
   );
