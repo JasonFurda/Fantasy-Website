@@ -246,22 +246,32 @@ export default async function PlayerComparisonsPage({
         <p className="mt-4 text-sm text-muted">No players found.</p>
       )}
 
-      {rows.length > 0 && (
-        <section className="mt-10">
-          <h2 className="mb-2 text-lg font-bold tracking-tight">
-            {hasTargets ? "Target & points share" : "Points share"}
-            {sel ? ` — ${sel}` : ""}
-          </h2>
-          {!sel && (
-            <p className="mb-4 text-sm text-muted">
-              Click a player&apos;s name above to see their NFL team&apos;s
-              share.
-            </p>
-          )}
-          <div className="mt-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {distribution
-              .filter((d) => d.nfl === sel)
-              .map((d) => (
+      {sel && distribution.some((d) => d.nfl === sel) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <Link
+            href={`/player-comparisons?year=${year}&pos=${posDef.key}`}
+            scroll={false}
+            aria-label="Close"
+            className="absolute inset-0 bg-black/60"
+          />
+          <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <h2 className="text-lg font-bold tracking-tight">
+                {sel} — {hasTargets ? "target & points share" : "points share"}
+              </h2>
+              <Link
+                href={`/player-comparisons?year=${year}&pos=${posDef.key}`}
+                scroll={false}
+                aria-label="Close"
+                className="rounded-md px-2 py-1 text-muted hover:bg-surface-2 hover:text-foreground"
+              >
+                ✕
+              </Link>
+            </div>
+            <div className="grid gap-4">
+              {distribution
+                .filter((d) => d.nfl === sel)
+                .map((d) => (
               <div
                 key={d.nfl}
                 className="rounded-xl border border-border bg-surface p-3"
@@ -303,8 +313,9 @@ export default async function PlayerComparisonsPage({
                 </table>
               </div>
             ))}
+            </div>
           </div>
-        </section>
+        </div>
       )}
         </>
       )}
