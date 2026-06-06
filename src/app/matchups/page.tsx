@@ -157,8 +157,8 @@ export default async function MatchupsPage({
         })}
       </div>
 
-      {/* Box score */}
-      <div className="mt-8">
+      {/* Box score (full-bleed on mobile) */}
+      <div className="-mx-5 mt-8 sm:mx-0">
         {detail ? (
           <MatchupBoxScore
             detail={detail}

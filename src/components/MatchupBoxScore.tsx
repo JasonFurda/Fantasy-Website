@@ -29,7 +29,7 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
   if (!p) return <div className="flex-1" />;
   return (
     <div
-      className={`min-w-0 flex-1 rounded-md px-3 py-2.5 ${
+      className={`min-w-0 flex-1 rounded-md px-2 py-2 sm:px-3 sm:py-2.5 ${
         align === "right" ? "text-right" : "text-left"
       }`}
       style={{ backgroundColor: perfBg(p.points, p.projected) }}
@@ -69,7 +69,7 @@ function Row({
   const a = away?.points ?? 0;
   const h = home?.points ?? 0;
   return (
-    <div className="flex items-center gap-2 border-b border-border/50 px-3 py-1 last:border-0">
+    <div className="flex items-center gap-1 border-b border-border/50 px-2 py-1 last:border-0 sm:gap-2 sm:px-3">
       <PlayerName p={away} align="right" />
       <Pts p={away} win={a > h} />
       <div className="w-9 shrink-0 text-center text-[10px] font-semibold uppercase text-muted sm:w-12 sm:text-xs">
@@ -142,9 +142,9 @@ export default function MatchupBoxScore({
   const bench = zip(detail.away.bench, detail.home.bench);
 
   return (
-    <div className="rounded-2xl border border-border bg-surface">
+    <div className="border-y border-border bg-surface sm:rounded-2xl sm:border">
       {/* Score header */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-4 border-b border-border p-5">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-2 border-b border-border p-4 sm:gap-4 sm:p-5">
         <TeamHeader
           name={detail.awayTeam?.name.trim() ?? "Away"}
           owner={detail.awayTeam?.owner ?? ""}
