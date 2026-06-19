@@ -27,10 +27,11 @@ export default async function StandingsPage({
   const { year: yearParam } = await searchParams;
   const years = seasons.map((s) => s.year);
   const isAllTime = yearParam === "all";
+  const defaultYear = seasons.find((s) => s.current_week > 0)?.year ?? years[0];
   const selectedYear =
     yearParam && years.includes(Number(yearParam))
       ? Number(yearParam)
-      : years[0];
+      : defaultYear;
 
   let standings;
   let teamCount: number;

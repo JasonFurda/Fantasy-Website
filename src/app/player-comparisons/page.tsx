@@ -105,8 +105,9 @@ export default async function PlayerComparisonsPage({
 
   const sp = await searchParams;
   const years = seasons.map((s) => s.year);
+  const defaultYear = seasons.find((s) => s.current_week > 0)?.year ?? years[0];
   const year =
-    sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
+    sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
   const isDraft = sp.pos === "draft";
   const posDef = POSITIONS.find((p) => p.key === sp.pos) ?? POSITIONS[0];
   const sel = sp.sel ?? null;

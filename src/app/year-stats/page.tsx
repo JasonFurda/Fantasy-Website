@@ -118,8 +118,9 @@ export default async function YearStatsPage({
   const sp = await searchParams;
   const years = seasons.map((s) => s.year);
   const isAllTime = sp.year === "all";
+  const defaultYear = seasons.find((s) => s.current_week > 0)?.year ?? years[0];
   const year =
-    sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
+    sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "fraud";
 
   const stats = isAllTime ? await getAllTimeStats() : await getYearStats(year);

@@ -26,8 +26,11 @@ export default async function PowerRankingsPage({
 
   const { year: yearParam } = await searchParams;
   const years = seasons.map((s) => s.year);
+  const defaultYear = seasons.find((s) => s.current_week > 0)?.year ?? years[0];
   const year =
-    yearParam && years.includes(Number(yearParam)) ? Number(yearParam) : years[0];
+    yearParam && years.includes(Number(yearParam))
+      ? Number(yearParam)
+      : defaultYear;
 
   const rows = await getPowerRankings(year);
 
