@@ -25,6 +25,8 @@ export const teamMeta: Record<number, TeamMeta> = {
   7: { color: "#9333ea", art: "/art/me-v-sauce.png" }, // sauc3 — purple
   10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — gold
   11: { color: "#14b8a6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — teal
+  12: { color: "#228b22" }, // DraymondGreen…  — Maltby's Mans — forest green
+  13: { color: "#c0c0c0" }, // ESPNfan7205…  — Chathamite — silver
 };
 
 // Fallback colors for franchises without an explicit entry (e.g. future teams).
