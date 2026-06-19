@@ -1,12 +1,11 @@
 name: Sync active season to Supabase
 
 # Refreshes the season marked is_active=true in Supabase from the live ESPN API.
-# Weekly for now; before the 2026 NFL season starts, change the cron to daily
-# (see the commented line below).
+# Runs daily so the draft and weekly scores flow in automatically once the
+# season starts; preseason runs are quick no-ops (no games yet).
 on:
   schedule:
-    - cron: "0 12 * * 2" # Weekly: Tuesdays 12:00 UTC (after Monday Night Football)
-    # - cron: "0 12 * * *" # Daily 12:00 UTC — switch to this for the 2026 season
+    - cron: "0 12 * * *" # Daily at 12:00 UTC
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 jobs:
