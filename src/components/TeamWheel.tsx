@@ -66,7 +66,10 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
     (i: number, extraSpins = 0, ease = 0.12) => {
       const base = i * step;
       const current = rotationRef.current;
-      const mod = (((-base - current) % 360) + 360) % 360;
+      // shortest signed rotation to bring item i to the front, in (-180, 180]
+      let mod = (((-base - current) % 360) + 360) % 360;
+      if (mod > 180) mod -= 360;
+      // taps/arrows take the short way; a spin (extraSpins) still runs forward.
       targetRef.current = current + mod + extraSpins * 360;
       easeRef.current = ease;
       modeRef.current = "snap";
@@ -197,7 +200,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
             {spinning ? "Spinning…" : "Spin"}
           </button>
           <button
-            onClick={() => nudge(-1)}
+            onClick={() => nudge(1)}
             disabled={spinning}
             aria-label="Previous team"
             className="rounded-full border border-border bg-surface/80 p-3 backdrop-blur transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
@@ -205,7 +208,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 15l-6-6-6 6" /></svg>
           </button>
           <button
-            onClick={() => nudge(1)}
+            onClick={() => nudge(-1)}
             disabled={spinning}
             aria-label="Next team"
             className="rounded-full border border-border bg-surface/80 p-3 backdrop-blur transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
