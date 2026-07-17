@@ -31,6 +31,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
   const rotationRef = useRef(0);
   const targetRef = useRef<number | null>(null);
   const modeRef = useRef<"idle" | "snap" | "rest">("idle");
+  const easeRef = useRef(0.12); // per-animation deceleration; lower = slower
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -41,12 +42,14 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
         r += IDLE_SPEED;
       } else if (mode === "snap" && targetRef.current != null) {
         const diff = targetRef.current - r;
-        if (Math.abs(diff) < 0.12) {
+        // Land once we're on top of the target, or once the per-frame step is
+        // imperceptible — the latter trims the slow easing's invisible tail.
+        if (Math.abs(diff) < 0.12 || Math.abs(diff) * easeRef.current < 0.02) {
           r = targetRef.current;
           modeRef.current = "rest";
           setSpinning(false);
         } else {
-          r += diff * 0.12;
+          r += diff * easeRef.current;
         }
       }
       rotationRef.current = r;
@@ -60,11 +63,12 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
   }, []);
 
   const selectIndex = useCallback(
-    (i: number, extraSpins = 0) => {
+    (i: number, extraSpins = 0, ease = 0.12) => {
       const base = i * step;
       const current = rotationRef.current;
       const mod = (((-base - current) % 360) + 360) % 360;
       targetRef.current = current + mod + extraSpins * 360;
+      easeRef.current = ease;
       modeRef.current = "snap";
       setSelected(i);
     },
@@ -84,7 +88,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
     const i = Math.floor(Math.random() * n);
     const extraSpins = 4 + Math.floor(Math.random() * 3); // 4–6 full turns
     setSpinning(true);
-    selectIndex(i, extraSpins);
+    selectIndex(i, extraSpins, 0.05); // gentle decel → a long, slow spin
   }, [n, selectIndex]);
 
   if (n === 0) return <p className="text-muted">No teams found.</p>;
