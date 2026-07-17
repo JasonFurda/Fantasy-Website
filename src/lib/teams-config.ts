@@ -20,9 +20,9 @@ export const teamMeta: Record<number, TeamMeta> = {
   1: { color: "#f97316", art: "/art/mich-vs-viola-playoffs.jpg" }, // Festive7 — orange
   3: { color: "#7c4a21", art: "/art/me-vs-duck-playoffs.jpg" }, // jasonsexybod — brown
   4: { color: "#dc2626", art: "/art/me-v-brum.png" }, // drasktic — red
-  5: { color: "#ffb7c5", art: "/art/jason-vs-west-2.jpg" }, // ESPNfan2807758783 — sakura pink
+  5: { color: "#9333ea", art: "/art/jason-vs-west-2.jpg" }, // ESPNfan2807758783 — Bell Milers — purple
   6: { color: "#1e3a8a", art: "/art/me-v-mich.png" }, // espn62403996 — dark blue
-  7: { color: "#9333ea", art: "/art/me-v-sauce.png" }, // sauc3 — purple
+  7: { color: "#ffb7c5", art: "/art/me-v-sauce.png" }, // sauc3 — Sauce — sakura pink
   10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — gold
   11: { color: "#14b8a6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — teal
   12: { color: "#228b22" }, // DraymondGreen…  — Maltby's Mans — forest green
