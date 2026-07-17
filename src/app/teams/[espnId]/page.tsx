@@ -1,7 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getFranchise, getFranchiseRoster } from "@/lib/queries";
+import {
+  getFranchise,
+  getFranchiseRoster,
+  getFranchiseHeadToHead,
+} from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
 import { championshipsFor } from "@/lib/league-config";
 import RosterByYear from "@/components/RosterByYear";
@@ -23,9 +27,10 @@ export default async function TeamPage({
   const espnId = Number(espnIdParam);
   if (!Number.isFinite(espnId)) notFound();
 
-  const [franchise, roster] = await Promise.all([
+  const [franchise, roster, headToHead] = await Promise.all([
     getFranchise(espnId),
     getFranchiseRoster(espnId),
+    getFranchiseHeadToHead(espnId),
   ]);
   if (!franchise) notFound();
 
@@ -161,7 +166,76 @@ export default async function TeamPage({
           </div>
         </section>
 
-        {/* Section 2: Roster (toggle by year) */}
+        {/* Section 2: Head-to-head (all-time, regular season) */}
+        <section>
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-bold tracking-tight">
+              Head-to-head
+            </h2>
+            <span className="text-sm text-muted">
+              Lifetime · incl. playoffs ·{" "}
+              <span className="font-semibold text-foreground tabular-nums">
+                {headToHead.overall.wins}-{headToHead.overall.losses}
+                {headToHead.overall.ties ? `-${headToHead.overall.ties}` : ""}
+              </span>{" "}
+              overall
+            </span>
+          </div>
+
+          {headToHead.opponents.length === 0 ? (
+            <p className="text-sm text-muted">No head-to-head data available.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="px-4 py-3 font-medium">Opponent</th>
+                    <th className="px-4 py-3 text-right font-medium">Record</th>
+                    <th className="px-4 py-3 text-right font-medium">Win %</th>
+                    <th className="px-4 py-3 font-medium">Series</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {headToHead.opponents.map((o) => (
+                    <tr
+                      key={o.opponentEspnId}
+                      className="border-b border-border/60 last:border-0"
+                    >
+                      <td className="px-4 py-3 font-medium">
+                        <Link
+                          href={`/teams/${o.opponentEspnId}`}
+                          className="transition-colors hover:text-[var(--team)]"
+                        >
+                          {o.opponentName}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {o.wins}-{o.losses}
+                        {o.ties ? `-${o.ties}` : ""}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted">
+                        {o.winPct.toFixed(3).replace(/^0/, "")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-2 w-full min-w-[6rem] overflow-hidden rounded-full bg-border">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${o.winPct * 100}%`,
+                              backgroundColor: color,
+                            }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* Section 3: Roster (toggle by year) */}
         <section>
           <RosterByYear byYear={roster.byYear} color={color} />
         </section>

@@ -1117,6 +1117,108 @@ export async function getFranchise(espnId: number): Promise<Franchise | null> {
   };
 }
 
+export type HeadToHeadRow = {
+  opponentEspnId: number;
+  opponentName: string; // most recent name
+  wins: number;
+  losses: number;
+  ties: number;
+  games: number;
+  winPct: number; // 0-1
+};
+
+export type FranchiseHeadToHead = {
+  overall: { wins: number; losses: number; ties: number };
+  opponents: HeadToHeadRow[]; // best win% first
+};
+
+/**
+ * Lifetime head-to-head record for a franchise vs every other franchise, keyed
+ * by espn_id so it follows a team across name changes. Counts EVERY played game
+ * (regular season + playoffs), so this is a true lifetime series record and will
+ * run ahead of the regular-season-only "Overall record" in Career totals.
+ */
+export async function getFranchiseHeadToHead(
+  espnId: number,
+): Promise<FranchiseHeadToHead> {
+  const seasons = await getSeasons(); // newest first
+  if (seasons.length === 0) {
+    return { overall: { wins: 0, losses: 0, ties: 0 }, opponents: [] };
+  }
+
+  const perYear = await Promise.all(
+    seasons.map(async (s) => {
+      const [teams, matchups] = await Promise.all([
+        getTeams(s.year),
+        getMatchups(s.year),
+      ]);
+      return { teams, matchups };
+    }),
+  );
+
+  // opponent espn_id -> record; and the most recent name we've seen per franchise
+  const h2h = new Map<number, { wins: number; losses: number; ties: number }>();
+  const latestName = new Map<number, string>();
+
+  for (const { teams, matchups } of perYear) {
+    const espnByTeamId = new Map<number, number>(
+      teams.map((t) => [t.id, t.espn_id]),
+    );
+    // perYear is newest-first, so the first name seen for a franchise is latest.
+    for (const t of teams) {
+      if (!latestName.has(t.espn_id)) latestName.set(t.espn_id, t.name.trim());
+    }
+
+    for (const m of matchups) {
+      if (!isPlayed(m)) continue; // lifetime: regular season + playoffs
+      const homeEspn = espnByTeamId.get(m.home_team_id);
+      const awayEspn = espnByTeamId.get(m.away_team_id);
+      if (homeEspn == null || awayEspn == null) continue;
+
+      let side: "home" | "away" | null = null;
+      if (homeEspn === espnId) side = "home";
+      else if (awayEspn === espnId) side = "away";
+      if (!side) continue;
+
+      const oppEspn = side === "home" ? awayEspn : homeEspn;
+      const myScore = side === "home" ? m.home_score ?? 0 : m.away_score ?? 0;
+      const oppScore = side === "home" ? m.away_score ?? 0 : m.home_score ?? 0;
+
+      let rec = h2h.get(oppEspn);
+      if (!rec) {
+        rec = { wins: 0, losses: 0, ties: 0 };
+        h2h.set(oppEspn, rec);
+      }
+      if (myScore > oppScore) rec.wins++;
+      else if (myScore < oppScore) rec.losses++;
+      else rec.ties++;
+    }
+  }
+
+  const overall = { wins: 0, losses: 0, ties: 0 };
+  const opponents: HeadToHeadRow[] = [...h2h.entries()].map(([oppEspn, rec]) => {
+    overall.wins += rec.wins;
+    overall.losses += rec.losses;
+    overall.ties += rec.ties;
+    const games = rec.wins + rec.losses + rec.ties;
+    return {
+      opponentEspnId: oppEspn,
+      opponentName: latestName.get(oppEspn) ?? `Team ${oppEspn}`,
+      wins: rec.wins,
+      losses: rec.losses,
+      ties: rec.ties,
+      games,
+      winPct: games ? (rec.wins + rec.ties * 0.5) / games : 0,
+    };
+  });
+
+  opponents.sort(
+    (a, b) => b.winPct - a.winPct || b.games - a.games || b.wins - a.wins,
+  );
+
+  return { overall, opponents };
+}
+
 export type RosterPlayer = {
   name: string;
   position: string;
