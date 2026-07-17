@@ -26,6 +26,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
 
   const [rotation, setRotation] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
+  const [spinning, setSpinning] = useState(false);
 
   const rotationRef = useRef(0);
   const targetRef = useRef<number | null>(null);
@@ -43,6 +44,7 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
         if (Math.abs(diff) < 0.12) {
           r = targetRef.current;
           modeRef.current = "rest";
+          setSpinning(false);
         } else {
           r += diff * 0.12;
         }
@@ -76,6 +78,14 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
     },
     [selected, step, n, selectIndex],
   );
+
+  const spin = useCallback(() => {
+    if (n === 0) return;
+    const i = Math.floor(Math.random() * n);
+    const extraSpins = 4 + Math.floor(Math.random() * 3); // 4–6 full turns
+    setSpinning(true);
+    selectIndex(i, extraSpins);
+  }, [n, selectIndex]);
 
   if (n === 0) return <p className="text-muted">No teams found.</p>;
 
@@ -166,19 +176,35 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
           })}
         </div>
 
-        {/* up/down controls */}
-        <div className="absolute left-[calc(4vw+0.5rem)] bottom-6 z-20 flex gap-2">
+        {/* spin + up/down controls */}
+        <div className="absolute left-[calc(4vw+0.5rem)] bottom-6 z-20 flex items-center gap-2">
+          <button
+            onClick={spin}
+            disabled={spinning}
+            aria-label="Spin the wheel to pick a random team"
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/80 px-5 py-3 text-sm font-semibold backdrop-blur transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span
+              aria-hidden
+              className={spinning ? "inline-block animate-spin" : "inline-block"}
+            >
+              🎲
+            </span>
+            {spinning ? "Spinning…" : "Spin"}
+          </button>
           <button
             onClick={() => nudge(-1)}
+            disabled={spinning}
             aria-label="Previous team"
-            className="rounded-full border border-border bg-surface/80 p-3 backdrop-blur transition hover:bg-surface-2"
+            className="rounded-full border border-border bg-surface/80 p-3 backdrop-blur transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 15l-6-6-6 6" /></svg>
           </button>
           <button
             onClick={() => nudge(1)}
+            disabled={spinning}
             aria-label="Next team"
-            className="rounded-full border border-border bg-surface/80 p-3 backdrop-blur transition hover:bg-surface-2"
+            className="rounded-full border border-border bg-surface/80 p-3 backdrop-blur transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6" /></svg>
           </button>
@@ -234,7 +260,8 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
         <div className="absolute right-[6vw] top-1/2 z-20 hidden -translate-y-1/2 text-right sm:block">
           <p className="text-2xl font-semibold">Pick your team</p>
           <p className="mt-1 max-w-xs text-sm text-muted">
-            Tap a name on the wheel or use the arrows.
+            Tap a name on the wheel, use the arrows, or hit Spin to land on a
+            random team.
           </p>
         </div>
       )}
