@@ -3,9 +3,11 @@ import {
   getSeasons,
   getYearStats,
   getAllTimeStats,
+  getYearPerformance,
   type GameRow,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import PerformanceChart from "@/components/PerformanceChart";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ const TABS = [
   { key: "club200", label: "200 Club" },
   { key: "sub100", label: "Sub-100 Club" },
   { key: "mismanage", label: "Mismanagement" },
+  { key: "performance", label: "Performance" },
 ] as const;
 
 function TeamCell({ team }: { team: { espn_id: number; name: string; owner: string } | null }) {
@@ -124,6 +127,10 @@ export default async function YearStatsPage({
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "fraud";
 
   const stats = isAllTime ? await getAllTimeStats() : await getYearStats(year);
+  const performance =
+    tab === "performance" && !isAllTime
+      ? await getYearPerformance(year)
+      : null;
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -290,6 +297,25 @@ export default async function YearStatsPage({
               </tbody>
             </table>
           </div>
+        </>
+      )}
+
+      {tab === "performance" && (
+        <>
+          <p className="mb-4 max-w-2xl text-sm text-muted">
+            Every team&apos;s weekly score across the{" "}
+            {isAllTime ? "" : `${year} `}season. Playoff weeks are shaded and
+            drawn with a dashed line.
+          </p>
+          {isAllTime ? (
+            <p className="text-sm text-muted">
+              The performance chart is per-season — pick a year above to see it.
+            </p>
+          ) : performance && performance.series.length > 0 ? (
+            <PerformanceChart data={performance} />
+          ) : (
+            <p className="text-sm text-muted">No games played yet.</p>
+          )}
         </>
       )}
     </main>

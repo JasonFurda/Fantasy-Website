@@ -1,10 +1,12 @@
 import { supabase } from "@/lib/supabase";
 import {
   isPlayoffWeek,
+  playoffStartWeek,
   isChampion,
   championshipsFor,
   finalPlacement,
 } from "@/lib/league-config";
+import { teamColor } from "@/lib/teams-config";
 
 export type Season = {
   year: number;
@@ -547,6 +549,90 @@ export async function getAllTimeStats(): Promise<YearStats> {
     .sort((a, b) => a.pctOptimal - b.pctOptimal);
 
   return { fraud, club200, subClub, mismanage };
+}
+
+export type PerfPoint = {
+  week: number;
+  score: number;
+  opponentName: string | null;
+  opponentScore: number;
+  won: boolean;
+  isPlayoff: boolean;
+};
+
+export type PerfSeries = {
+  team: Team;
+  color: string;
+  points: PerfPoint[]; // week-ordered, only weeks this team played
+};
+
+export type YearPerformance = {
+  year: number;
+  weeks: number[]; // sorted unique played weeks
+  playoffStartWeek: number;
+  series: PerfSeries[];
+};
+
+/** Every team's weekly score across a full season (regular season + playoffs). */
+export async function getYearPerformance(
+  year: number,
+): Promise<YearPerformance> {
+  const [teams, matchups] = await Promise.all([
+    getTeams(year),
+    getMatchups(year),
+  ]);
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+
+  const byTeam = new Map<number, PerfPoint[]>();
+  const weeks = new Set<number>();
+  const push = (
+    tid: number,
+    week: number,
+    score: number,
+    opp: Team | null,
+    oppScore: number,
+  ) => {
+    const arr = byTeam.get(tid) ?? [];
+    arr.push({
+      week,
+      score,
+      opponentName: opp ? opp.name.trim() : null,
+      opponentScore: oppScore,
+      won: score > oppScore,
+      isPlayoff: isPlayoffWeek(year, week),
+    });
+    byTeam.set(tid, arr);
+  };
+
+  for (const m of matchups) {
+    if (!isPlayed(m)) continue;
+    const hs = m.home_score ?? 0;
+    const as = m.away_score ?? 0;
+    const home = teamById.get(m.home_team_id) ?? null;
+    const away = teamById.get(m.away_team_id) ?? null;
+    push(m.home_team_id, m.week, hs, away, as);
+    push(m.away_team_id, m.week, as, home, hs);
+    weeks.add(m.week);
+  }
+
+  const series: PerfSeries[] = [...byTeam.entries()]
+    .map(([tid, points]) => {
+      const team = teamById.get(tid)!;
+      return {
+        team,
+        color: teamColor(team.espn_id),
+        points: points.sort((a, b) => a.week - b.week),
+      };
+    })
+    .filter((s) => s.team)
+    .sort((a, b) => a.team.name.trim().localeCompare(b.team.name.trim()));
+
+  return {
+    year,
+    weeks: [...weeks].sort((a, b) => a - b),
+    playoffStartWeek: playoffStartWeek(year),
+    series,
+  };
 }
 
 export type PlayerCompRow = {
