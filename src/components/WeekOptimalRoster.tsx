@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { WeekOptimalRoster as WeekOptimal } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 
@@ -6,7 +7,13 @@ function slotLabel(slot: string): string {
   return slot;
 }
 
-export default function WeekOptimalRoster({ data }: { data: WeekOptimal }) {
+export default function WeekOptimalRoster({
+  data,
+  playerHref,
+}: {
+  data: WeekOptimal;
+  playerHref?: (name: string) => string;
+}) {
   return (
     <div className="border-y border-border bg-surface sm:rounded-2xl sm:border">
       {/* Header */}
@@ -50,7 +57,17 @@ export default function WeekOptimalRoster({ data }: { data: WeekOptimal }) {
               {/* Player */}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium leading-tight">
-                  {p.playerName}
+                  {playerHref ? (
+                    <Link
+                      href={playerHref(p.playerName)}
+                      scroll={false}
+                      className="hover:text-accent hover:underline"
+                    >
+                      {p.playerName}
+                    </Link>
+                  ) : (
+                    p.playerName
+                  )}
                 </div>
                 <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
                   <span

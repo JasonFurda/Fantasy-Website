@@ -5,12 +5,14 @@ import {
   getMatchups,
   getMatchupDetail,
   getWeekOptimalRoster,
+  getPlayerDetail,
   type Team,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
 import MatchupBoxScore from "@/components/MatchupBoxScore";
 import MatchupClash from "@/components/MatchupClash";
 import WeekOptimalRoster from "@/components/WeekOptimalRoster";
+import PlayerDetailModal from "@/components/PlayerDetailModal";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,7 @@ export default async function MatchupsPage({
     week?: string;
     m?: string;
     view?: string;
+    player?: string;
   }>;
 }) {
   const seasons = await getSeasons();
@@ -68,6 +71,17 @@ export default async function MatchupsPage({
   const optimal =
     view === "optimal" ? await getWeekOptimalRoster(year, week) : null;
 
+  const playerDetail = sp.player
+    ? await getPlayerDetail(sp.player, year)
+    : null;
+
+  // Player links preserve the current view/week/matchup context.
+  const baseParams = `year=${year}&week=${week}${
+    selectedId ? `&m=${selectedId}` : ""
+  }${view === "optimal" ? "&view=optimal" : ""}`;
+  const playerHref = (name: string) =>
+    `/matchups?${baseParams}&player=${encodeURIComponent(name)}`;
+
   const tab = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
       active
@@ -93,7 +107,7 @@ export default async function MatchupsPage({
         <h1 className="text-2xl font-bold tracking-tight">Matchups</h1>
 
         {/* View toggle */}
-        <div className="mt-5 flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
+        <div className="mt-5 inline-flex gap-1 rounded-lg border border-border bg-surface p-1">
           <Link
             href={`/matchups?year=${year}&week=${week}`}
             className={tab(view === "matchups")}
@@ -207,6 +221,7 @@ export default async function MatchupsPage({
                   detail={detail}
                   awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
                   homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
+                  playerHref={playerHref}
                 />
               ) : (
                 <p className="text-sm text-muted">No matchup selected.</p>
@@ -217,7 +232,7 @@ export default async function MatchupsPage({
           /* Optimal roster (full-bleed on mobile) */
           <div className="-mx-5 mt-8 sm:mx-0">
             {optimal && optimal.slots.length > 0 ? (
-              <WeekOptimalRoster data={optimal} />
+              <WeekOptimalRoster data={optimal} playerHref={playerHref} />
             ) : (
               <p className="text-sm text-muted">
                 No player data available for this week yet.
@@ -226,6 +241,13 @@ export default async function MatchupsPage({
           </div>
         )}
       </main>
+
+      {playerDetail && (
+        <PlayerDetailModal
+          data={playerDetail}
+          closeHref={`/matchups?${baseParams}`}
+        />
+      )}
     </>
   );
 }

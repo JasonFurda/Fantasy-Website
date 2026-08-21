@@ -3,9 +3,11 @@ import {
   getSeasons,
   getPlayerComparison,
   getDraftValue,
+  getPlayerDetail,
   type PlayerCompRow,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import PlayerDetailModal from "@/components/PlayerDetailModal";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +94,7 @@ const EXTRA: Record<string, Col[]> = {
 export default async function PlayerComparisonsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; pos?: string; sel?: string }>;
+  searchParams: Promise<{ year?: string; pos?: string; player?: string }>;
 }) {
   const seasons = await getSeasons();
   if (seasons.length === 0) {
@@ -110,30 +112,16 @@ export default async function PlayerComparisonsPage({
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
   const isDraft = sp.pos === "draft";
   const posDef = POSITIONS.find((p) => p.key === sp.pos) ?? POSITIONS[0];
-  const sel = sp.sel ?? null;
+  const player = sp.player ?? null;
 
   const rows = isDraft ? [] : await getPlayerComparison(year, posDef.pos);
   const draftRows = isDraft ? await getDraftValue(year) : [];
   const cols = [...COMMON, ...(EXTRA[posDef.pos] ?? [])];
-  const hasTargets = ["WR", "RB", "TE"].includes(posDef.pos);
 
-  // Per-NFL-team distribution (group the comparison rows by NFL team)
-  const byNfl = new Map<string, PlayerCompRow[]>();
-  if (!isDraft) {
-    for (const r of rows) {
-      if (!r.nflTeam) continue;
-      const arr = byNfl.get(r.nflTeam) ?? [];
-      arr.push(r);
-      byNfl.set(r.nflTeam, arr);
-    }
-  }
-  const distribution = [...byNfl.entries()]
-    .map(([nfl, players]) => {
-      const totTgt = players.reduce((a, p) => a + (p.s.receivingTargets || 0), 0);
-      const totPts = players.reduce((a, p) => a + p.totalPts, 0);
-      return { nfl, players, totTgt, totPts };
-    })
-    .sort((a, b) => b.totPts - a.totPts);
+  const detail = player ? await getPlayerDetail(player, year) : null;
+  const closeHref = `/player-comparisons?year=${year}&pos=${
+    isDraft ? "draft" : posDef.key
+  }`;
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -205,17 +193,13 @@ export default async function PlayerComparisonsPage({
               >
                 <td className="px-3 py-2 text-muted tabular-nums">{i + 1}</td>
                 <td className="px-3 py-2 font-medium whitespace-nowrap">
-                  {r.nflTeam ? (
-                    <Link
-                      href={`/player-comparisons?year=${year}&pos=${posDef.key}&sel=${encodeURIComponent(r.nflTeam)}`}
-                      scroll={false}
-                      className="hover:text-accent hover:underline"
-                    >
-                      {r.name}
-                    </Link>
-                  ) : (
-                    r.name
-                  )}
+                  <Link
+                    href={`/player-comparisons?year=${year}&pos=${posDef.key}&player=${encodeURIComponent(r.name)}`}
+                    scroll={false}
+                    className="hover:text-accent hover:underline"
+                  >
+                    {r.name}
+                  </Link>
                 </td>
                 <td className="px-3 py-2">
                   {r.fantasyTeam ? (
@@ -251,77 +235,6 @@ export default async function PlayerComparisonsPage({
         <p className="mt-4 text-sm text-muted">No players found.</p>
       )}
 
-      {sel && distribution.some((d) => d.nfl === sel) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <Link
-            href={`/player-comparisons?year=${year}&pos=${posDef.key}`}
-            scroll={false}
-            aria-label="Close"
-            className="absolute inset-0 bg-black/60"
-          />
-          <div className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-2xl">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <h2 className="text-lg font-bold tracking-tight">
-                {sel} — {hasTargets ? "target & points share" : "points share"}
-              </h2>
-              <Link
-                href={`/player-comparisons?year=${year}&pos=${posDef.key}`}
-                scroll={false}
-                aria-label="Close"
-                className="rounded-md px-2 py-1 text-muted hover:bg-surface-2 hover:text-foreground"
-              >
-                ✕
-              </Link>
-            </div>
-            <div className="grid gap-4">
-              {distribution
-                .filter((d) => d.nfl === sel)
-                .map((d) => (
-              <div
-                key={d.nfl}
-                className="rounded-xl border border-border bg-surface p-3"
-              >
-                <div className="mb-2 text-sm font-semibold">{d.nfl}</div>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-muted">
-                      <th className="py-1 font-medium">Player</th>
-                      {hasTargets && (
-                        <th className="py-1 text-right font-medium">Tgt%</th>
-                      )}
-                      <th className="py-1 text-right font-medium">Pts</th>
-                      <th className="py-1 text-right font-medium">Pts%</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.players.map((p) => (
-                      <tr key={p.name} className="border-t border-border/40">
-                        <td className="truncate py-1 pr-2">{p.name}</td>
-                        {hasTargets && (
-                          <td className="py-1 text-right tabular-nums text-muted">
-                            {d.totTgt
-                              ? `${(((p.s.receivingTargets || 0) / d.totTgt) * 100).toFixed(0)}%`
-                              : "—"}
-                          </td>
-                        )}
-                        <td className="py-1 text-right tabular-nums">
-                          {p.totalPts.toFixed(0)}
-                        </td>
-                        <td className="py-1 text-right tabular-nums text-muted">
-                          {d.totPts
-                            ? `${((p.totalPts / d.totPts) * 100).toFixed(0)}%`
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-            </div>
-          </div>
-        </div>
-      )}
         </>
       )}
 
@@ -355,7 +268,13 @@ export default async function PlayerComparisonsPage({
                   >
                     <td className="px-3 py-2 text-muted tabular-nums">{i + 1}</td>
                     <td className="px-3 py-2 font-medium whitespace-nowrap">
-                      {r.name}
+                      <Link
+                        href={`/player-comparisons?year=${year}&pos=draft&player=${encodeURIComponent(r.name)}`}
+                        scroll={false}
+                        className="hover:text-accent hover:underline"
+                      >
+                        {r.name}
+                      </Link>
                     </td>
                     <td className="px-3 py-2 text-muted">{r.position}</td>
                     <td className="px-3 py-2">
@@ -418,6 +337,8 @@ export default async function PlayerComparisonsPage({
           )}
         </>
       )}
+
+      {detail && <PlayerDetailModal data={detail} closeHref={closeHref} />}
     </main>
   );
 }

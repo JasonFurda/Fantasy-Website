@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { MatchupDetail, SlotRow } from "@/lib/queries";
 
 /**
@@ -25,8 +26,27 @@ function perfBg(points: number, projected: number | null): string | undefined {
   return `hsla(${hue}, ${sat}%, ${light}%, ${alpha.toFixed(2)})`;
 }
 
-function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }) {
+function PlayerName({
+  p,
+  align,
+  href,
+}: {
+  p: SlotRow | null;
+  align: "left" | "right";
+  href?: string | null;
+}) {
   if (!p) return <div className="flex-1" />;
+  const name = href ? (
+    <Link
+      href={href}
+      scroll={false}
+      className="hover:text-accent hover:underline"
+    >
+      {p.playerName}
+    </Link>
+  ) : (
+    p.playerName
+  );
   return (
     <div
       className={`min-w-0 flex-1 rounded-md px-2 py-2 sm:px-3 sm:py-2.5 ${
@@ -35,7 +55,7 @@ function PlayerName({ p, align }: { p: SlotRow | null; align: "left" | "right" }
       style={{ backgroundColor: perfBg(p.points, p.projected) }}
     >
       <div className="text-sm font-medium leading-tight break-words hyphens-auto">
-        {p.playerName}
+        {name}
       </div>
     </div>
   );
@@ -61,22 +81,32 @@ function Row({
   away,
   home,
   slot,
+  playerHref,
 }: {
   away: SlotRow | null;
   home: SlotRow | null;
   slot: string;
+  playerHref?: (name: string) => string;
 }) {
   const a = away?.points ?? 0;
   const h = home?.points ?? 0;
   return (
     <div className="flex items-center gap-1 border-b border-border/50 px-2 py-1 last:border-0 sm:gap-2 sm:px-3">
-      <PlayerName p={away} align="right" />
+      <PlayerName
+        p={away}
+        align="right"
+        href={away && playerHref ? playerHref(away.playerName) : null}
+      />
       <Pts p={away} win={a > h} />
       <div className="w-9 shrink-0 text-center text-[10px] font-semibold uppercase text-muted sm:w-12 sm:text-xs">
         {slot}
       </div>
       <Pts p={home} win={h > a} />
-      <PlayerName p={home} align="left" />
+      <PlayerName
+        p={home}
+        align="left"
+        href={home && playerHref ? playerHref(home.playerName) : null}
+      />
     </div>
   );
 }
@@ -130,10 +160,12 @@ export default function MatchupBoxScore({
   detail,
   awayColor,
   homeColor,
+  playerHref,
 }: {
   detail: MatchupDetail;
   awayColor: string;
   homeColor: string;
+  playerHref?: (name: string) => string;
 }) {
   const awayWin = detail.awayScore > detail.homeScore;
   const homeWin = detail.homeScore > detail.awayScore;
@@ -174,7 +206,13 @@ export default function MatchupBoxScore({
       </div>
       <div>
         {starters.map(([a, h], i) => (
-          <Row key={`s${i}`} away={a} home={h} slot={(a ?? h)?.slot ?? ""} />
+          <Row
+            key={`s${i}`}
+            away={a}
+            home={h}
+            slot={(a ?? h)?.slot ?? ""}
+            playerHref={playerHref}
+          />
         ))}
       </div>
 
@@ -186,7 +224,13 @@ export default function MatchupBoxScore({
           </div>
           <div className="opacity-75">
             {bench.map(([a, h], i) => (
-              <Row key={`b${i}`} away={a} home={h} slot={(a ?? h)?.slot ?? "BE"} />
+              <Row
+                key={`b${i}`}
+                away={a}
+                home={h}
+                slot={(a ?? h)?.slot ?? "BE"}
+                playerHref={playerHref}
+              />
             ))}
           </div>
         </>

@@ -809,6 +809,198 @@ export async function getPlayerComparison(
   return out.sort((x, y) => y.totalPts - x.totalPts);
 }
 
+export type PlayerWeekPoint = {
+  week: number;
+  points: number;
+  dnp: boolean; // no game that week (bye / inactive / not on a roster or wire)
+  freeAgent: boolean; // was on the waiver wire that week
+};
+
+export type PlayerSeasonLine = {
+  year: number;
+  position: string;
+  nflTeam: string;
+  games: number;
+  totalPts: number;
+  avgPts: number;
+  s: Record<string, number>; // summed raw NFL stats
+};
+
+export type NflMate = {
+  name: string;
+  targets: number;
+  points: number;
+  isSelf: boolean;
+};
+
+export type PlayerDetail = {
+  name: string;
+  position: string;
+  nflTeam: string;
+  fantasyTeam: { name: string; espnId: number } | null;
+  year: number; // season the weekly chart covers
+  weekly: PlayerWeekPoint[]; // week 1..maxWeek
+  avg: number; // average over weeks played
+  bestWeek: PlayerWeekPoint | null;
+  seasons: PlayerSeasonLine[]; // newest first, every season on record
+  nflShare: { nflTeam: string; mates: NflMate[] } | null; // teammates' target/points split
+};
+
+/** Everything for one player's detail window: header, weekly scoring for the
+ *  season, season-by-season stat lines, and their share of the NFL team. */
+export async function getPlayerDetail(
+  name: string,
+  year: number,
+): Promise<PlayerDetail | null> {
+  const [matchups, teams, { data: psRaw }] = await Promise.all([
+    getMatchups(year),
+    getTeams(year),
+    supabase
+      .from("player_season")
+      .select("year, position, pro_team, total_points, games, stats")
+      .eq("player_name", name)
+      .order("year", { ascending: false }),
+  ]);
+
+  const seasons: PlayerSeasonLine[] = (
+    (psRaw ?? []) as {
+      year: number;
+      position: string | null;
+      pro_team: string | null;
+      total_points: number | null;
+      games: number | null;
+      stats: Record<string, number> | null;
+    }[]
+  ).map((r) => {
+    const games = Number(r.games ?? 0);
+    const totalPts = Number(r.total_points ?? 0);
+    return {
+      year: Number(r.year),
+      position: r.position ?? "",
+      nflTeam: r.pro_team ?? "",
+      games,
+      totalPts,
+      avgPts: games ? totalPts / games : 0,
+      s: r.stats ?? {},
+    };
+  });
+
+  const thisSeason = seasons.find((s) => s.year === year) ?? seasons[0] ?? null;
+  const position = thisSeason?.position ?? "";
+  const nflTeam = thisSeason?.nflTeam ?? "";
+
+  const weekByMatchup = new Map<number, number>(
+    matchups.map((m) => [m.id, m.week]),
+  );
+  const sideTeam = new Map<number, { home: number; away: number }>();
+  for (const m of matchups)
+    sideTeam.set(m.id, { home: m.home_team_id, away: m.away_team_id });
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+  const ids = matchups.map((m) => m.id);
+
+  const wk = new Map<number, { points: number; freeAgent: boolean }>();
+  const teamCount = new Map<number, number>();
+  const CHUNK = 20;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data } = await supabase
+      .from("player_slots")
+      .select("matchup_id, team_side, points")
+      .eq("player_name", name)
+      .in("matchup_id", ids.slice(i, i + CHUNK));
+    for (const r of (data ?? []) as {
+      matchup_id: number;
+      team_side: "home" | "away";
+      points: number | null;
+    }[]) {
+      const week = weekByMatchup.get(r.matchup_id);
+      if (week == null) continue;
+      wk.set(week, { points: Number(r.points ?? 0), freeAgent: false });
+      const sides = sideTeam.get(r.matchup_id);
+      const tid = sides
+        ? r.team_side === "home"
+          ? sides.home
+          : sides.away
+        : null;
+      if (tid != null) teamCount.set(tid, (teamCount.get(tid) ?? 0) + 1);
+    }
+  }
+
+  const { data: faRaw } = await supabase
+    .from("free_agent_week")
+    .select("week, points")
+    .eq("year", year)
+    .eq("player_name", name);
+  for (const r of (faRaw ?? []) as { week: number; points: number | null }[]) {
+    const week = Number(r.week);
+    if (!wk.has(week))
+      wk.set(week, { points: Number(r.points ?? 0), freeAgent: true });
+  }
+
+  // Most-frequent fantasy team that rostered them this season → header label.
+  let fantasyTeam: { name: string; espnId: number } | null = null;
+  let bestTid: number | null = null;
+  let bestN = -1;
+  for (const [tid, cnt] of teamCount)
+    if (cnt > bestN) {
+      bestN = cnt;
+      bestTid = tid;
+    }
+  if (bestTid != null) {
+    const t = teamById.get(bestTid);
+    if (t) fantasyTeam = { name: t.name.trim(), espnId: t.espn_id };
+  }
+
+  const maxWeek = matchups.reduce((a, m) => Math.max(a, m.week), 0);
+  const weekly: PlayerWeekPoint[] = [];
+  for (let w = 1; w <= maxWeek; w++) {
+    const e = wk.get(w);
+    weekly.push({
+      week: w,
+      points: e ? e.points : 0,
+      dnp: !e,
+      freeAgent: e?.freeAgent ?? false,
+    });
+  }
+  const played = weekly.filter((x) => !x.dnp);
+  if (seasons.length === 0 && played.length === 0) return null;
+
+  const avg = played.length
+    ? played.reduce((a, x) => a + x.points, 0) / played.length
+    : 0;
+  const bestWeek = played.length
+    ? played.reduce((a, x) => (x.points > a.points ? x : a))
+    : null;
+
+  // Share of the NFL team's targets/points among fantasy-relevant teammates.
+  let nflShare: PlayerDetail["nflShare"] = null;
+  if (["WR", "RB", "TE"].includes(position) && nflTeam) {
+    const comp = await getPlayerComparison(year, position);
+    const mates = comp
+      .filter((c) => c.nflTeam === nflTeam)
+      .map((c) => ({
+        name: c.name,
+        targets: c.s.receivingTargets || 0,
+        points: c.totalPts,
+        isSelf: c.name === name,
+      }))
+      .sort((a, b) => b.points - a.points);
+    if (mates.length) nflShare = { nflTeam, mates };
+  }
+
+  return {
+    name,
+    position,
+    nflTeam,
+    fantasyTeam,
+    year,
+    weekly,
+    avg,
+    bestWeek,
+    seasons,
+    nflShare,
+  };
+}
+
 export type DraftValueRow = {
   name: string;
   position: string;
