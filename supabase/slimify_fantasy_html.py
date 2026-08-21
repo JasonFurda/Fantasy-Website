@@ -219,12 +219,15 @@ POS_ELIGIBLE = {
 
 
 def build_free_agent_weeks(league, payload, max_week=None):
-    """Per-week fantasy points for unrostered players (free agents / waivers).
+    """Per-week fantasy points for players in the weeks they were NOT on a
+    fantasy roster (i.e. on the waiver wire).
 
-    Powers the league-wide "best possible roster" so it can pull from the waiver
-    wire. `free_agents(week=W)` only carries that week's stat line, so we loop
-    over the weeks. Players who were actually rostered that week are skipped —
-    they're already in player_slots with a fantasy-team label.
+    Complements player_slots (which only covers rostered players) so the weekly
+    player chart and the league-wide "best possible roster" have complete
+    coverage. Sourced from `player_info`, whose stat dict carries every week —
+    crucially this includes players who were free agents early then got rostered
+    later (the end-of-season `free_agents` snapshot misses those). A player's
+    rostered weeks are skipped; they're already in player_slots with a team.
     """
     weeks = payload.get("weeks") or {}
     week_nums = sorted(int(w) for w in weeks.keys())
@@ -232,6 +235,7 @@ def build_free_agent_weeks(league, payload, max_week=None):
         week_nums = [w for w in week_nums if w <= max_week]
 
     rostered_by_week = {}
+    all_rostered = set()
     for w in week_nums:
         names = set()
         for m in (weeks.get(str(w)) or []):
@@ -241,38 +245,64 @@ def build_free_agent_weeks(league, payload, max_week=None):
                     if nm:
                         names.add(nm)
         rostered_by_week[w] = names
+        all_rostered |= names
+
+    # Every fantasy-relevant player: anyone rostered at any point this season,
+    # plus current free agents (covers players never rostered all year).
+    names = set(all_rostered)
+    for f in build_free_agents(league):
+        nm = f.get("playerName")
+        if nm:
+            names.add(nm)
+
+    id_by_name = {}
+    for nm in names:
+        pid = league.player_map.get(nm)
+        if isinstance(pid, int):
+            id_by_name[nm] = pid
 
     out = []
-    for w in week_nums:
-        rostered = rostered_by_week.get(w, set())
-        for pos in ["QB", "RB", "WR", "TE", "K", "D/ST"]:
-            try:
-                fas = league.free_agents(week=w, size=200, position=pos)
-            except Exception as e:
-                print(f"  FA week {w} {pos}: error {e}")
+    ids = list(id_by_name.values())
+    CHUNK = 40
+    for i in range(0, len(ids), CHUNK):
+        chunk = ids[i:i + CHUNK]
+        try:
+            res = league.player_info(playerId=chunk)
+        except Exception as e:
+            print(f"  player_weeks chunk error {e}")
+            continue
+        if res is None:
+            continue
+        if not isinstance(res, list):
+            res = [res]
+        for pl in res:
+            nm = getattr(pl, "name", None)
+            if not nm:
                 continue
-            for p in fas:
-                nm = getattr(p, "name", None)
-                if not nm or nm in rostered:
-                    continue
-                st = (getattr(p, "stats", {}) or {}).get(w) or {}
-                if not st.get("breakdown"):
+            st = getattr(pl, "stats", {}) or {}
+            pos = getattr(pl, "position", "") or ""
+            proteam = getattr(pl, "proTeam", "") or ""
+            elig = list(getattr(pl, "eligibleSlots", []) or []) or POS_ELIGIBLE.get(pos, [])
+            for w in week_nums:
+                if nm in rostered_by_week.get(w, set()):
+                    continue  # rostered that week → player_slots covers it
+                e = st.get(w) or {}
+                if not e.get("breakdown"):
                     continue  # didn't play that week
-                pts = st.get("points")
+                pts = e.get("points")
                 if pts is None:
-                    pts = st.get("appliedTotal")
+                    pts = e.get("appliedTotal")
                 if pts is None:
                     continue
-                elig = list(getattr(p, "eligibleSlots", []) or []) or POS_ELIGIBLE.get(pos, [])
                 out.append({
                     "week": w,
                     "playerName": nm,
-                    "position": getattr(p, "position", "") or pos,
-                    "proTeam": getattr(p, "proTeam", "") or "",
+                    "position": pos,
+                    "proTeam": proteam,
                     "points": round(float(pts), 2),
                     "eligibleSlots": elig,
                 })
-        print(f"  FA week {w}: cumulative {len(out)} lines")
+        print(f"  player weeks: {len(out)} rows after {min(i + CHUNK, len(ids))}/{len(ids)} players")
     return out
 
 
