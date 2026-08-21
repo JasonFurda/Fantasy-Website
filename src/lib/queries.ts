@@ -892,6 +892,20 @@ export type SlotRow = {
   side: "home" | "away";
 };
 
+export type OptimalSlotRow = {
+  slot: string;
+  playerName: string;
+  proTeam: string | null;
+  points: number;
+  fromBench: boolean; // this player was on the bench in the actual lineup
+};
+
+export type OptimalRosterSide = {
+  slots: OptimalSlotRow[]; // in the team's actual starting-slot order
+  total: number; // best possible starting points
+  actual: number; // points the actual starters scored
+};
+
 export type MatchupDetail = {
   id: number;
   year: number;
@@ -902,9 +916,86 @@ export type MatchupDetail = {
   awayScore: number;
   homeProjected: number | null;
   awayProjected: number | null;
-  away: { starters: SlotRow[]; bench: SlotRow[] };
-  home: { starters: SlotRow[]; bench: SlotRow[] };
+  away: { starters: SlotRow[]; bench: SlotRow[]; optimal: OptimalRosterSide };
+  home: { starters: SlotRow[]; bench: SlotRow[]; optimal: OptimalRosterSide };
 };
+
+type OptCand = {
+  name: string;
+  proTeam: string | null;
+  points: number;
+  eligible: string[];
+  fromBench: boolean;
+};
+
+/**
+ * Best possible starting lineup for one team in one week: fill the exact set of
+ * starting slots the team used with the highest-scoring eligible players from
+ * the whole active roster (starters + bench, IR excluded — you can't start an
+ * injured player). Greedy by points, assigning each player to the narrowest
+ * eligible open slot — the same heuristic behind the Mismanagement leaderboard.
+ */
+function computeOptimal(
+  starters: {
+    slot: string;
+    name: string;
+    proTeam: string | null;
+    points: number;
+    eligible: string[];
+  }[],
+  bench: {
+    name: string;
+    proTeam: string | null;
+    points: number;
+    eligible: string[];
+  }[],
+): OptimalRosterSide {
+  const width = (s: string) => s.split("/").length;
+  const slotDefs = starters.map((s) => ({
+    slot: s.slot,
+    w: width(s.slot),
+    filled: null as OptCand | null,
+  }));
+
+  const cands: OptCand[] = [
+    ...starters.map((s) => ({
+      name: s.name,
+      proTeam: s.proTeam,
+      points: s.points,
+      eligible: s.eligible,
+      fromBench: false,
+    })),
+    ...bench.map((b) => ({
+      name: b.name,
+      proTeam: b.proTeam,
+      points: b.points,
+      eligible: b.eligible,
+      fromBench: true,
+    })),
+  ].sort((a, b) => b.points - a.points);
+
+  for (const p of cands) {
+    let best: (typeof slotDefs)[number] | null = null;
+    for (const s of slotDefs) {
+      if (s.filled) continue;
+      if (p.eligible.includes(s.slot) && (!best || s.w < best.w)) best = s;
+    }
+    if (best) best.filled = p;
+  }
+
+  const slots: OptimalSlotRow[] = slotDefs.map((s) => ({
+    slot: s.slot,
+    playerName: s.filled?.name ?? "",
+    proTeam: s.filled?.proTeam ?? null,
+    points: s.filled?.points ?? 0,
+    fromBench: s.filled?.fromBench ?? false,
+  }));
+  return {
+    slots,
+    total: slots.reduce((a, s) => a + s.points, 0),
+    actual: starters.reduce((a, s) => a + s.points, 0),
+  };
+}
 
 export async function getMatchupDetail(
   matchupId: number,
@@ -940,7 +1031,7 @@ export async function getMatchupDetail(
   const { data: slotRaw } = await supabase
     .from("player_slots")
     .select(
-      "team_side, slot, player_name, pro_team, opponent, points, projected, is_bench, sort_idx",
+      "team_side, slot, player_name, pro_team, opponent, points, projected, is_bench, eligible_slots, sort_idx",
     )
     .eq("matchup_id", matchupId)
     .order("sort_idx", { ascending: true });
@@ -954,24 +1045,49 @@ export async function getMatchupDetail(
     points: number | null;
     projected: number | null;
     is_bench: boolean | null;
+    eligible_slots: string[] | null;
   }[];
 
   const make = (side: "home" | "away") => {
-    const all = rows
-      .filter((r) => r.team_side === side)
-      .map<SlotRow>((r) => ({
-        slot: r.slot,
-        playerName: r.player_name,
-        proTeam: r.pro_team,
-        opponent: r.opponent,
-        points: Number(r.points ?? 0),
-        projected: r.projected == null ? null : Number(r.projected),
-        isBench: !!r.is_bench,
-        side,
-      }));
+    const sideRows = rows.filter((r) => r.team_side === side);
+    const all = sideRows.map<SlotRow>((r) => ({
+      slot: r.slot,
+      playerName: r.player_name,
+      proTeam: r.pro_team,
+      opponent: r.opponent,
+      points: Number(r.points ?? 0),
+      projected: r.projected == null ? null : Number(r.projected),
+      isBench: !!r.is_bench,
+      side,
+    }));
+
+    const eligibleOf = (r: (typeof sideRows)[number]) =>
+      Array.isArray(r.eligible_slots) ? r.eligible_slots : [];
+    const optimal = computeOptimal(
+      sideRows
+        .filter((r) => !r.is_bench)
+        .map((r) => ({
+          slot: r.slot,
+          name: r.player_name,
+          proTeam: r.pro_team,
+          points: Number(r.points ?? 0),
+          eligible: eligibleOf(r),
+        })),
+      sideRows
+        // bench candidates, excluding injured reserve (can't be started)
+        .filter((r) => r.is_bench && r.slot !== "IR")
+        .map((r) => ({
+          name: r.player_name,
+          proTeam: r.pro_team,
+          points: Number(r.points ?? 0),
+          eligible: eligibleOf(r),
+        })),
+    );
+
     return {
       starters: all.filter((r) => !r.isBench),
       bench: all.filter((r) => r.isBench),
+      optimal,
     };
   };
 

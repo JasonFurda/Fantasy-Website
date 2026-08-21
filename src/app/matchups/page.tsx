@@ -7,7 +7,7 @@ import {
   type Team,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
-import MatchupBoxScore from "@/components/MatchupBoxScore";
+import MatchupBoard from "@/components/MatchupBoard";
 import MatchupClash from "@/components/MatchupClash";
 
 export const dynamic = "force-dynamic";
@@ -161,7 +161,7 @@ export default async function MatchupsPage({
       {/* Box score (full-bleed on mobile) */}
       <div className="-mx-5 mt-8 sm:mx-0">
         {detail ? (
-          <MatchupBoxScore
+          <MatchupBoard
             detail={detail}
             awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
             homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
