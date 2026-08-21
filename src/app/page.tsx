@@ -1,10 +1,22 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { homepageConfig } from "@/lib/homepage-config";
-import { getTeams, getMatchups, buildStandings } from "@/lib/queries";
+import {
+  getTeams,
+  getMatchups,
+  buildStandings,
+  getCurrentFranchises,
+  getTeamHome,
+} from "@/lib/queries";
+import { teamColor } from "@/lib/teams-config";
+import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import ChampionBanner from "@/components/ChampionBanner";
 import PlayoffBracket from "@/components/PlayoffBracket";
 import StandingsTable from "@/components/StandingsTable";
+import TeamPicker from "@/components/TeamPicker";
+import TeamHomePanel from "@/components/TeamHomePanel";
+import ChangeTeamButton from "@/components/ChangeTeamButton";
 
 export const dynamic = "force-dynamic";
 
@@ -79,9 +91,64 @@ async function DivisionsHome() {
 }
 
 export default async function Home() {
-  return homepageConfig.mode === "divisions" ? (
-    <DivisionsHome />
-  ) : (
-    <RecapHome />
+  const store = await cookies();
+  const raw = store.get(MY_TEAM_COOKIE)?.value ?? null;
+
+  const franchises = await getCurrentFranchises();
+  const pickerTeams = franchises.map((t) => ({
+    espnId: t.espn_id,
+    name: t.name.trim(),
+    color: teamColor(t.espn_id),
+  }));
+
+  const chosen =
+    raw && raw !== "none" && franchises.some((t) => t.espn_id === Number(raw))
+      ? Number(raw)
+      : null;
+
+  // A team is selected → personalized homepage.
+  if (chosen != null) {
+    const home = await getTeamHome(chosen);
+    if (home) return <TeamHomePanel home={home} />;
+  }
+
+  const DefaultHome =
+    homepageConfig.mode === "divisions" ? DivisionsHome : RecapHome;
+
+  // Explicitly browsing without a team → default homepage + a way to pick one.
+  if (raw === "none") {
+    return (
+      <>
+        <div className="mx-auto max-w-[1800px] px-8 pt-6">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+            <span className="text-muted">Browsing without a team.</span>
+            <ChangeTeamButton
+              label="Pick your team"
+              className="rounded-md bg-accent px-3 py-1.5 font-medium text-background transition-opacity hover:opacity-90"
+            />
+          </div>
+        </div>
+        <DefaultHome />
+      </>
+    );
+  }
+
+  // No choice yet → prompt to pick a team, with the default homepage below.
+  return (
+    <>
+      <section className="mx-auto max-w-[1800px] px-8 pt-10">
+        <div className="rounded-2xl border border-border bg-surface p-6 sm:p-8">
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+            Which team are you?
+          </h1>
+          <p className="mt-1 mb-5 text-sm text-muted">
+            Pick your team to personalize the homepage with your upcoming games
+            and top players.
+          </p>
+          <TeamPicker teams={pickerTeams} />
+        </div>
+      </section>
+      <DefaultHome />
+    </>
   );
 }

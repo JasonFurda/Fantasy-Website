@@ -1849,3 +1849,163 @@ export async function getFranchiseRoster(
 
   return { byYear, topScorers };
 }
+
+export type UpcomingMatch = {
+  matchupId: number;
+  week: number;
+  isHome: boolean;
+  opponent: Team | null;
+  played: boolean;
+  teamScore: number;
+  oppScore: number;
+  teamProjected: number | null;
+  oppProjected: number | null;
+};
+
+export type TeamHomePlayer = {
+  name: string;
+  position: string;
+  proTeam: string | null;
+  slot: string;
+  points: number;
+  projected: number | null;
+  isBench: boolean;
+};
+
+export type TeamHome = {
+  year: number;
+  team: Team;
+  record: string;
+  rank: number | null;
+  teamCount: number;
+  upcoming: UpcomingMatch[]; // next unplayed matchups (chronological)
+  lastResult: UpcomingMatch | null; // most recent played matchup
+  usesProjected: boolean; // best players ranked by projection (nothing played yet)
+  bestPlayers: TeamHomePlayer[];
+};
+
+/**
+ * Personalized homepage data for one franchise in the current (active) season:
+ * their record, upcoming matchups, last result, and current best players. In the
+ * preseason (nothing played yet) best players are ranked by projected points.
+ */
+export async function getTeamHome(espnId: number): Promise<TeamHome | null> {
+  const seasons = await getSeasons(); // newest first
+  const active = seasons.find((s) => s.is_active) ?? seasons[0];
+  if (!active) return null;
+  const year = active.year;
+
+  const [teams, mRes] = await Promise.all([
+    getTeams(year),
+    supabase
+      .from("matchups")
+      .select(
+        "id, year, week, home_team_id, away_team_id, home_score, away_score, home_projected, away_projected",
+      )
+      .eq("year", year)
+      .order("week", { ascending: true }),
+  ]);
+  const team = teams.find((t) => t.espn_id === espnId);
+  if (!team) return null;
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+
+  type MRow = {
+    id: number;
+    year: number;
+    week: number;
+    home_team_id: number;
+    away_team_id: number;
+    home_score: number | null;
+    away_score: number | null;
+    home_projected: number | null;
+    away_projected: number | null;
+  };
+  const rows = (mRes.data ?? []) as MRow[];
+
+  const st = buildStandings(teams, rows as unknown as Matchup[]);
+  const mine = st.find((s) => s.team.id === team.id) ?? null;
+  const record = mine
+    ? `${mine.wins}-${mine.losses}${mine.ties ? `-${mine.ties}` : ""}`
+    : "0-0";
+
+  const toUM = (m: MRow): UpcomingMatch => {
+    const isHome = m.home_team_id === team.id;
+    const oppId = isHome ? m.away_team_id : m.home_team_id;
+    const hs = Number(m.home_score ?? 0);
+    const as = Number(m.away_score ?? 0);
+    return {
+      matchupId: m.id,
+      week: m.week,
+      isHome,
+      opponent: teamById.get(oppId) ?? null,
+      played: hs !== 0 || as !== 0,
+      teamScore: isHome ? hs : as,
+      oppScore: isHome ? as : hs,
+      teamProjected:
+        (isHome ? m.home_projected : m.away_projected) == null
+          ? null
+          : Number(isHome ? m.home_projected : m.away_projected),
+      oppProjected:
+        (isHome ? m.away_projected : m.home_projected) == null
+          ? null
+          : Number(isHome ? m.away_projected : m.home_projected),
+    };
+  };
+
+  const myMatchups = rows
+    .filter((m) => m.home_team_id === team.id || m.away_team_id === team.id)
+    .map(toUM);
+  const upcoming = myMatchups.filter((m) => !m.played).slice(0, 3);
+  const played = myMatchups.filter((m) => m.played);
+  const lastResult = played.length ? played[played.length - 1] : null;
+
+  // Best players: the roster from the team's most recent scheduled matchup.
+  const target = myMatchups[myMatchups.length - 1] ?? null;
+  const bestPlayers: TeamHomePlayer[] = [];
+  let usesProjected = false;
+  if (target) {
+    const side = target.isHome ? "home" : "away";
+    const { data: slotRaw } = await supabase
+      .from("player_slots")
+      .select("slot, player_name, pro_team, position, points, projected, is_bench")
+      .eq("matchup_id", target.matchupId)
+      .eq("team_side", side);
+    const slots = ((slotRaw ?? []) as {
+      slot: string;
+      player_name: string;
+      pro_team: string | null;
+      position: string | null;
+      points: number | null;
+      projected: number | null;
+      is_bench: boolean | null;
+    }[]).filter((r) => r.slot !== "IR");
+    const anyPoints = slots.some((r) => Number(r.points ?? 0) !== 0);
+    usesProjected = !anyPoints;
+    const metric = (r: (typeof slots)[number]) =>
+      usesProjected ? Number(r.projected ?? 0) : Number(r.points ?? 0);
+    slots.sort((a, b) => metric(b) - metric(a));
+    for (const r of slots.slice(0, 6)) {
+      bestPlayers.push({
+        name: r.player_name,
+        position: r.position ?? "",
+        proTeam: r.pro_team,
+        slot: r.slot,
+        points: Number(r.points ?? 0),
+        projected: r.projected == null ? null : Number(r.projected),
+        isBench: !!r.is_bench,
+      });
+    }
+  }
+
+  return {
+    year,
+    team,
+    record,
+    rank: mine?.rank ?? null,
+    teamCount: teams.length,
+    upcoming,
+    lastResult,
+    usesProjected,
+    bestPlayers,
+  };
+}
