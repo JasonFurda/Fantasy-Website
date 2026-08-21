@@ -25,6 +25,7 @@ export default async function MatchupsPage({
     m?: string;
     view?: string;
     player?: string;
+    pyear?: string;
   }>;
 }) {
   const seasons = await getSeasons();
@@ -71,8 +72,12 @@ export default async function MatchupsPage({
   const optimal =
     view === "optimal" ? await getWeekOptimalRoster(year, week) : null;
 
+  const detailYear =
+    sp.player && sp.pyear && years.includes(Number(sp.pyear))
+      ? Number(sp.pyear)
+      : year;
   const playerDetail = sp.player
-    ? await getPlayerDetail(sp.player, year)
+    ? await getPlayerDetail(sp.player, detailYear)
     : null;
 
   // Player links preserve the current view/week/matchup context.
@@ -81,6 +86,8 @@ export default async function MatchupsPage({
   }${view === "optimal" ? "&view=optimal" : ""}`;
   const playerHref = (name: string) =>
     `/matchups?${baseParams}&player=${encodeURIComponent(name)}`;
+  const playerYearHref = (y: number) =>
+    `/matchups?${baseParams}&player=${encodeURIComponent(sp.player ?? "")}&pyear=${y}`;
 
   const tab = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -246,6 +253,7 @@ export default async function MatchupsPage({
         <PlayerDetailModal
           data={playerDetail}
           closeHref={`/matchups?${baseParams}`}
+          yearHref={playerYearHref}
         />
       )}
     </>

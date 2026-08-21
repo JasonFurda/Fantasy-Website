@@ -58,13 +58,17 @@ const STAT_COLS: Record<string, StatCol[]> = {
   ],
 };
 
-// SVG bar chart of weekly fantasy points, colored vs. the player's average.
+// SVG bar chart of weekly fantasy points, colored against the league-wide
+// average for the player's position (a universal baseline), with 40+ point
+// weeks flagged blue.
 function WeeklyBars({
   weekly,
-  avg,
+  posAvg,
+  position,
 }: {
   weekly: PlayerDetail["weekly"];
-  avg: number;
+  posAvg: number;
+  position: string;
 }) {
   const N = Math.max(weekly.length, 1);
   const SLOT = 44;
@@ -76,16 +80,26 @@ function WeeklyBars({
   const H = TOP + PLOT + BOTTOM;
   const maxVal = Math.max(1, ...weekly.map((w) => w.points));
 
+  // Fall back to the player's own average only if we have no position baseline.
+  const played = weekly.filter((w) => !w.dnp);
+  const base =
+    posAvg > 0
+      ? posAvg
+      : played.length
+        ? played.reduce((a, w) => a + w.points, 0) / played.length
+        : 0;
+
   const color = (points: number, dnp: boolean) => {
     if (dnp) return "var(--muted)";
+    if (points >= 40) return "hsl(200 85% 55%)"; // elite → blue
     if (points <= 0) return "hsl(0 72% 55%)";
-    if (avg <= 0) return "var(--accent)";
-    if (points >= avg * 1.25) return "var(--accent)"; // boom (green)
-    if (points <= avg * 0.75) return "hsl(0 72% 55%)"; // down (red)
+    if (base <= 0) return "var(--accent)";
+    if (points >= base * 1.25) return "var(--accent)"; // boom (green)
+    if (points <= base * 0.75) return "hsl(0 72% 55%)"; // down (red)
     return "hsl(38 92% 55%)"; // steady (amber)
   };
 
-  const avgY = avg > 0 ? TOP + (1 - avg / maxVal) * PLOT : null;
+  const avgY = base > 0 ? TOP + (1 - base / maxVal) * PLOT : null;
 
   return (
     <svg
@@ -107,7 +121,7 @@ function WeeklyBars({
             opacity={0.3}
           />
           <text x={2} y={avgY - 3} fill="var(--muted)" fontSize={9}>
-            avg {avg.toFixed(1)}
+            {position ? `${position} avg` : "avg"} {base.toFixed(1)}
           </text>
         </>
       )}
@@ -170,9 +184,11 @@ function Chip({ label, value }: { label: string; value: string }) {
 export default function PlayerDetailModal({
   data,
   closeHref,
+  yearHref,
 }: {
   data: PlayerDetail;
   closeHref: string;
+  yearHref?: (year: number) => string;
 }) {
   const cols = STAT_COLS[data.position] ?? [];
   const cur = data.seasons.find((s) => s.year === data.year) ?? null;
@@ -245,15 +261,37 @@ export default function PlayerDetailModal({
 
           {/* Weekly performance */}
           <section>
-            <div className="mb-2 flex items-baseline justify-between">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                {data.year} Weekly Performance
+                Weekly Performance
               </h3>
               <span className="text-[11px] text-muted">fantasy points</span>
             </div>
+            {yearHref && data.seasons.length > 0 && (
+              <div className="mb-3 inline-flex gap-1 rounded-lg border border-border bg-surface p-1">
+                {data.seasons.map((s) => (
+                  <Link
+                    key={s.year}
+                    href={yearHref(s.year)}
+                    scroll={false}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                      s.year === data.year
+                        ? "bg-accent text-background"
+                        : "text-muted hover:bg-surface-2 hover:text-foreground"
+                    }`}
+                  >
+                    {s.year}
+                  </Link>
+                ))}
+              </div>
+            )}
             {data.weekly.length > 0 ? (
               <div className="rounded-xl border border-border bg-surface-2/40 p-2 sm:p-3">
-                <WeeklyBars weekly={data.weekly} avg={data.avg} />
+                <WeeklyBars
+                  weekly={data.weekly}
+                  posAvg={data.positionAvg}
+                  position={data.position}
+                />
               </div>
             ) : (
               <p className="text-sm text-muted">No games this season.</p>

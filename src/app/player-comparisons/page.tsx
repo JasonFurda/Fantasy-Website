@@ -94,7 +94,12 @@ const EXTRA: Record<string, Col[]> = {
 export default async function PlayerComparisonsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; pos?: string; player?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    pos?: string;
+    player?: string;
+    pyear?: string;
+  }>;
 }) {
   const seasons = await getSeasons();
   if (seasons.length === 0) {
@@ -118,10 +123,17 @@ export default async function PlayerComparisonsPage({
   const draftRows = isDraft ? await getDraftValue(year) : [];
   const cols = [...COMMON, ...(EXTRA[posDef.pos] ?? [])];
 
-  const detail = player ? await getPlayerDetail(player, year) : null;
-  const closeHref = `/player-comparisons?year=${year}&pos=${
-    isDraft ? "draft" : posDef.key
-  }`;
+  const detailYear =
+    player && sp.pyear && years.includes(Number(sp.pyear))
+      ? Number(sp.pyear)
+      : year;
+  const detail = player ? await getPlayerDetail(player, detailYear) : null;
+  const posQ = isDraft ? "draft" : posDef.key;
+  const closeHref = `/player-comparisons?year=${year}&pos=${posQ}`;
+  const playerYearHref = (y: number) =>
+    `/player-comparisons?year=${year}&pos=${posQ}&player=${encodeURIComponent(
+      player ?? "",
+    )}&pyear=${y}`;
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -338,7 +350,13 @@ export default async function PlayerComparisonsPage({
         </>
       )}
 
-      {detail && <PlayerDetailModal data={detail} closeHref={closeHref} />}
+      {detail && (
+        <PlayerDetailModal
+          data={detail}
+          closeHref={closeHref}
+          yearHref={playerYearHref}
+        />
+      )}
     </main>
   );
 }
