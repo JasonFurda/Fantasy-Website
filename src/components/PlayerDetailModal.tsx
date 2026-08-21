@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { PlayerDetail, PlayerSeasonLine } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import { playoffStartWeek } from "@/lib/league-config";
 
 const nf = (v: number, d = 0) => (v || 0).toFixed(d);
 const ratio = (a: number, b: number, d = 1) => (b ? (a / b).toFixed(d) : "—");
@@ -75,9 +76,11 @@ const POS_BASELINE: Record<string, number> = {
 function WeeklyBars({
   weekly,
   position,
+  playoffStart,
 }: {
   weekly: PlayerDetail["weekly"];
   position: string;
+  playoffStart: number;
 }) {
   const N = Math.max(weekly.length, 1);
   const SLOT = 44;
@@ -108,6 +111,7 @@ function WeeklyBars({
   };
 
   const avgY = base > 0 ? TOP + (1 - base / maxVal) * PLOT : null;
+  const pfIdx = weekly.findIndex((w) => w.week >= playoffStart);
 
   return (
     <svg
@@ -116,6 +120,38 @@ function WeeklyBars({
       style={{ height: "auto" }}
       preserveAspectRatio="xMidYMid meet"
     >
+      {/* Playoff region */}
+      {pfIdx >= 0 && (
+        <>
+          <rect
+            x={pfIdx * SLOT}
+            y={TOP}
+            width={W - pfIdx * SLOT}
+            height={PLOT}
+            fill="var(--accent)"
+            opacity={0.07}
+          />
+          <line
+            x1={pfIdx * SLOT}
+            y1={TOP}
+            x2={pfIdx * SLOT}
+            y2={TOP + PLOT}
+            stroke="var(--accent)"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+            opacity={0.5}
+          />
+          <text
+            x={pfIdx * SLOT + 4}
+            y={TOP + 10}
+            fill="var(--accent)"
+            fontSize={9}
+            fontWeight={600}
+          >
+            Playoffs
+          </text>
+        </>
+      )}
       {avgY != null && (
         <>
           <line
@@ -168,7 +204,7 @@ function WeeklyBars({
               x={cx}
               y={H - 7}
               textAnchor="middle"
-              fill="var(--muted)"
+              fill={w.week >= playoffStart ? "var(--accent)" : "var(--muted)"}
               fontSize={10}
             >
               {w.week}
@@ -295,7 +331,11 @@ export default function PlayerDetailModal({
             )}
             {data.weekly.length > 0 ? (
               <div className="rounded-xl border border-border bg-surface-2/40 p-2 sm:p-3">
-                <WeeklyBars weekly={data.weekly} position={data.position} />
+                <WeeklyBars
+                  weekly={data.weekly}
+                  position={data.position}
+                  playoffStart={playoffStartWeek(data.year)}
+                />
               </div>
             ) : (
               <p className="text-sm text-muted">No games this season.</p>
