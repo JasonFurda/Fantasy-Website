@@ -28,7 +28,12 @@ def main() -> None:
             sys.path.insert(0, str(p))
 
     import slimify_fantasy_html as slim
-    from seed import create_supabase_client, sync_year_payload, sync_player_season
+    from seed import (
+        create_supabase_client,
+        sync_year_payload,
+        sync_player_season,
+        sync_free_agent_weeks,
+    )
     from espn_api.football import League
 
     if not slim.ESPN_S2 or not slim.SWID:
@@ -67,6 +72,10 @@ def main() -> None:
         ps = slim.build_player_season(league, payload)
         sync_player_season(client, year, ps)
         print(f"  Player season lines: {len(ps)}")
+
+        faw = slim.build_free_agent_weeks(league, payload, max_week=MAX_WEEK)
+        sync_free_agent_weeks(client, year, faw)
+        print(f"  Free-agent week lines: {len(faw)}")
 
         now = datetime.now(timezone.utc).isoformat()
         client.table("seasons").update(

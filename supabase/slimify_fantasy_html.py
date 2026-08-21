@@ -206,6 +206,76 @@ def build_player_season(league, payload):
     return list(out.values())
 
 
+# Fallback eligibility by position (starting slots this league uses), for the
+# rare case ESPN omits eligibleSlots on a free-agent object.
+POS_ELIGIBLE = {
+    "QB": ["QB", "OP"],
+    "RB": ["RB", "RB/WR", "RB/WR/TE", "OP"],
+    "WR": ["WR", "RB/WR", "WR/TE", "RB/WR/TE", "OP"],
+    "TE": ["TE", "WR/TE", "RB/WR/TE", "OP"],
+    "K": ["K"],
+    "D/ST": ["D/ST"],
+}
+
+
+def build_free_agent_weeks(league, payload, max_week=None):
+    """Per-week fantasy points for unrostered players (free agents / waivers).
+
+    Powers the league-wide "best possible roster" so it can pull from the waiver
+    wire. `free_agents(week=W)` only carries that week's stat line, so we loop
+    over the weeks. Players who were actually rostered that week are skipped —
+    they're already in player_slots with a fantasy-team label.
+    """
+    weeks = payload.get("weeks") or {}
+    week_nums = sorted(int(w) for w in weeks.keys())
+    if max_week is not None:
+        week_nums = [w for w in week_nums if w <= max_week]
+
+    rostered_by_week = {}
+    for w in week_nums:
+        names = set()
+        for m in (weeks.get(str(w)) or []):
+            for side in ("away", "home"):
+                for pl in (m.get(side, {}).get("lineup") or []):
+                    nm = pl.get("name")
+                    if nm:
+                        names.add(nm)
+        rostered_by_week[w] = names
+
+    out = []
+    for w in week_nums:
+        rostered = rostered_by_week.get(w, set())
+        for pos in ["QB", "RB", "WR", "TE", "K", "D/ST"]:
+            try:
+                fas = league.free_agents(week=w, size=200, position=pos)
+            except Exception as e:
+                print(f"  FA week {w} {pos}: error {e}")
+                continue
+            for p in fas:
+                nm = getattr(p, "name", None)
+                if not nm or nm in rostered:
+                    continue
+                st = (getattr(p, "stats", {}) or {}).get(w) or {}
+                if not st.get("breakdown"):
+                    continue  # didn't play that week
+                pts = st.get("points")
+                if pts is None:
+                    pts = st.get("appliedTotal")
+                if pts is None:
+                    continue
+                elig = list(getattr(p, "eligibleSlots", []) or []) or POS_ELIGIBLE.get(pos, [])
+                out.append({
+                    "week": w,
+                    "playerName": nm,
+                    "position": getattr(p, "position", "") or pos,
+                    "proTeam": getattr(p, "proTeam", "") or "",
+                    "points": round(float(pts), 2),
+                    "eligibleSlots": elig,
+                })
+        print(f"  FA week {w}: cumulative {len(out)} lines")
+    return out
+
+
 def build_free_agents(league):
     """Season stat lines for unrostered players (free agents / waivers)."""
     out = []

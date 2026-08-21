@@ -34,7 +34,12 @@ def main() -> None:
     _ensure_import_paths()
 
     import slimify_fantasy_html as slim
-    from seed import create_supabase_client, sync_year_payload, sync_player_season
+    from seed import (
+        create_supabase_client,
+        sync_year_payload,
+        sync_player_season,
+        sync_free_agent_weeks,
+    )
 
     if not slim.ESPN_S2 or not slim.SWID:
         raise SystemExit(
@@ -80,6 +85,9 @@ def main() -> None:
     payload = slim.build_year_json(league, all_weeks_data, year)
     sync_year_payload(client, payload)
     sync_player_season(client, year, slim.build_player_season(league, payload))
+    sync_free_agent_weeks(
+        client, year, slim.build_free_agent_weeks(league, payload, max_week=current_week)
+    )
 
     now = datetime.now(timezone.utc).isoformat()
     client.table("seasons").update({"current_week": current_week, "updated_at": now}).eq(

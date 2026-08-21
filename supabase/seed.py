@@ -310,6 +310,35 @@ def sync_free_agents(client: Client, year: int, fa_list: list[dict[str, Any]]) -
         client.table("free_agents").upsert(rows, on_conflict="year,player_name").execute()
 
 
+def sync_free_agent_weeks(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
+    """Replace per-week free-agent stat lines for a year."""
+    client.table("free_agent_week").delete().eq("year", year).execute()
+    seen: set[tuple[int, str]] = set()
+    rows = []
+    for f in rows_in:
+        name = str(f.get("playerName", "")).strip()
+        week = int(f.get("week", 0) or 0)
+        key = (week, name)
+        if not name or week <= 0 or key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "year": year,
+                "week": week,
+                "player_name": name,
+                "position": str(f.get("position", "")),
+                "pro_team": str(f.get("proTeam", "")),
+                "points": float(f.get("points", 0) or 0),
+                "eligible_slots": f.get("eligibleSlots") or [],
+            }
+        )
+    for i in range(0, len(rows), 500):
+        client.table("free_agent_week").upsert(
+            rows[i : i + 500], on_conflict="year,week,player_name"
+        ).execute()
+
+
 def _read_year_json(root: Path, year: int) -> dict[str, Any]:
     path = root / f"data-{year}.json"
     if not path.is_file():

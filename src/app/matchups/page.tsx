@@ -4,18 +4,25 @@ import {
   getTeams,
   getMatchups,
   getMatchupDetail,
+  getWeekOptimalRoster,
   type Team,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
-import MatchupBoard from "@/components/MatchupBoard";
+import MatchupBoxScore from "@/components/MatchupBoxScore";
 import MatchupClash from "@/components/MatchupClash";
+import WeekOptimalRoster from "@/components/WeekOptimalRoster";
 
 export const dynamic = "force-dynamic";
 
 export default async function MatchupsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; week?: string; m?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    week?: string;
+    m?: string;
+    view?: string;
+  }>;
 }) {
   const seasons = await getSeasons();
   if (seasons.length === 0) {
@@ -31,6 +38,7 @@ export default async function MatchupsPage({
   const defaultYear = seasons.find((s) => s.current_week > 0)?.year ?? years[0];
   const year =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
+  const view = sp.view === "optimal" ? "optimal" : "matchups";
 
   const [matchups, teams] = await Promise.all([
     getMatchups(year),
@@ -53,7 +61,12 @@ export default async function MatchupsPage({
       ? Number(sp.m)
       : (weekMatchups[0]?.id ?? null);
 
-  const detail = selectedId ? await getMatchupDetail(selectedId) : null;
+  const detail =
+    view === "matchups" && selectedId
+      ? await getMatchupDetail(selectedId)
+      : null;
+  const optimal =
+    view === "optimal" ? await getWeekOptimalRoster(year, week) : null;
 
   const tab = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -62,9 +75,12 @@ export default async function MatchupsPage({
         : "text-muted hover:bg-surface-2 hover:text-foreground"
     }`;
 
+  // Preserve the current view when switching season/week.
+  const viewQ = view === "optimal" ? "&view=optimal" : "";
+
   return (
     <>
-      {detail && (
+      {view === "matchups" && detail && (
         <MatchupClash
           key={detail.id}
           awayArt={teamArt(detail.awayTeam?.espn_id ?? 0)}
@@ -76,100 +92,139 @@ export default async function MatchupsPage({
       <main className="relative z-10 mx-auto max-w-4xl px-5 py-10">
         <h1 className="text-2xl font-bold tracking-tight">Matchups</h1>
 
-      {/* Year */}
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <span className="w-14 text-xs uppercase tracking-wide text-muted">
-          Season
-        </span>
-        <nav className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
-          {years.map((y) => (
-            <Link key={y} href={`/matchups?year=${y}`} className={tab(y === year)}>
-              {y}
-            </Link>
-          ))}
-        </nav>
-      </div>
+        {/* View toggle */}
+        <div className="mt-5 flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
+          <Link
+            href={`/matchups?year=${year}&week=${week}`}
+            className={tab(view === "matchups")}
+          >
+            Matchups
+          </Link>
+          <Link
+            href={`/matchups?year=${year}&week=${week}&view=optimal`}
+            className={tab(view === "optimal")}
+          >
+            Optimal Roster
+          </Link>
+        </div>
 
-      {/* Week */}
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <span className="w-14 text-xs uppercase tracking-wide text-muted">
-          Week
-        </span>
-        <nav className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
-          {weeks.map((w) => (
-            <Link
-              key={w}
-              href={`/matchups?year=${year}&week=${w}`}
-              className={tab(w === week)}
-            >
-              {w}
-            </Link>
-          ))}
-        </nav>
-      </div>
+        {/* Year */}
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <span className="w-14 text-xs uppercase tracking-wide text-muted">
+            Season
+          </span>
+          <nav className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
+            {years.map((y) => (
+              <Link
+                key={y}
+                href={`/matchups?year=${y}${viewQ}`}
+                className={tab(y === year)}
+              >
+                {y}
+              </Link>
+            ))}
+          </nav>
+        </div>
 
-      {/* Matchup picker */}
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
-        {weekMatchups.map((m) => {
-          const away = teamById.get(m.away_team_id);
-          const home = teamById.get(m.home_team_id);
-          const active = m.id === selectedId;
-          const aWin = (m.away_score ?? 0) > (m.home_score ?? 0);
-          return (
-            <Link
-              key={m.id}
-              href={`/matchups?year=${year}&week=${week}&m=${m.id}`}
-              className={`rounded-xl border p-3 transition-colors ${
-                active
-                  ? "border-accent bg-surface-2"
-                  : "border-border bg-surface hover:bg-surface-2"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: teamColor(away?.espn_id ?? 0) }}
-                  />
-                  <span className={aWin ? "font-semibold" : ""}>
-                    {away?.name.trim() ?? "—"}
-                  </span>
-                </span>
-                <span className="tabular-nums text-muted">
-                  {(m.away_score ?? 0).toFixed(1)}
-                </span>
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-2 text-sm">
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: teamColor(home?.espn_id ?? 0) }}
-                  />
-                  <span className={!aWin ? "font-semibold" : ""}>
-                    {home?.name.trim() ?? "—"}
-                  </span>
-                </span>
-                <span className="tabular-nums text-muted">
-                  {(m.home_score ?? 0).toFixed(1)}
-                </span>
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+        {/* Week */}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <span className="w-14 text-xs uppercase tracking-wide text-muted">
+            Week
+          </span>
+          <nav className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface p-1">
+            {weeks.map((w) => (
+              <Link
+                key={w}
+                href={`/matchups?year=${year}&week=${w}${viewQ}`}
+                className={tab(w === week)}
+              >
+                {w}
+              </Link>
+            ))}
+          </nav>
+        </div>
 
-      {/* Box score (full-bleed on mobile) */}
-      <div className="-mx-5 mt-8 sm:mx-0">
-        {detail ? (
-          <MatchupBoard
-            detail={detail}
-            awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
-            homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
-          />
+        {view === "matchups" ? (
+          <>
+            {/* Matchup picker */}
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {weekMatchups.map((m) => {
+                const away = teamById.get(m.away_team_id);
+                const home = teamById.get(m.home_team_id);
+                const active = m.id === selectedId;
+                const aWin = (m.away_score ?? 0) > (m.home_score ?? 0);
+                return (
+                  <Link
+                    key={m.id}
+                    href={`/matchups?year=${year}&week=${week}&m=${m.id}`}
+                    className={`rounded-xl border p-3 transition-colors ${
+                      active
+                        ? "border-accent bg-surface-2"
+                        : "border-border bg-surface hover:bg-surface-2"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{
+                            backgroundColor: teamColor(away?.espn_id ?? 0),
+                          }}
+                        />
+                        <span className={aWin ? "font-semibold" : ""}>
+                          {away?.name.trim() ?? "—"}
+                        </span>
+                      </span>
+                      <span className="tabular-nums text-muted">
+                        {(m.away_score ?? 0).toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-sm">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{
+                            backgroundColor: teamColor(home?.espn_id ?? 0),
+                          }}
+                        />
+                        <span className={!aWin ? "font-semibold" : ""}>
+                          {home?.name.trim() ?? "—"}
+                        </span>
+                      </span>
+                      <span className="tabular-nums text-muted">
+                        {(m.home_score ?? 0).toFixed(1)}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            {/* Box score (full-bleed on mobile) */}
+            <div className="-mx-5 mt-8 sm:mx-0">
+              {detail ? (
+                <MatchupBoxScore
+                  detail={detail}
+                  awayColor={teamColor(detail.awayTeam?.espn_id ?? 0)}
+                  homeColor={teamColor(detail.homeTeam?.espn_id ?? 0)}
+                />
+              ) : (
+                <p className="text-sm text-muted">No matchup selected.</p>
+              )}
+            </div>
+          </>
         ) : (
-          <p className="text-sm text-muted">No matchup selected.</p>
+          /* Optimal roster (full-bleed on mobile) */
+          <div className="-mx-5 mt-8 sm:mx-0">
+            {optimal && optimal.slots.length > 0 ? (
+              <WeekOptimalRoster data={optimal} />
+            ) : (
+              <p className="text-sm text-muted">
+                No player data available for this week yet.
+              </p>
+            )}
+          </div>
         )}
-      </div>
       </main>
     </>
   );
