@@ -58,16 +58,25 @@ const STAT_COLS: Record<string, StatCol[]> = {
   ],
 };
 
-// SVG bar chart of weekly fantasy points, colored against the league-wide
-// average for the player's position (a universal baseline), with 40+ point
-// weeks flagged blue.
+// Fixed per-position baseline for a "good" fantasy week. The chart's average
+// line and bar colors are judged against this, so colors mean the same thing
+// for every player at a position.
+const POS_BASELINE: Record<string, number> = {
+  QB: 20,
+  RB: 15,
+  WR: 15,
+  TE: 12,
+  K: 8,
+  "D/ST": 8,
+};
+
+// SVG bar chart of weekly fantasy points, colored against a fixed per-position
+// baseline, with 40+ point weeks flagged blue.
 function WeeklyBars({
   weekly,
-  posAvg,
   position,
 }: {
   weekly: PlayerDetail["weekly"];
-  posAvg: number;
   position: string;
 }) {
   const N = Math.max(weekly.length, 1);
@@ -80,14 +89,13 @@ function WeeklyBars({
   const H = TOP + PLOT + BOTTOM;
   const maxVal = Math.max(1, ...weekly.map((w) => w.points));
 
-  // Fall back to the player's own average only if we have no position baseline.
+  // Fall back to the player's own average only if the position has no baseline.
   const played = weekly.filter((w) => !w.dnp);
   const base =
-    posAvg > 0
-      ? posAvg
-      : played.length
-        ? played.reduce((a, w) => a + w.points, 0) / played.length
-        : 0;
+    POS_BASELINE[position] ??
+    (played.length
+      ? played.reduce((a, w) => a + w.points, 0) / played.length
+      : 0);
 
   const color = (points: number, dnp: boolean) => {
     if (dnp) return "var(--muted)";
@@ -287,11 +295,7 @@ export default function PlayerDetailModal({
             )}
             {data.weekly.length > 0 ? (
               <div className="rounded-xl border border-border bg-surface-2/40 p-2 sm:p-3">
-                <WeeklyBars
-                  weekly={data.weekly}
-                  posAvg={data.positionAvg}
-                  position={data.position}
-                />
+                <WeeklyBars weekly={data.weekly} position={data.position} />
               </div>
             ) : (
               <p className="text-sm text-muted">No games this season.</p>

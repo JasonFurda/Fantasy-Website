@@ -841,7 +841,6 @@ export type PlayerDetail = {
   year: number; // season the weekly chart covers
   weekly: PlayerWeekPoint[]; // week 1..maxWeek
   avg: number; // this player's average over weeks played
-  positionAvg: number; // league-wide per-game average for the position (that year)
   bestWeek: PlayerWeekPoint | null;
   seasons: PlayerSeasonLine[]; // newest first, every season on record
   nflShare: { nflTeam: string; mates: NflMate[] } | null; // teammates' target/points split
@@ -972,27 +971,6 @@ export async function getPlayerDetail(
     ? played.reduce((a, x) => (x.points > a.points ? x : a))
     : null;
 
-  // League-wide per-game average for the position that year — a universal
-  // baseline so the chart's average line and bar colors mean the same thing
-  // for every player at the position. Uses regular contributors only (players
-  // with a meaningful number of games), so deep-bench/waiver scrubs don't drag
-  // the baseline down.
-  let positionAvg = 0;
-  if (position) {
-    const { data: posRaw } = await supabase
-      .from("player_season")
-      .select("total_points, games")
-      .eq("year", year)
-      .eq("position", position);
-    const thresh = Math.max(4, Math.round(maxWeek * 0.4));
-    const perGame = ((posRaw ?? []) as { total_points: number | null; games: number | null }[])
-      .filter((r) => (r.games ?? 0) >= thresh)
-      .map((r) => Number(r.total_points ?? 0) / (r.games || 1));
-    positionAvg = perGame.length
-      ? perGame.reduce((a, b) => a + b, 0) / perGame.length
-      : 0;
-  }
-
   // Share of the NFL team's targets/points among fantasy-relevant teammates.
   let nflShare: PlayerDetail["nflShare"] = null;
   if (["WR", "RB", "TE"].includes(position) && nflTeam) {
@@ -1017,7 +995,6 @@ export async function getPlayerDetail(
     year,
     weekly,
     avg,
-    positionAvg,
     bestWeek,
     seasons,
     nflShare,
