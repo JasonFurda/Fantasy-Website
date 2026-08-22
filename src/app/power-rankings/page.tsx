@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { getSeasons, getPowerRankings } from "@/lib/queries";
+import {
+  getSeasons,
+  getPowerRankings,
+  getPreseasonPowerRankings,
+} from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +36,15 @@ export default async function PowerRankingsPage({
       ? Number(yearParam)
       : defaultYear;
 
-  const rows = await getPowerRankings(year);
+  let rows = await getPowerRankings(year);
+  let preseason = false;
+  if (rows.length === 0) {
+    const manual = await getPreseasonPowerRankings(year);
+    if (manual.length > 0) {
+      rows = manual;
+      preseason = true;
+    }
+  }
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -57,6 +69,17 @@ export default async function PowerRankingsPage({
           ))}
         </nav>
       </div>
+
+      {preseason && (
+        <div className="mb-4 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
+          <span className="font-semibold text-accent">Preseason rankings.</span>{" "}
+          <span className="text-muted">
+            No games have been played yet — these are Jason&apos;s subjective
+            opinion, not the algorithm. They&apos;ll switch to computed rankings
+            once the season starts.
+          </span>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[28rem] text-sm">
