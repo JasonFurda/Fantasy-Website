@@ -39,6 +39,7 @@ def main() -> None:
         sync_year_payload,
         sync_player_season,
         sync_free_agent_weeks,
+        sync_schedule,
     )
 
     if not slim.ESPN_S2 or not slim.SWID:
@@ -88,6 +89,8 @@ def main() -> None:
     sync_free_agent_weeks(
         client, year, slim.build_free_agent_weeks(league, payload, max_week=current_week)
     )
+    # Skeleton rows for the rest of the schedule (future weeks only).
+    sync_schedule(client, year, slim.build_schedule(league), min_week=current_week)
 
     now = datetime.now(timezone.utc).isoformat()
     client.table("seasons").update({"current_week": current_week, "updated_at": now}).eq(

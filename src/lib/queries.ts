@@ -1959,8 +1959,15 @@ export async function getTeamHome(espnId: number): Promise<TeamHome | null> {
   const played = myMatchups.filter((m) => m.played);
   const lastResult = played.length ? played[played.length - 1] : null;
 
-  // Best players: the roster from the team's most recent scheduled matchup.
-  const target = myMatchups[myMatchups.length - 1] ?? null;
+  // Best players: from the team's most recent matchup that actually has a
+  // lineup — i.e. up to the current week. Later weeks are schedule-only
+  // skeletons (no player_slots), so don't pick those.
+  const curWeek = active.current_week ?? 0;
+  const withLineups = myMatchups.filter((m) => m.week <= curWeek);
+  const target =
+    withLineups[withLineups.length - 1] ??
+    myMatchups[myMatchups.length - 1] ??
+    null;
   const bestPlayers: TeamHomePlayer[] = [];
   let usesProjected = false;
   if (target) {

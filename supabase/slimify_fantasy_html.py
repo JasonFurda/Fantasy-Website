@@ -306,6 +306,31 @@ def build_free_agent_weeks(league, payload, max_week=None):
     return out
 
 
+def build_schedule(league):
+    """Full regular-season schedule with home/away per week.
+
+    `box_scores(week)` echoes the current week for future weeks, so it can't be
+    used to learn the upcoming schedule. The raw mMatchup view carries the real
+    pairings and home/away for every matchup period. Returns
+    [{week, homeEspnId, awayEspnId}] (team ids are ESPN team ids == our espn_id).
+    """
+    try:
+        data = league.espn_request.league_get(params={"view": "mMatchup"})
+    except Exception as e:
+        print(f"  schedule fetch error {e}")
+        return []
+    out = []
+    for g in (data or {}).get("schedule", []) or []:
+        wk = g.get("matchupPeriodId")
+        home = (g.get("home") or {}).get("teamId")
+        away = (g.get("away") or {}).get("teamId")
+        if wk and home and away:
+            out.append(
+                {"week": int(wk), "homeEspnId": int(home), "awayEspnId": int(away)}
+            )
+    return out
+
+
 def build_free_agents(league):
     """Season stat lines for unrostered players (free agents / waivers)."""
     out = []

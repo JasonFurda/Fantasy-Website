@@ -310,6 +310,49 @@ def sync_free_agents(client: Client, year: int, fa_list: list[dict[str, Any]]) -
         client.table("free_agents").upsert(rows, on_conflict="year,player_name").execute()
 
 
+def sync_schedule(
+    client: Client,
+    year: int,
+    schedule: list[dict[str, Any]],
+    min_week: int,
+) -> None:
+    """Upsert skeleton (0-score) matchup rows for future weeks so the full
+    schedule is visible before games are played. Only weeks strictly greater
+    than `min_week` are touched, so played/current data is never overwritten.
+    """
+    if not schedule:
+        return
+    team_res = client.table("teams").select("id, espn_id").eq("year", year).execute()
+    id_by_espn: dict[int, str] = {
+        int(r["espn_id"]): r["id"] for r in (team_res.data or [])
+    }
+    rows = []
+    for g in schedule:
+        wk = int(g.get("week", 0) or 0)
+        if wk <= min_week:
+            continue
+        hid = id_by_espn.get(int(g.get("homeEspnId", 0) or 0))
+        aid = id_by_espn.get(int(g.get("awayEspnId", 0) or 0))
+        if not hid or not aid:
+            continue
+        rows.append(
+            {
+                "year": year,
+                "week": wk,
+                "home_team_id": hid,
+                "away_team_id": aid,
+                "home_score": 0,
+                "away_score": 0,
+                "home_projected": 0,
+                "away_projected": 0,
+            }
+        )
+    if rows:
+        client.table("matchups").upsert(
+            rows, on_conflict="year,week,away_team_id,home_team_id"
+        ).execute()
+
+
 def sync_free_agent_weeks(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
     """Replace per-week free-agent stat lines for a year."""
     client.table("free_agent_week").delete().eq("year", year).execute()

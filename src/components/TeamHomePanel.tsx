@@ -33,7 +33,7 @@ function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
             {m.teamScore.toFixed(1)}
             <span className="text-muted"> – {m.oppScore.toFixed(1)}</span>
           </div>
-        ) : m.teamProjected != null ? (
+        ) : m.teamProjected != null && m.teamProjected > 0 ? (
           <div className="text-xs tabular-nums text-muted">
             proj {m.teamProjected.toFixed(1)} – {(m.oppProjected ?? 0).toFixed(1)}
           </div>
