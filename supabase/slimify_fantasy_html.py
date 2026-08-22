@@ -50,6 +50,10 @@ def sort_lineup_by_position(lineup):
 def player_to_dict(p):
     return {
         "slot": getattr(p, "slot_position", "") or getattr(p, "lineupSlot", ""),
+        # ESPN player id — unambiguous, unlike names (two different players can
+        # share a name, e.g. Lamar Jackson QB vs the DB). Used to look up
+        # full-season stats reliably in build_player_season.
+        "playerId": getattr(p, "playerId", None),
         "position": getattr(p, "position", "") or "",
         "eligibleSlots": list(getattr(p, "eligibleSlots", []) or []),
         "stats": getattr(p, "breakdown", {}) or {},
@@ -146,23 +150,20 @@ def build_year_json(league, all_weeks_data, year):
 
 def build_player_season(league, payload):
     """Full-season stat lines for everyone who appeared (rostered) + free agents."""
-    # distinct rostered names from the season payload
-    names = set()
+    # distinct rostered player IDs from the season payload. Resolve by ID, not
+    # name: league.player_map is name-keyed and picks the wrong player when two
+    # share a name (e.g. Lamar Jackson QB vs the DB), which dropped them from
+    # player_season entirely. The box-score playerId is unambiguous.
+    ids = set()
     for games in (payload.get("weeks") or {}).values():
         if not isinstance(games, list):
             continue
         for m in games:
             for side in ("away", "home"):
                 for pl in (m.get(side, {}).get("lineup") or []):
-                    nm = pl.get("name")
-                    if nm:
-                        names.add(nm)
-
-    id_by_name = {}
-    for nm in names:
-        pid = league.player_map.get(nm)
-        if isinstance(pid, int):
-            id_by_name[nm] = pid
+                    pid = pl.get("playerId")
+                    if isinstance(pid, int):
+                        ids.add(pid)
 
     def line_from_player(pl):
         season = (getattr(pl, "stats", {}) or {}).get(0, {}) or {}
@@ -177,10 +178,10 @@ def build_player_season(league, payload):
         }
 
     out = {}
-    ids = list(id_by_name.values())
+    id_list = list(ids)
     CHUNK = 40
-    for i in range(0, len(ids), CHUNK):
-        chunk = ids[i:i + CHUNK]
+    for i in range(0, len(id_list), CHUNK):
+        chunk = id_list[i:i + CHUNK]
         try:
             res = league.player_info(playerId=chunk)
         except Exception as e:
