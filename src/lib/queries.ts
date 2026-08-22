@@ -1507,13 +1507,13 @@ async function getPositionStrengthImpl(
   for (const m of matchups)
     sideOf.set(m.id, { home: m.home_team_id, away: m.away_team_id });
   const ids = matchups.map((m) => m.id);
+  const weekOf = new Map<number, number>(matchups.map((m) => [m.id, m.week]));
 
   type SlotQ = {
     matchup_id: number;
     team_side: "home" | "away";
     player_name: string;
     position: string | null;
-    points: number | null;
     projected: number | null;
   };
   const rows: SlotQ[] = [];
@@ -1524,50 +1524,65 @@ async function getPositionStrengthImpl(
     chunks.map((chunk) =>
       supabase
         .from("player_slots")
-        .select("matchup_id, team_side, player_name, position, points, projected")
+        .select("matchup_id, team_side, player_name, position, projected")
         .in("matchup_id", chunk),
     ),
   );
   for (const { data } of results) if (data) rows.push(...(data as SlotQ[]));
 
-  // teamId -> playerName -> { pos, points, projected } (summed across weeks)
-  const byTeam = new Map<
-    number,
-    Map<string, { pos: string; points: number; projected: number }>
-  >();
-  let anyPoints = false;
+  // Full-season fantasy points for every player (whole year, regardless of
+  // which fantasy team rostered them) — this is what positions are judged on.
+  const { data: psRaw } = await supabase
+    .from("player_season")
+    .select("player_name, total_points")
+    .eq("year", year);
+  const seasonPts = new Map<string, number>(
+    (
+      (psRaw ?? []) as { player_name: string; total_points: number | null }[]
+    ).map((r) => [r.player_name, Number(r.total_points ?? 0)]),
+  );
+  const preseason = ![...seasonPts.values()].some((v) => v > 0);
+
+  // Each team's CURRENT roster = the players in its latest week that has a
+  // lineup (schedule-only future weeks have none).
+  const latestWeek = new Map<number, number>();
   for (const r of rows) {
     const sides = sideOf.get(r.matchup_id);
     if (!sides) continue;
     const tid = r.team_side === "home" ? sides.home : sides.away;
-    let pm = byTeam.get(tid);
+    const wk = weekOf.get(r.matchup_id) ?? 0;
+    if (wk > (latestWeek.get(tid) ?? 0)) latestWeek.set(tid, wk);
+  }
+  const roster = new Map<
+    number,
+    Map<string, { pos: string; projected: number }>
+  >();
+  for (const r of rows) {
+    const sides = sideOf.get(r.matchup_id);
+    if (!sides) continue;
+    const tid = r.team_side === "home" ? sides.home : sides.away;
+    if ((weekOf.get(r.matchup_id) ?? 0) !== latestWeek.get(tid)) continue;
+    let pm = roster.get(tid);
     if (!pm) {
       pm = new Map();
-      byTeam.set(tid, pm);
+      roster.set(tid, pm);
     }
-    let p = pm.get(r.player_name);
-    if (!p) {
-      p = { pos: r.position ?? "", points: 0, projected: 0 };
-      pm.set(r.player_name, p);
-    }
-    if (!p.pos && r.position) p.pos = r.position;
-    const pts = Number(r.points ?? 0);
-    p.points += pts;
-    p.projected += Number(r.projected ?? 0);
-    if (pts !== 0) anyPoints = true;
+    pm.set(r.player_name, {
+      pos: r.position ?? "",
+      projected: Number(r.projected ?? 0),
+    });
   }
-  const preseason = !anyPoints;
 
   const groups: PositionGroup[] = POSITION_STRENGTH_DEFS.map((def) => {
     const posRows: PositionStrengthRow[] = [];
-    for (const [tid, pm] of byTeam) {
+    for (const [tid, pm] of roster) {
       const team = teamById.get(tid);
       if (!team) continue;
       const players = [...pm.entries()]
         .filter(([, v]) => v.pos === def.pos)
         .map(([name, v]) => ({
           name,
-          value: preseason ? v.projected : v.points,
+          value: preseason ? v.projected : (seasonPts.get(name) ?? 0),
         }))
         .sort((a, b) => b.value - a.value)
         .slice(0, def.count);
