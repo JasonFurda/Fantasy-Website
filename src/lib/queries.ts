@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { supabase } from "@/lib/supabase";
 import {
   isPlayoffWeek,
@@ -9,6 +10,21 @@ import {
   divisionsFor,
 } from "@/lib/league-config";
 import { teamColor } from "@/lib/teams-config";
+
+// The database only changes weekly (GitHub Actions sync), so read results are
+// cached and reused across requests — this is what makes tab switches feel
+// instant instead of re-querying Supabase every navigation. `cached()` wraps a
+// query function; the cache key is the function args plus the given label.
+const READ_TTL_SECONDS = 300;
+function cached<A extends unknown[], R>(
+  fn: (...args: A) => Promise<R>,
+  label: string,
+): (...args: A) => Promise<R> {
+  return unstable_cache(fn, [label], {
+    revalidate: READ_TTL_SECONDS,
+    tags: ["db"],
+  });
+}
 
 export type Season = {
   year: number;
@@ -50,30 +66,34 @@ function isPlayed(m: Matchup): boolean {
   return !(hs === 0 && as === 0);
 }
 
-export async function getSeasons(): Promise<Season[]> {
+export const getSeasons = cached(async function getSeasons(): Promise<Season[]> {
   const { data } = await supabase
     .from("seasons")
     .select("year, current_week, is_active")
     .order("year", { ascending: false });
   return (data as Season[]) ?? [];
-}
+}, "getSeasons");
 
-export async function getTeams(year: number): Promise<Team[]> {
+export const getTeams = cached(async function getTeams(
+  year: number,
+): Promise<Team[]> {
   const { data } = await supabase
     .from("teams")
     .select("id, espn_id, year, name, owner")
     .eq("year", year);
   return (data as Team[]) ?? [];
-}
+}, "getTeams");
 
-export async function getMatchups(year: number): Promise<Matchup[]> {
+export const getMatchups = cached(async function getMatchups(
+  year: number,
+): Promise<Matchup[]> {
   const { data } = await supabase
     .from("matchups")
     .select("id, year, week, home_team_id, away_team_id, home_score, away_score")
     .eq("year", year)
     .order("week", { ascending: true });
   return (data as Matchup[]) ?? [];
-}
+}, "getMatchups");
 
 export function buildStandings(teams: Team[], matchups: Matchup[]): Standing[] {
   const acc = new Map<
@@ -132,7 +152,11 @@ export function winPct(s: Standing): number {
 }
 
 /** Aggregate regular-season standings across every season, by franchise (espn_id). */
-export async function getAllTimeStandings(): Promise<Standing[]> {
+export const getAllTimeStandings = cached(
+  getAllTimeStandingsImpl,
+  "getAllTimeStandings",
+);
+async function getAllTimeStandingsImpl(): Promise<Standing[]> {
   const seasons = await getSeasons();
   if (seasons.length === 0) return [];
 
@@ -267,7 +291,8 @@ function optimalPoints(players: OptPlayer[]): number {
 }
 
 /** Season-level stat leaderboards for one year. */
-export async function getYearStats(year: number): Promise<YearStats> {
+export const getYearStats = cached(getYearStatsImpl, "getYearStats");
+async function getYearStatsImpl(year: number): Promise<YearStats> {
   const [teams, matchups] = await Promise.all([
     getTeams(year),
     getMatchups(year),
@@ -378,14 +403,18 @@ export async function getYearStats(year: number): Promise<YearStats> {
     // Fetch in matchup-id chunks to stay under the 1000-row response cap.
     const rows: SlotQueryRow[] = [];
     const CHUNK = 20;
-    for (let i = 0; i < playedIds.length; i += CHUNK) {
-      const chunk = playedIds.slice(i, i + CHUNK);
-      const { data } = await supabase
-        .from("player_slots")
-        .select("matchup_id, team_side, points, slot, is_bench, eligible_slots")
-        .in("matchup_id", chunk);
-      if (data) rows.push(...(data as SlotQueryRow[]));
-    }
+    const chunks: number[][] = [];
+    for (let i = 0; i < playedIds.length; i += CHUNK)
+      chunks.push(playedIds.slice(i, i + CHUNK));
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("player_slots")
+          .select("matchup_id, team_side, points, slot, is_bench, eligible_slots")
+          .in("matchup_id", chunk),
+      ),
+    );
+    for (const { data } of results) if (data) rows.push(...(data as SlotQueryRow[]));
 
     for (const r of rows) {
       const sides = matchupSide.get(r.matchup_id);
@@ -438,7 +467,8 @@ export async function getYearStats(year: number): Promise<YearStats> {
 }
 
 /** All-time aggregation of the year-stat leaderboards across every season. */
-export async function getAllTimeStats(): Promise<YearStats> {
+export const getAllTimeStats = cached(getAllTimeStatsImpl, "getAllTimeStats");
+async function getAllTimeStatsImpl(): Promise<YearStats> {
   const seasons = await getSeasons(); // newest first
   const per = await Promise.all(seasons.map((s) => getYearStats(s.year)));
 
@@ -576,7 +606,11 @@ export type YearPerformance = {
 };
 
 /** Every team's weekly score across a full season (regular season + playoffs). */
-export async function getYearPerformance(
+export const getYearPerformance = cached(
+  getYearPerformanceImpl,
+  "getYearPerformance",
+);
+async function getYearPerformanceImpl(
   year: number,
 ): Promise<YearPerformance> {
   const [teams, matchups] = await Promise.all([
@@ -672,7 +706,11 @@ const COMP_STAT_KEYS = [
 ];
 
 /** Per-player season aggregates for one position, ranked by total fantasy points. */
-export async function getPlayerComparison(
+export const getPlayerComparison = cached(
+  getPlayerComparisonImpl,
+  "getPlayerComparison",
+);
+async function getPlayerComparisonImpl(
   year: number,
   position: string,
 ): Promise<PlayerCompRow[]> {
@@ -700,14 +738,20 @@ export async function getPlayerComparison(
 
   const rows: Raw[] = [];
   const CHUNK = 20;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data } = await supabase
-      .from("player_slots")
-      .select(
-        "player_name, pro_team, points, game_played, is_bench, team_side, matchup_id, stats",
-      )
-      .eq("position", position)
-      .in("matchup_id", ids.slice(i, i + CHUNK));
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+  const chunkResults = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("player_slots")
+        .select(
+          "player_name, pro_team, points, game_played, is_bench, team_side, matchup_id, stats",
+        )
+        .eq("position", position)
+        .in("matchup_id", chunk),
+    ),
+  );
+  for (const { data } of chunkResults) {
     if (data) rows.push(...(data as Raw[]));
   }
 
@@ -850,7 +894,8 @@ export type PlayerDetail = {
 
 /** Everything for one player's detail window: header, weekly scoring for the
  *  season, season-by-season stat lines, and their share of the NFL team. */
-export async function getPlayerDetail(
+export const getPlayerDetail = cached(getPlayerDetailImpl, "getPlayerDetail");
+async function getPlayerDetailImpl(
   name: string,
   year: number,
 ): Promise<PlayerDetail | null> {
@@ -903,12 +948,19 @@ export async function getPlayerDetail(
   const wk = new Map<number, { points: number; freeAgent: boolean }>();
   const teamCount = new Map<number, number>();
   const CHUNK = 20;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data } = await supabase
-      .from("player_slots")
-      .select("matchup_id, team_side, points")
-      .eq("player_name", name)
-      .in("matchup_id", ids.slice(i, i + CHUNK));
+  const slotChunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK)
+    slotChunks.push(ids.slice(i, i + CHUNK));
+  const slotResults = await Promise.all(
+    slotChunks.map((chunk) =>
+      supabase
+        .from("player_slots")
+        .select("matchup_id, team_side, points")
+        .eq("player_name", name)
+        .in("matchup_id", chunk),
+    ),
+  );
+  for (const { data } of slotResults) {
     for (const r of (data ?? []) as {
       matchup_id: number;
       team_side: "home" | "away";
@@ -1017,7 +1069,8 @@ export type DraftValueRow = {
 };
 
 /** Draft Pick Value for TE/RB/WR: value = (total points)^2 * sqrt(draft position). */
-export async function getDraftValue(year: number): Promise<DraftValueRow[]> {
+export const getDraftValue = cached(getDraftValueImpl, "getDraftValue");
+async function getDraftValueImpl(year: number): Promise<DraftValueRow[]> {
   const yearTeams = await getTeams(year);
   const teamCount = yearTeams.length || 8;
   const nameByEspn = new Map<number, string>(
@@ -1100,7 +1153,8 @@ export type MatchupDetail = {
   home: { starters: SlotRow[]; bench: SlotRow[] };
 };
 
-export async function getMatchupDetail(
+export const getMatchupDetail = cached(getMatchupDetailImpl, "getMatchupDetail");
+async function getMatchupDetailImpl(
   matchupId: number,
 ): Promise<MatchupDetail | null> {
   const { data: mRaw } = await supabase
@@ -1230,7 +1284,11 @@ type PoolCand = {
  * excluded) plus free agents on the waiver wire. Greedy by points, assigning
  * each player to the narrowest eligible open slot.
  */
-export async function getWeekOptimalRoster(
+export const getWeekOptimalRoster = cached(
+  getWeekOptimalRosterImpl,
+  "getWeekOptimalRoster",
+);
+async function getWeekOptimalRosterImpl(
   year: number,
   week: number,
 ): Promise<WeekOptimalRoster | null> {
@@ -1260,15 +1318,20 @@ export async function getWeekOptimalRoster(
   };
   const rows: SlotQ[] = [];
   const CHUNK = 20;
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data } = await supabase
-      .from("player_slots")
-      .select(
-        "matchup_id, team_side, slot, player_name, pro_team, position, points, is_bench, eligible_slots",
-      )
-      .in("matchup_id", ids.slice(i, i + CHUNK));
-    if (data) rows.push(...(data as SlotQ[]));
-  }
+  const orChunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK)
+    orChunks.push(ids.slice(i, i + CHUNK));
+  const orResults = await Promise.all(
+    orChunks.map((chunk) =>
+      supabase
+        .from("player_slots")
+        .select(
+          "matchup_id, team_side, slot, player_name, pro_team, position, points, is_bench, eligible_slots",
+        )
+        .in("matchup_id", chunk),
+    ),
+  );
+  for (const { data } of orResults) if (data) rows.push(...(data as SlotQ[]));
 
   const eligibleOf = (elig: string[] | null, position: string | null) =>
     Array.isArray(elig) && elig.length > 0
@@ -1398,7 +1461,8 @@ export type PowerRow = {
  * 4th and 5th most recent. Uses all played games (regular season + playoffs).
  * `change` compares the current ranking to the ranking as of the prior week.
  */
-export async function getPowerRankings(year: number): Promise<PowerRow[]> {
+export const getPowerRankings = cached(getPowerRankingsImpl, "getPowerRankings");
+async function getPowerRankingsImpl(year: number): Promise<PowerRow[]> {
   const [teams, matchups] = await Promise.all([getTeams(year), getMatchups(year)]);
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
 
@@ -1458,7 +1522,11 @@ export type DivisionStandings = { name: string; standings: Standing[] };
 
 /** Regular-season standings for a year, split into the league's divisions
  *  (from league-config), each re-ranked within its division. */
-export async function getDivisionStandings(
+export const getDivisionStandings = cached(
+  getDivisionStandingsImpl,
+  "getDivisionStandings",
+);
+async function getDivisionStandingsImpl(
   year: number,
 ): Promise<DivisionStandings[]> {
   const divs = divisionsFor(year);
@@ -1478,7 +1546,11 @@ export async function getDivisionStandings(
 
 /** Manual preseason power rankings for a year, built from the hand-entered
  *  espn_id order in league-config. Empty if none configured. */
-export async function getPreseasonPowerRankings(
+export const getPreseasonPowerRankings = cached(
+  getPreseasonPowerRankingsImpl,
+  "getPreseasonPowerRankings",
+);
+async function getPreseasonPowerRankingsImpl(
   year: number,
 ): Promise<PowerRow[]> {
   const order = preseasonPowerRankings(year);
@@ -1499,7 +1571,11 @@ export async function getPreseasonPowerRankings(
  * preseason rankings for that season (league-config) before falling back to the
  * latest completed season.
  */
-export async function getLatestPowerRankings(): Promise<{
+export const getLatestPowerRankings = cached(
+  getLatestPowerRankingsImpl,
+  "getLatestPowerRankings",
+);
+async function getLatestPowerRankingsImpl(): Promise<{
   year: number;
   rows: PowerRow[];
   preseason: boolean;
@@ -1537,7 +1613,11 @@ export type Franchise = {
 };
 
 /** All teams from the most recent season — the franchise roster shown on /teams. */
-export async function getCurrentFranchises(): Promise<Team[]> {
+export const getCurrentFranchises = cached(
+  getCurrentFranchisesImpl,
+  "getCurrentFranchises",
+);
+async function getCurrentFranchisesImpl(): Promise<Team[]> {
   const seasons = await getSeasons();
   if (seasons.length === 0) return [];
   const teams = await getTeams(seasons[0].year);
@@ -1563,7 +1643,11 @@ export type FranchiseSummary = {
  * Light per-franchise stats for everyone in the most recent season, computed in
  * a single pass over all seasons (one teams + one matchups query per year).
  */
-export async function getFranchiseSummaries(): Promise<FranchiseSummary[]> {
+export const getFranchiseSummaries = cached(
+  getFranchiseSummariesImpl,
+  "getFranchiseSummaries",
+);
+async function getFranchiseSummariesImpl(): Promise<FranchiseSummary[]> {
   const seasons = await getSeasons();
   if (seasons.length === 0) return [];
 
@@ -1618,7 +1702,8 @@ export async function getFranchiseSummaries(): Promise<FranchiseSummary[]> {
 }
 
 /** One franchise (by espn_id) with its per-season record across all years. */
-export async function getFranchise(espnId: number): Promise<Franchise | null> {
+export const getFranchise = cached(getFranchiseImpl, "getFranchise");
+async function getFranchiseImpl(espnId: number): Promise<Franchise | null> {
   const { data: rows } = await supabase
     .from("teams")
     .select("id, espn_id, year, name, owner")
@@ -1681,7 +1766,11 @@ export type FranchiseHeadToHead = {
  * (regular season + playoffs), so this is a true lifetime series record and will
  * run ahead of the regular-season-only "Overall record" in Career totals.
  */
-export async function getFranchiseHeadToHead(
+export const getFranchiseHeadToHead = cached(
+  getFranchiseHeadToHeadImpl,
+  "getFranchiseHeadToHead",
+);
+async function getFranchiseHeadToHeadImpl(
   espnId: number,
 ): Promise<FranchiseHeadToHead> {
   const seasons = await getSeasons(); // newest first
@@ -1780,7 +1869,11 @@ export type FranchiseRoster = {
  * (matchup_id, team_side), so we map each of the team's matchups to the side it
  * played, keep only those slots, and aggregate points per player.
  */
-export async function getFranchiseRoster(
+export const getFranchiseRoster = cached(
+  getFranchiseRosterImpl,
+  "getFranchiseRoster",
+);
+async function getFranchiseRosterImpl(
   espnId: number,
 ): Promise<FranchiseRoster> {
   const { data: teamRowsRaw } = await supabase
@@ -1828,13 +1921,18 @@ export async function getFranchiseRoster(
   // Chunk by matchup id to stay under the 1000-row response cap.
   const slots: SlotQ[] = [];
   const mIds = [...matchupInfo.keys()];
-  for (let i = 0; i < mIds.length; i += 20) {
-    const { data } = await supabase
-      .from("player_slots")
-      .select("matchup_id, team_side, player_name, points, position, is_bench")
-      .in("matchup_id", mIds.slice(i, i + 20));
-    if (data) slots.push(...(data as SlotQ[]));
-  }
+  const mIdChunks: number[][] = [];
+  for (let i = 0; i < mIds.length; i += 20)
+    mIdChunks.push(mIds.slice(i, i + 20));
+  const mIdResults = await Promise.all(
+    mIdChunks.map((chunk) =>
+      supabase
+        .from("player_slots")
+        .select("matchup_id, team_side, player_name, points, position, is_bench")
+        .in("matchup_id", chunk),
+    ),
+  );
+  for (const { data } of mIdResults) if (data) slots.push(...(data as SlotQ[]));
 
   // year -> player -> aggregate
   const byYearMap = new Map<
@@ -1938,7 +2036,8 @@ export type TeamHome = {
  * Personalized homepage data for one franchise in the current (active) season:
  * their record, upcoming matchups, and last result.
  */
-export async function getTeamHome(espnId: number): Promise<TeamHome | null> {
+export const getTeamHome = cached(getTeamHomeImpl, "getTeamHome");
+async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
   const seasons = await getSeasons(); // newest first
   const active = seasons.find((s) => s.is_active) ?? seasons[0];
   if (!active) return null;
