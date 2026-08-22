@@ -8,6 +8,48 @@ const MEDALS: Record<number, string> = {
   3: "#cd7f32", // bronze
 };
 
+function PowerLi({ r, mine }: { r: PowerRow; mine: boolean }) {
+  return (
+    <li>
+      <Link
+        href={`/teams/${r.team.espn_id}`}
+        className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-2 ${
+          mine ? "bg-accent/10" : ""
+        }`}
+      >
+        <span
+          className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs tabular-nums ${
+            MEDALS[r.rank] ? "font-bold text-[#0b0f14] shadow" : "text-muted"
+          }`}
+          style={MEDALS[r.rank] ? { backgroundColor: MEDALS[r.rank] } : undefined}
+        >
+          {r.rank}
+        </span>
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: teamColor(r.team.espn_id) }}
+        />
+        <span
+          className={`min-w-0 flex-1 truncate text-sm ${
+            mine ? "font-semibold" : "font-medium"
+          }`}
+        >
+          {r.team.name.trim()}
+        </span>
+        <span className="shrink-0 text-xs tabular-nums">
+          {r.change == null || r.change === 0 ? (
+            <span className="text-muted">—</span>
+          ) : r.change > 0 ? (
+            <span className="text-accent">▲ {r.change}</span>
+          ) : (
+            <span className="text-red-400">▼ {Math.abs(r.change)}</span>
+          )}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
 export default function PowerRankingsCard({
   year,
   rows,
@@ -41,56 +83,26 @@ export default function PowerRankingsCard({
       {rows.length === 0 ? (
         <p className="text-sm text-muted">No games played yet.</p>
       ) : (
-        <ol className="grid gap-1 sm:grid-cols-2">
-          {rows.map((r) => {
-            const mine = highlightEspnId === r.team.espn_id;
-            return (
-              <li key={r.team.id}>
-                <Link
-                  href={`/teams/${r.team.espn_id}`}
-                  className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-2 ${
-                    mine ? "bg-accent/10" : ""
-                  }`}
-                >
-                  <span
-                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs tabular-nums ${
-                      MEDALS[r.rank]
-                        ? "font-bold text-[#0b0f14] shadow"
-                        : "text-muted"
-                    }`}
-                    style={
-                      MEDALS[r.rank]
-                        ? { backgroundColor: MEDALS[r.rank] }
-                        : undefined
-                    }
-                  >
-                    {r.rank}
-                  </span>
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: teamColor(r.team.espn_id) }}
-                  />
-                  <span
-                    className={`min-w-0 flex-1 truncate text-sm ${
-                      mine ? "font-semibold" : "font-medium"
-                    }`}
-                  >
-                    {r.team.name.trim()}
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums">
-                    {r.change == null || r.change === 0 ? (
-                      <span className="text-muted">—</span>
-                    ) : r.change > 0 ? (
-                      <span className="text-accent">▲ {r.change}</span>
-                    ) : (
-                      <span className="text-red-400">▼ {Math.abs(r.change)}</span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ol>
+        (() => {
+          // 1..half down the left column, the rest down the right column.
+          const half = Math.ceil(rows.length / 2);
+          const columns = [rows.slice(0, half), rows.slice(half)];
+          return (
+            <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              {columns.map((col, ci) => (
+                <ol key={ci} className="grid content-start gap-1">
+                  {col.map((r) => (
+                    <PowerLi
+                      key={r.team.id}
+                      r={r}
+                      mine={highlightEspnId === r.team.espn_id}
+                    />
+                  ))}
+                </ol>
+              ))}
+            </div>
+          );
+        })()
       )}
     </section>
   );
