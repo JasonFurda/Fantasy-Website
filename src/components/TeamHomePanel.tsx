@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { TeamHome, UpcomingMatch } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import { homepageConfig } from "@/lib/homepage-config";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
+import ArtSpotlight from "@/components/ArtSpotlight";
 
 const posKey = (p: string) => (p === "D/ST" ? "DST" : p);
 
@@ -45,6 +47,7 @@ function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
 
 export default function TeamHomePanel({ home }: { home: TeamHome }) {
   const color = teamColor(home.team.espn_id);
+  const { recap } = homepageConfig;
 
   return (
     <main className="mx-auto max-w-4xl px-5 py-10">
@@ -175,6 +178,11 @@ export default function TeamHomePanel({ home }: { home: TeamHome }) {
             {l.label}
           </Link>
         ))}
+      </div>
+
+      {/* League art */}
+      <div className="mt-10">
+        <ArtSpotlight art={recap.art} rotationMs={recap.artRotationMs} />
       </div>
     </main>
   );

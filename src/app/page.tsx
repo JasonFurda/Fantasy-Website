@@ -14,7 +14,7 @@ import ArtSpotlight from "@/components/ArtSpotlight";
 import ChampionBanner from "@/components/ChampionBanner";
 import PlayoffBracket from "@/components/PlayoffBracket";
 import StandingsTable from "@/components/StandingsTable";
-import TeamPicker from "@/components/TeamPicker";
+import TeamPickerModal from "@/components/TeamPickerModal";
 import TeamHomePanel from "@/components/TeamHomePanel";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 
@@ -133,22 +133,11 @@ export default async function Home() {
     );
   }
 
-  // No choice yet → prompt to pick a team, with the default homepage below.
+  // No choice yet → default homepage with the picker popup on top.
   return (
     <>
-      <section className="mx-auto max-w-[1800px] px-8 pt-10">
-        <div className="rounded-2xl border border-border bg-surface p-6 sm:p-8">
-          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
-            Which team are you?
-          </h1>
-          <p className="mt-1 mb-5 text-sm text-muted">
-            Pick your team to personalize the homepage with your upcoming games
-            and top players.
-          </p>
-          <TeamPicker teams={pickerTeams} />
-        </div>
-      </section>
       <DefaultHome />
+      <TeamPickerModal teams={pickerTeams} />
     </>
   );
 }
