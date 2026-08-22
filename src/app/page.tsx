@@ -7,6 +7,8 @@ import {
   buildStandings,
   getCurrentFranchises,
   getTeamHome,
+  getLatestPowerRankings,
+  type PowerRow,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { MY_TEAM_COOKIE } from "@/lib/my-team";
@@ -14,13 +16,16 @@ import ArtSpotlight from "@/components/ArtSpotlight";
 import ChampionBanner from "@/components/ChampionBanner";
 import PlayoffBracket from "@/components/PlayoffBracket";
 import StandingsTable from "@/components/StandingsTable";
+import PowerRankingsCard from "@/components/PowerRankingsCard";
 import TeamPickerModal from "@/components/TeamPickerModal";
 import TeamHomePanel from "@/components/TeamHomePanel";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 
 export const dynamic = "force-dynamic";
 
-async function RecapHome() {
+type Power = { year: number; rows: PowerRow[] };
+
+function RecapHome({ power }: { power: Power }) {
   const { recap } = homepageConfig;
   return (
     <main className="mx-auto max-w-[1800px] px-8 py-12">
@@ -41,7 +46,11 @@ async function RecapHome() {
         </div>
       </div>
 
-      <p className="mt-10 text-center text-sm text-muted">
+      <div className="mt-10">
+        <PowerRankingsCard year={power.year} rows={power.rows} />
+      </div>
+
+      <p className="mt-8 text-center text-sm text-muted">
         Looking for the full table?{" "}
         <Link href="/standings" className="text-accent hover:underline">
           View season standings →
@@ -51,7 +60,7 @@ async function RecapHome() {
   );
 }
 
-async function DivisionsHome() {
+async function DivisionsHome({ power }: { power: Power }) {
   const { divisions } = homepageConfig;
   const [teams, matchups] = await Promise.all([
     getTeams(divisions.seasonYear),
@@ -59,7 +68,7 @@ async function DivisionsHome() {
   ]);
 
   return (
-    <main className="mx-auto max-w-5xl px-5 py-10">
+    <main className="mx-auto max-w-[1800px] px-8 py-12">
       <h1 className="mb-1 text-2xl font-bold tracking-tight">
         {divisions.seasonYear} Standings
       </h1>
@@ -86,6 +95,10 @@ async function DivisionsHome() {
           );
         })}
       </div>
+
+      <div className="mt-10">
+        <PowerRankingsCard year={power.year} rows={power.rows} />
+      </div>
     </main>
   );
 }
@@ -106,14 +119,20 @@ export default async function Home() {
       ? Number(raw)
       : null;
 
+  const power = await getLatestPowerRankings();
+
   // A team is selected → personalized homepage.
   if (chosen != null) {
     const home = await getTeamHome(chosen);
-    if (home) return <TeamHomePanel home={home} />;
+    if (home) return <TeamHomePanel home={home} power={power} />;
   }
 
-  const DefaultHome =
-    homepageConfig.mode === "divisions" ? DivisionsHome : RecapHome;
+  const defaultHome =
+    homepageConfig.mode === "divisions" ? (
+      <DivisionsHome power={power} />
+    ) : (
+      <RecapHome power={power} />
+    );
 
   // Explicitly browsing without a team → default homepage + a way to pick one.
   if (raw === "none") {
@@ -128,7 +147,7 @@ export default async function Home() {
             />
           </div>
         </div>
-        <DefaultHome />
+        {defaultHome}
       </>
     );
   }
@@ -136,7 +155,7 @@ export default async function Home() {
   // No choice yet → default homepage with the picker popup on top.
   return (
     <>
-      <DefaultHome />
+      {defaultHome}
       <TeamPickerModal teams={pickerTeams} />
     </>
   );

@@ -1452,6 +1452,23 @@ export async function getPowerRankings(year: number): Promise<PowerRow[]> {
     .filter((r) => r.team);
 }
 
+/**
+ * Power rankings for the most recent season that has any played games. In the
+ * preseason the active season has none yet, so this falls back to the latest
+ * completed season.
+ */
+export async function getLatestPowerRankings(): Promise<{
+  year: number;
+  rows: PowerRow[];
+}> {
+  const seasons = await getSeasons(); // newest first
+  for (const s of seasons) {
+    const rows = await getPowerRankings(s.year);
+    if (rows.length > 0) return { year: s.year, rows };
+  }
+  return { year: seasons[0]?.year ?? 0, rows: [] };
+}
+
 export type FranchiseSeason = {
   year: number;
   name: string;
