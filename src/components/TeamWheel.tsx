@@ -29,25 +29,16 @@ export default function TeamWheel({
 }) {
   const n = teams.length;
   const step = n > 0 ? 360 / n : 0;
-  // If the visitor picked a team, open the wheel already landing on it.
-  const initialIdx =
-    highlightEspnId != null
-      ? teams.findIndex((t) => t.espnId === highlightEspnId)
-      : -1;
 
+  // The wheel always opens idle-spinning, even if the visitor has picked a
+  // homepage team — highlightEspnId only flags "your team" once it's selected.
   const [rotation, setRotation] = useState(0);
-  const [selected, setSelected] = useState<number | null>(
-    initialIdx >= 0 ? initialIdx : null,
-  );
+  const [selected, setSelected] = useState<number | null>(null);
   const [spinning, setSpinning] = useState(false);
 
   const rotationRef = useRef(0);
-  const targetRef = useRef<number | null>(
-    initialIdx >= 0 ? -initialIdx * step : null,
-  );
-  const modeRef = useRef<"idle" | "snap" | "rest">(
-    initialIdx >= 0 ? "snap" : "idle",
-  );
+  const targetRef = useRef<number | null>(null);
+  const modeRef = useRef<"idle" | "snap" | "rest">("idle");
   const easeRef = useRef(0.12); // per-animation deceleration; lower = slower
   const rafRef = useRef<number | null>(null);
 
