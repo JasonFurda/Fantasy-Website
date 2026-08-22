@@ -152,7 +152,10 @@ export default function TeamHomePanel({
             {divisions.map((d) => (
               <section key={d.name}>
                 <h3 className="mb-2 text-base font-semibold">{d.name}</h3>
-                <StandingsTable standings={d.standings} />
+                <StandingsTable
+                  standings={d.standings}
+                  highlightEspnId={home.team.espn_id}
+                />
               </section>
             ))}
           </div>

@@ -7,6 +7,7 @@ import {
   POSITION_STRENGTH_DEFS,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import { getMyTeamEspnId } from "@/lib/my-team-server";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,10 @@ export default async function PowerRankingsPage({
 }: {
   searchParams: Promise<{ year?: string; view?: string; pos?: string }>;
 }) {
-  const seasons = await getSeasons();
+  const [seasons, myEspnId] = await Promise.all([
+    getSeasons(),
+    getMyTeamEspnId(),
+  ]);
   if (seasons.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-16 text-muted">
@@ -111,15 +115,25 @@ export default async function PowerRankingsPage({
       </div>
 
       {view === "power" ? (
-        <OverallRankings year={year} />
+        <OverallRankings year={year} highlightEspnId={myEspnId} />
       ) : (
-        <PositionRankings year={year} posKey={posDef.key} />
+        <PositionRankings
+          year={year}
+          posKey={posDef.key}
+          highlightEspnId={myEspnId}
+        />
       )}
     </main>
   );
 }
 
-async function OverallRankings({ year }: { year: number }) {
+async function OverallRankings({
+  year,
+  highlightEspnId,
+}: {
+  year: number;
+  highlightEspnId?: number | null;
+}) {
   let rows = await getPowerRankings(year);
   let preseason = false;
   if (rows.length === 0) {
@@ -156,7 +170,9 @@ async function OverallRankings({ year }: { year: number }) {
             {rows.map((r) => (
               <tr
                 key={r.team.id}
-                className="border-b border-border/60 last:border-0 hover:bg-surface-2"
+                className={`border-b border-border/60 last:border-0 hover:bg-surface-2 ${
+                  highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
+                }`}
               >
                 <td className="px-4 py-3">
                   <RankBadge rank={r.rank} />
@@ -185,9 +201,11 @@ async function OverallRankings({ year }: { year: number }) {
 async function PositionRankings({
   year,
   posKey,
+  highlightEspnId,
 }: {
   year: number;
   posKey: string;
+  highlightEspnId?: number | null;
 }) {
   const data = await getPositionStrength(year);
   const group =
@@ -242,7 +260,9 @@ async function PositionRankings({
                 {group.rows.map((r) => (
                   <tr
                     key={r.team.id}
-                    className="border-b border-border/60 last:border-0 hover:bg-surface-2"
+                    className={`border-b border-border/60 last:border-0 hover:bg-surface-2 ${
+                      highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
+                    }`}
                   >
                     <td className="px-4 py-3">
                       <RankBadge rank={r.rank} />

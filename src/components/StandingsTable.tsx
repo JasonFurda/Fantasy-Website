@@ -8,8 +8,10 @@ const MEDALS: Record<number, string> = {
 
 export default function StandingsTable({
   standings,
+  highlightEspnId,
 }: {
   standings: Standing[];
+  highlightEspnId?: number | null;
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -28,10 +30,13 @@ export default function StandingsTable({
         <tbody>
           {standings.map((s) => {
             const diff = s.pointsFor - s.pointsAgainst;
+            const mine = highlightEspnId === s.team.espn_id;
             return (
               <tr
                 key={s.team.id}
-                className="border-b border-border/60 last:border-0 transition-colors hover:bg-surface-2"
+                className={`border-b border-border/60 last:border-0 transition-colors hover:bg-surface-2 ${
+                  mine ? "bg-accent/10" : ""
+                }`}
               >
                 <td className="px-4 py-3">
                   <span

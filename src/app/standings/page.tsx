@@ -6,6 +6,7 @@ import {
   buildStandings,
   getAllTimeStandings,
 } from "@/lib/queries";
+import { getMyTeamEspnId } from "@/lib/my-team-server";
 import StandingsTable from "@/components/StandingsTable";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,10 @@ export default async function StandingsPage({
 }: {
   searchParams: Promise<{ year?: string }>;
 }) {
-  const seasons = await getSeasons();
+  const [seasons, myEspnId] = await Promise.all([
+    getSeasons(),
+    getMyTeamEspnId(),
+  ]);
   if (seasons.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-16 text-muted">
@@ -83,7 +87,7 @@ export default async function StandingsPage({
         </nav>
       </div>
 
-      <StandingsTable standings={standings} />
+      <StandingsTable standings={standings} highlightEspnId={myEspnId} />
 
       {isAllTime && (
         <p className="mt-3 text-xs text-muted">

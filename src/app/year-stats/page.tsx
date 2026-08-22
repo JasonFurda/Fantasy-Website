@@ -7,6 +7,7 @@ import {
   type GameRow,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import { getMyTeamEspnId } from "@/lib/my-team-server";
 import PerformanceChart from "@/components/PerformanceChart";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +20,21 @@ const TABS = [
   { key: "performance", label: "Performance" },
 ] as const;
 
-function TeamCell({ team }: { team: { espn_id: number; name: string; owner: string } | null }) {
+function TeamCell({
+  team,
+  highlightEspnId,
+}: {
+  team: { espn_id: number; name: string; owner: string } | null;
+  highlightEspnId?: number | null;
+}) {
   if (!team) return <span>—</span>;
+  const mine = highlightEspnId === team.espn_id;
   return (
     <Link
       href={`/teams/${team.espn_id}`}
-      className="flex items-center gap-2 hover:underline"
+      className={`flex items-center gap-2 hover:underline ${
+        mine ? "font-semibold text-accent" : ""
+      }`}
     >
       <span
         className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -38,9 +48,11 @@ function TeamCell({ team }: { team: { espn_id: number; name: string; owner: stri
 function GameTable({
   rows,
   showYear,
+  highlightEspnId,
 }: {
   rows: GameRow[];
   showYear?: boolean;
+  highlightEspnId?: number | null;
 }) {
   if (rows.length === 0)
     return <p className="text-sm text-muted">Nothing here yet.</p>;
@@ -65,11 +77,13 @@ function GameTable({
           {rows.map((g, i) => (
             <tr
               key={`${g.matchupId}-${g.team?.id}`}
-              className="border-b border-border/60 last:border-0"
+              className={`border-b border-border/60 last:border-0 ${
+                highlightEspnId === g.team?.espn_id ? "bg-accent/10" : ""
+              }`}
             >
               <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
               <td className="px-4 py-3 font-medium">
-                <TeamCell team={g.team} />
+                <TeamCell team={g.team} highlightEspnId={highlightEspnId} />
               </td>
               <td className="px-4 py-3 text-right font-bold tabular-nums">
                 {g.score.toFixed(1)}
@@ -78,7 +92,7 @@ function GameTable({
                 {showYear ? `${g.year} · ${g.week}` : g.week}
               </td>
               <td className="px-4 py-3 text-muted">
-                <TeamCell team={g.opponent} />
+                <TeamCell team={g.opponent} highlightEspnId={highlightEspnId} />
               </td>
               <td className="px-4 py-3 text-right tabular-nums text-muted">
                 {g.opponentScore.toFixed(1)}
@@ -109,7 +123,10 @@ export default async function YearStatsPage({
 }: {
   searchParams: Promise<{ year?: string; tab?: string }>;
 }) {
-  const seasons = await getSeasons();
+  const [seasons, myEspnId] = await Promise.all([
+    getSeasons(),
+    getMyTeamEspnId(),
+  ]);
   if (seasons.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-16 text-muted">
@@ -199,11 +216,13 @@ export default async function YearStatsPage({
                 {stats.fraud.map((f, i) => (
                   <tr
                     key={f.team.id}
-                    className="border-b border-border/60 last:border-0"
+                    className={`border-b border-border/60 last:border-0 ${
+                      myEspnId === f.team.espn_id ? "bg-accent/10" : ""
+                    }`}
                   >
                     <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
                     <td className="px-4 py-3 font-medium">
-                      <TeamCell team={f.team} />
+                      <TeamCell team={f.team} highlightEspnId={myEspnId} />
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {f.record}
@@ -230,7 +249,11 @@ export default async function YearStatsPage({
           <p className="mb-4 max-w-2xl text-sm text-muted">
             Single-week team scores of 200 or more.
           </p>
-          <GameTable rows={stats.club200} showYear={isAllTime} />
+          <GameTable
+            rows={stats.club200}
+            showYear={isAllTime}
+            highlightEspnId={myEspnId}
+          />
         </>
       )}
 
@@ -239,7 +262,11 @@ export default async function YearStatsPage({
           <p className="mb-4 max-w-2xl text-sm text-muted">
             Single-week team scores under 100 — the games to forget.
           </p>
-          <GameTable rows={stats.subClub} showYear={isAllTime} />
+          <GameTable
+            rows={stats.subClub}
+            showYear={isAllTime}
+            highlightEspnId={myEspnId}
+          />
         </>
       )}
 
@@ -268,11 +295,13 @@ export default async function YearStatsPage({
                 {stats.mismanage.map((m, i) => (
                   <tr
                     key={m.team.id}
-                    className="border-b border-border/60 last:border-0"
+                    className={`border-b border-border/60 last:border-0 ${
+                      myEspnId === m.team.espn_id ? "bg-accent/10" : ""
+                    }`}
                   >
                     <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
                     <td className="px-4 py-3 font-medium">
-                      <TeamCell team={m.team} />
+                      <TeamCell team={m.team} highlightEspnId={myEspnId} />
                     </td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums">
                       {m.pctOptimal.toFixed(1)}%

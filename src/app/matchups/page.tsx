@@ -9,6 +9,7 @@ import {
   type Team,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
+import { getMyTeamEspnId } from "@/lib/my-team-server";
 import MatchupBoxScore from "@/components/MatchupBoxScore";
 import MatchupClash from "@/components/MatchupClash";
 import WeekOptimalRoster from "@/components/WeekOptimalRoster";
@@ -44,9 +45,10 @@ export default async function MatchupsPage({
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
   const view = sp.view === "optimal" ? "optimal" : "matchups";
 
-  const [matchups, teams] = await Promise.all([
+  const [matchups, teams, myEspnId] = await Promise.all([
     getMatchups(year),
     getTeams(year),
+    getMyTeamEspnId(),
   ]);
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
 
@@ -178,6 +180,9 @@ export default async function MatchupsPage({
                 const home = teamById.get(m.home_team_id);
                 const active = m.id === selectedId;
                 const aWin = (m.away_score ?? 0) > (m.home_score ?? 0);
+                const awayMine = myEspnId != null && away?.espn_id === myEspnId;
+                const homeMine = myEspnId != null && home?.espn_id === myEspnId;
+                const mine = awayMine || homeMine;
                 return (
                   <Link
                     key={m.id}
@@ -185,7 +190,9 @@ export default async function MatchupsPage({
                     className={`rounded-xl border p-3 transition-colors ${
                       active
                         ? "border-accent bg-surface-2"
-                        : "border-border bg-surface hover:bg-surface-2"
+                        : mine
+                          ? "border-accent/40 bg-accent/5 hover:bg-surface-2"
+                          : "border-border bg-surface hover:bg-surface-2"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 text-sm">
@@ -196,7 +203,11 @@ export default async function MatchupsPage({
                             backgroundColor: teamColor(away?.espn_id ?? 0),
                           }}
                         />
-                        <span className={aWin ? "font-semibold" : ""}>
+                        <span
+                          className={`${aWin ? "font-semibold" : ""} ${
+                            awayMine ? "text-accent" : ""
+                          }`}
+                        >
                           {away?.name.trim() ?? "—"}
                         </span>
                       </span>
@@ -212,7 +223,11 @@ export default async function MatchupsPage({
                             backgroundColor: teamColor(home?.espn_id ?? 0),
                           }}
                         />
-                        <span className={!aWin ? "font-semibold" : ""}>
+                        <span
+                          className={`${!aWin ? "font-semibold" : ""} ${
+                            homeMine ? "text-accent" : ""
+                          }`}
+                        >
                           {home?.name.trim() ?? "—"}
                         </span>
                       </span>

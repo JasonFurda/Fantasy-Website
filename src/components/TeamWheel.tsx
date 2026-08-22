@@ -20,17 +20,34 @@ export type WheelTeam = {
 const IDLE_SPEED = 0.08; // deg per frame before any selection
 const RADIUS = 185; // px — controls how tightly the names stack
 
-export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
+export default function TeamWheel({
+  teams,
+  highlightEspnId,
+}: {
+  teams: WheelTeam[];
+  highlightEspnId?: number | null;
+}) {
   const n = teams.length;
   const step = n > 0 ? 360 / n : 0;
+  // If the visitor picked a team, open the wheel already landing on it.
+  const initialIdx =
+    highlightEspnId != null
+      ? teams.findIndex((t) => t.espnId === highlightEspnId)
+      : -1;
 
   const [rotation, setRotation] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(
+    initialIdx >= 0 ? initialIdx : null,
+  );
   const [spinning, setSpinning] = useState(false);
 
   const rotationRef = useRef(0);
-  const targetRef = useRef<number | null>(null);
-  const modeRef = useRef<"idle" | "snap" | "rest">("idle");
+  const targetRef = useRef<number | null>(
+    initialIdx >= 0 ? -initialIdx * step : null,
+  );
+  const modeRef = useRef<"idle" | "snap" | "rest">(
+    initialIdx >= 0 ? "snap" : "idle",
+  );
   const easeRef = useRef(0.12); // per-animation deceleration; lower = slower
   const rafRef = useRef<number | null>(null);
 
@@ -225,11 +242,18 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
           className="absolute right-[4vw] top-1/2 z-20 w-[min(380px,42vw)] -translate-y-1/2 animate-[fadeIn_0.5s_ease] rounded-2xl border bg-surface/85 p-6 backdrop-blur"
           style={{ borderColor: selectedTeam.color }}
         >
-          <div
-            className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
-            style={{ backgroundColor: `${selectedTeam.color}26`, color: selectedTeam.color }}
-          >
-            {selectedTeam.owner}
+          <div className="flex items-center gap-2">
+            <div
+              className="inline-block rounded-full px-3 py-1 text-xs font-semibold"
+              style={{ backgroundColor: `${selectedTeam.color}26`, color: selectedTeam.color }}
+            >
+              {selectedTeam.owner}
+            </div>
+            {highlightEspnId === selectedTeam.espnId && (
+              <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-background">
+                Your team
+              </span>
+            )}
           </div>
           <h2 className="mt-3 text-3xl font-bold tracking-tight">
             {selectedTeam.name.trim()}
