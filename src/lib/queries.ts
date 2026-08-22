@@ -2034,14 +2034,9 @@ async function getFranchiseRosterImpl(
     number,
     { year: number; week: number; side: "home" | "away" }
   >();
-  const maxWeekByYear = new Map<number, number>();
   for (const m of matchups) {
     const side = idSet.has(m.home_team_id) ? "home" : "away";
     matchupInfo.set(m.id, { year: m.year, week: m.week, side });
-    maxWeekByYear.set(
-      m.year,
-      Math.max(maxWeekByYear.get(m.year) ?? 0, m.week),
-    );
   }
   // names on the roster in each year's final week (any slot, incl. bench)
   const finalRoster = new Map<number, Set<string>>();
@@ -2070,19 +2065,37 @@ async function getFranchiseRosterImpl(
   );
   for (const { data } of mIdResults) if (data) slots.push(...(data as SlotQ[]));
 
-  // year -> player -> aggregate
+  // Only our team's slots, and the latest week that actually has a lineup per
+  // year (schedule-only future weeks have no player_slots, so they don't count).
+  const ourSlots = slots.filter((s) => {
+    const info = matchupInfo.get(s.matchup_id);
+    return info && s.team_side === info.side;
+  });
+  const maxLineupWeek = new Map<number, number>();
+  for (const s of ourSlots) {
+    const info = matchupInfo.get(s.matchup_id)!;
+    maxLineupWeek.set(
+      info.year,
+      Math.max(maxLineupWeek.get(info.year) ?? 0, info.week),
+    );
+  }
+
+  // year -> player -> aggregate. `rostered` counts any appearance (incl. bench)
+  // so the whole roster shows; `points`/`weeks` count only started games.
   const byYearMap = new Map<
     number,
-    Map<string, { points: number; weeks: number; posCounts: Map<string, number> }>
+    Map<
+      string,
+      { points: number; weeks: number; rostered: number; posCounts: Map<string, number> }
+    >
   >();
   const totalByPlayer = new Map<string, number>();
 
-  for (const s of slots) {
-    const info = matchupInfo.get(s.matchup_id);
-    if (!info || s.team_side !== info.side) continue; // not our team's slot
+  for (const s of ourSlots) {
+    const info = matchupInfo.get(s.matchup_id)!;
 
     // final-week roster membership (any slot)
-    if (info.week === maxWeekByYear.get(info.year)) {
+    if (info.week === maxLineupWeek.get(info.year)) {
       let set = finalRoster.get(info.year);
       if (!set) {
         set = new Set();
@@ -2091,9 +2104,6 @@ async function getFranchiseRosterImpl(
       set.add(s.player_name);
     }
 
-    if (s.is_bench) continue; // benched points didn't score for the team
-    const pts = Number(s.points ?? 0);
-
     let yearMap = byYearMap.get(info.year);
     if (!yearMap) {
       yearMap = new Map();
@@ -2101,14 +2111,20 @@ async function getFranchiseRosterImpl(
     }
     let p = yearMap.get(s.player_name);
     if (!p) {
-      p = { points: 0, weeks: 0, posCounts: new Map() };
+      p = { points: 0, weeks: 0, rostered: 0, posCounts: new Map() };
       yearMap.set(s.player_name, p);
     }
-    p.points += pts;
-    p.weeks += 1;
+    p.rostered += 1;
     if (s.position) p.posCounts.set(s.position, (p.posCounts.get(s.position) ?? 0) + 1);
-
-    totalByPlayer.set(s.player_name, (totalByPlayer.get(s.player_name) ?? 0) + pts);
+    if (!s.is_bench) {
+      const pts = Number(s.points ?? 0); // benched points didn't score for the team
+      p.points += pts;
+      p.weeks += 1;
+      totalByPlayer.set(
+        s.player_name,
+        (totalByPlayer.get(s.player_name) ?? 0) + pts,
+      );
+    }
   }
 
   const byYear = [...byYearMap.entries()]
@@ -2133,8 +2149,8 @@ async function getFranchiseRosterImpl(
             endedOnTeam: finalRoster.get(year)?.has(name) ?? false,
           };
         })
-        .filter((p) => p.points > 0)
-        .sort((a, b) => b.points - a.points),
+        // Show the whole roster (everyone who appeared), scorers first.
+        .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name)),
     }));
 
   const topScorers = [...totalByPlayer.entries()]

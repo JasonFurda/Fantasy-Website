@@ -51,10 +51,14 @@ export default async function MatchupsPage({
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
 
   const weeks = [...new Set(matchups.map((m) => m.week))].sort((a, b) => a - b);
+  // Default to the season's current week (falling back to the latest scheduled
+  // week for completed seasons), not the last week on the schedule.
+  const currentWeek = seasons.find((s) => s.year === year)?.current_week ?? 0;
+  const defaultWeek = weeks.includes(currentWeek)
+    ? currentWeek
+    : (weeks[weeks.length - 1] ?? 1);
   const week =
-    sp.week && weeks.includes(Number(sp.week))
-      ? Number(sp.week)
-      : (weeks[weeks.length - 1] ?? 1); // default to the latest week
+    sp.week && weeks.includes(Number(sp.week)) ? Number(sp.week) : defaultWeek;
 
   const weekMatchups = matchups
     .filter((m) => m.week === week)
