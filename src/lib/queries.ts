@@ -1456,6 +1456,142 @@ export type PowerRow = {
   change: number | null; // rank change vs previous week (+ = moved up); null = new
 };
 
+export type PositionStrengthPlayer = { name: string; value: number };
+export type PositionStrengthRow = {
+  rank: number;
+  team: Team;
+  score: number;
+  players: PositionStrengthPlayer[]; // the top-N that were counted
+};
+export type PositionGroup = {
+  key: string;
+  label: string;
+  pos: string;
+  count: number;
+  rows: PositionStrengthRow[]; // ranked best → worst
+};
+export type PositionStrength = {
+  year: number;
+  preseason: boolean; // true = ranked by projected points, not points scored
+  groups: PositionGroup[];
+};
+
+// How many of each position count toward a team's positional strength.
+export const POSITION_STRENGTH_DEFS = [
+  { key: "QB", pos: "QB", label: "QB", count: 2 },
+  { key: "RB", pos: "RB", label: "RB", count: 3 },
+  { key: "WR", pos: "WR", label: "WR", count: 3 },
+  { key: "TE", pos: "TE", label: "TE", count: 2 },
+  { key: "K", pos: "K", label: "K", count: 1 },
+  { key: "DST", pos: "D/ST", label: "D/ST", count: 1 },
+] as const;
+
+/**
+ * Ranks every team by positional depth: for each position, sum each team's best
+ * N players at that spot (N per POSITION_STRENGTH_DEFS). Uses total points once
+ * games are played; before then (preseason) uses projected points.
+ */
+export const getPositionStrength = cached(
+  getPositionStrengthImpl,
+  "getPositionStrength",
+);
+async function getPositionStrengthImpl(
+  year: number,
+): Promise<PositionStrength> {
+  const [teams, matchups] = await Promise.all([
+    getTeams(year),
+    getMatchups(year),
+  ]);
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+  const sideOf = new Map<number, { home: number; away: number }>();
+  for (const m of matchups)
+    sideOf.set(m.id, { home: m.home_team_id, away: m.away_team_id });
+  const ids = matchups.map((m) => m.id);
+
+  type SlotQ = {
+    matchup_id: number;
+    team_side: "home" | "away";
+    player_name: string;
+    position: string | null;
+    points: number | null;
+    projected: number | null;
+  };
+  const rows: SlotQ[] = [];
+  const CHUNK = 20;
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("player_slots")
+        .select("matchup_id, team_side, player_name, position, points, projected")
+        .in("matchup_id", chunk),
+    ),
+  );
+  for (const { data } of results) if (data) rows.push(...(data as SlotQ[]));
+
+  // teamId -> playerName -> { pos, points, projected } (summed across weeks)
+  const byTeam = new Map<
+    number,
+    Map<string, { pos: string; points: number; projected: number }>
+  >();
+  let anyPoints = false;
+  for (const r of rows) {
+    const sides = sideOf.get(r.matchup_id);
+    if (!sides) continue;
+    const tid = r.team_side === "home" ? sides.home : sides.away;
+    let pm = byTeam.get(tid);
+    if (!pm) {
+      pm = new Map();
+      byTeam.set(tid, pm);
+    }
+    let p = pm.get(r.player_name);
+    if (!p) {
+      p = { pos: r.position ?? "", points: 0, projected: 0 };
+      pm.set(r.player_name, p);
+    }
+    if (!p.pos && r.position) p.pos = r.position;
+    const pts = Number(r.points ?? 0);
+    p.points += pts;
+    p.projected += Number(r.projected ?? 0);
+    if (pts !== 0) anyPoints = true;
+  }
+  const preseason = !anyPoints;
+
+  const groups: PositionGroup[] = POSITION_STRENGTH_DEFS.map((def) => {
+    const posRows: PositionStrengthRow[] = [];
+    for (const [tid, pm] of byTeam) {
+      const team = teamById.get(tid);
+      if (!team) continue;
+      const players = [...pm.entries()]
+        .filter(([, v]) => v.pos === def.pos)
+        .map(([name, v]) => ({
+          name,
+          value: preseason ? v.projected : v.points,
+        }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, def.count);
+      posRows.push({
+        rank: 0,
+        team,
+        score: players.reduce((a, p) => a + p.value, 0),
+        players,
+      });
+    }
+    posRows.sort((a, b) => b.score - a.score);
+    posRows.forEach((r, i) => (r.rank = i + 1));
+    return {
+      key: def.key,
+      label: def.label,
+      pos: def.pos,
+      count: def.count,
+      rows: posRows,
+    };
+  });
+
+  return { year, preseason, groups };
+}
+
 /**
  * Power rankings: sum of a team's 3 most recent game scores, plus half of the
  * 4th and 5th most recent. Uses all played games (regular season + playoffs).
