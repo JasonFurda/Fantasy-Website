@@ -5,6 +5,8 @@ import {
   isChampion,
   championshipsFor,
   finalPlacement,
+  preseasonPowerRankings,
+  divisionsFor,
 } from "@/lib/league-config";
 import { teamColor } from "@/lib/teams-config";
 
@@ -1452,21 +1454,64 @@ export async function getPowerRankings(year: number): Promise<PowerRow[]> {
     .filter((r) => r.team);
 }
 
+export type DivisionStandings = { name: string; standings: Standing[] };
+
+/** Regular-season standings for a year, split into the league's divisions
+ *  (from league-config), each re-ranked within its division. */
+export async function getDivisionStandings(
+  year: number,
+): Promise<DivisionStandings[]> {
+  const divs = divisionsFor(year);
+  if (divs.length === 0) return [];
+  const [teams, matchups] = await Promise.all([
+    getTeams(year),
+    getMatchups(year),
+  ]);
+  const all = buildStandings(teams, matchups); // overall, sorted
+  return divs.map((d) => ({
+    name: d.name,
+    standings: all
+      .filter((s) => d.espnIds.includes(s.team.espn_id))
+      .map((s, i) => ({ ...s, rank: i + 1 })),
+  }));
+}
+
+/** Manual preseason power rankings for a year, built from the hand-entered
+ *  espn_id order in league-config. Empty if none configured. */
+export async function getPreseasonPowerRankings(
+  year: number,
+): Promise<PowerRow[]> {
+  const order = preseasonPowerRankings(year);
+  if (order.length === 0) return [];
+  const teams = await getTeams(year);
+  const byEspn = new Map<number, Team>(teams.map((t) => [t.espn_id, t]));
+  const rows: PowerRow[] = [];
+  order.forEach((espnId, i) => {
+    const team = byEspn.get(espnId);
+    if (team) rows.push({ rank: i + 1, team, change: null });
+  });
+  return rows;
+}
+
 /**
- * Power rankings for the most recent season that has any played games. In the
- * preseason the active season has none yet, so this falls back to the latest
- * completed season.
+ * Power rankings for the homepage. Uses the most recent season that has played
+ * games; if the newest season hasn't started, it uses the hand-entered
+ * preseason rankings for that season (league-config) before falling back to the
+ * latest completed season.
  */
 export async function getLatestPowerRankings(): Promise<{
   year: number;
   rows: PowerRow[];
+  preseason: boolean;
 }> {
   const seasons = await getSeasons(); // newest first
   for (const s of seasons) {
     const rows = await getPowerRankings(s.year);
-    if (rows.length > 0) return { year: s.year, rows };
+    if (rows.length > 0) return { year: s.year, rows, preseason: false };
+    const manual = await getPreseasonPowerRankings(s.year);
+    if (manual.length > 0) return { year: s.year, rows: manual, preseason: true };
   }
-  return { year: seasons[0]?.year ?? 0, rows: [] };
+  return { year: seasons[0]?.year ?? 0, rows: [], preseason: false };
 }
 
 export type FranchiseSeason = {
@@ -1879,16 +1924,6 @@ export type UpcomingMatch = {
   oppProjected: number | null;
 };
 
-export type TeamHomePlayer = {
-  name: string;
-  position: string;
-  proTeam: string | null;
-  slot: string;
-  points: number;
-  projected: number | null;
-  isBench: boolean;
-};
-
 export type TeamHome = {
   year: number;
   team: Team;
@@ -1897,14 +1932,11 @@ export type TeamHome = {
   teamCount: number;
   upcoming: UpcomingMatch[]; // next unplayed matchups (chronological)
   lastResult: UpcomingMatch | null; // most recent played matchup
-  usesProjected: boolean; // best players ranked by projection (nothing played yet)
-  bestPlayers: TeamHomePlayer[];
 };
 
 /**
  * Personalized homepage data for one franchise in the current (active) season:
- * their record, upcoming matchups, last result, and current best players. In the
- * preseason (nothing played yet) best players are ranked by projected points.
+ * their record, upcoming matchups, and last result.
  */
 export async function getTeamHome(espnId: number): Promise<TeamHome | null> {
   const seasons = await getSeasons(); // newest first
@@ -1976,51 +2008,6 @@ export async function getTeamHome(espnId: number): Promise<TeamHome | null> {
   const played = myMatchups.filter((m) => m.played);
   const lastResult = played.length ? played[played.length - 1] : null;
 
-  // Best players: from the team's most recent matchup that actually has a
-  // lineup — i.e. up to the current week. Later weeks are schedule-only
-  // skeletons (no player_slots), so don't pick those.
-  const curWeek = active.current_week ?? 0;
-  const withLineups = myMatchups.filter((m) => m.week <= curWeek);
-  const target =
-    withLineups[withLineups.length - 1] ??
-    myMatchups[myMatchups.length - 1] ??
-    null;
-  const bestPlayers: TeamHomePlayer[] = [];
-  let usesProjected = false;
-  if (target) {
-    const side = target.isHome ? "home" : "away";
-    const { data: slotRaw } = await supabase
-      .from("player_slots")
-      .select("slot, player_name, pro_team, position, points, projected, is_bench")
-      .eq("matchup_id", target.matchupId)
-      .eq("team_side", side);
-    const slots = ((slotRaw ?? []) as {
-      slot: string;
-      player_name: string;
-      pro_team: string | null;
-      position: string | null;
-      points: number | null;
-      projected: number | null;
-      is_bench: boolean | null;
-    }[]).filter((r) => r.slot !== "IR");
-    const anyPoints = slots.some((r) => Number(r.points ?? 0) !== 0);
-    usesProjected = !anyPoints;
-    const metric = (r: (typeof slots)[number]) =>
-      usesProjected ? Number(r.projected ?? 0) : Number(r.points ?? 0);
-    slots.sort((a, b) => metric(b) - metric(a));
-    for (const r of slots.slice(0, 6)) {
-      bestPlayers.push({
-        name: r.player_name,
-        position: r.position ?? "",
-        proTeam: r.pro_team,
-        slot: r.slot,
-        points: Number(r.points ?? 0),
-        projected: r.projected == null ? null : Number(r.projected),
-        isBench: !!r.is_bench,
-      });
-    }
-  }
-
   return {
     year,
     team,
@@ -2029,7 +2016,5 @@ export async function getTeamHome(espnId: number): Promise<TeamHome | null> {
     teamCount: teams.length,
     upcoming,
     lastResult,
-    usesProjected,
-    bestPlayers,
   };
 }

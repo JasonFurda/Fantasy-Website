@@ -8,6 +8,7 @@ import {
   getCurrentFranchises,
   getTeamHome,
   getLatestPowerRankings,
+  getDivisionStandings,
   type PowerRow,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
@@ -23,7 +24,7 @@ import ChangeTeamButton from "@/components/ChangeTeamButton";
 
 export const dynamic = "force-dynamic";
 
-type Power = { year: number; rows: PowerRow[] };
+type Power = { year: number; rows: PowerRow[]; preseason: boolean };
 
 function RecapHome({ power }: { power: Power }) {
   const { recap } = homepageConfig;
@@ -47,7 +48,11 @@ function RecapHome({ power }: { power: Power }) {
       </div>
 
       <div className="mt-10">
-        <PowerRankingsCard year={power.year} rows={power.rows} />
+        <PowerRankingsCard
+          year={power.year}
+          rows={power.rows}
+          preseason={power.preseason}
+        />
       </div>
 
       <p className="mt-8 text-center text-sm text-muted">
@@ -97,7 +102,11 @@ async function DivisionsHome({ power }: { power: Power }) {
       </div>
 
       <div className="mt-10">
-        <PowerRankingsCard year={power.year} rows={power.rows} />
+        <PowerRankingsCard
+          year={power.year}
+          rows={power.rows}
+          preseason={power.preseason}
+        />
       </div>
     </main>
   );
@@ -124,7 +133,12 @@ export default async function Home() {
   // A team is selected → personalized homepage.
   if (chosen != null) {
     const home = await getTeamHome(chosen);
-    if (home) return <TeamHomePanel home={home} power={power} />;
+    if (home) {
+      const divisions = await getDivisionStandings(home.year);
+      return (
+        <TeamHomePanel home={home} power={power} divisions={divisions} />
+      );
+    }
   }
 
   const defaultHome =

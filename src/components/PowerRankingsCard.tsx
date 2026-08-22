@@ -12,16 +12,23 @@ export default function PowerRankingsCard({
   year,
   rows,
   highlightEspnId,
+  preseason = false,
 }: {
   year: number;
   rows: PowerRow[];
   highlightEspnId?: number;
+  preseason?: boolean;
 }) {
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
           Power Rankings · {year}
+          {preseason && (
+            <span className="ml-2 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-muted">
+              preseason
+            </span>
+          )}
         </h2>
         <Link
           href="/power-rankings"

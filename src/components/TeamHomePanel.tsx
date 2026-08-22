@@ -1,12 +1,16 @@
 import Link from "next/link";
-import type { TeamHome, UpcomingMatch, PowerRow } from "@/lib/queries";
+import type {
+  TeamHome,
+  UpcomingMatch,
+  PowerRow,
+  DivisionStandings,
+} from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { homepageConfig } from "@/lib/homepage-config";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import PowerRankingsCard from "@/components/PowerRankingsCard";
-
-const posKey = (p: string) => (p === "D/ST" ? "DST" : p);
+import StandingsTable from "@/components/StandingsTable";
 
 function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
   const oppEspn = m.opponent?.espn_id ?? 0;
@@ -49,9 +53,11 @@ function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
 export default function TeamHomePanel({
   home,
   power,
+  divisions,
 }: {
   home: TeamHome;
-  power: { year: number; rows: PowerRow[] };
+  power: { year: number; rows: PowerRow[]; preseason: boolean };
+  divisions: DivisionStandings[];
 }) {
   const color = teamColor(home.team.espn_id);
   const { recap } = homepageConfig;
@@ -118,72 +124,40 @@ export default function TeamHomePanel({
             </div>
           </section>
 
-          {/* Best players */}
-          <section>
-            <div className="mb-3 flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                Best players
-              </h2>
-              <span className="text-[11px] text-muted">
-                {home.usesProjected ? "projected" : "points"}
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-border bg-surface">
-              {home.bestPlayers.length > 0 ? (
-                home.bestPlayers.map((p, i) => (
-                  <div
-                    key={`${p.name}-${i}`}
-                    className="flex items-center gap-3 border-b border-border/50 px-3 py-2.5 last:border-0"
-                  >
-                    <span className="w-4 shrink-0 text-center text-xs tabular-nums text-muted">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/player-comparisons?year=${home.year}&pos=${posKey(
-                          p.position,
-                        )}&player=${encodeURIComponent(p.name)}`}
-                        className="truncate text-sm font-medium hover:text-accent hover:underline"
-                      >
-                        {p.name}
-                      </Link>
-                      <div className="text-xs text-muted">
-                        {p.position}
-                        {p.proTeam ? ` · ${p.proTeam}` : ""}
-                        {p.isBench ? " · bench" : ""}
-                      </div>
-                    </div>
-                    <span className="shrink-0 text-sm font-bold tabular-nums">
-                      {home.usesProjected
-                        ? (p.projected ?? 0).toFixed(1)
-                        : p.points.toFixed(1)}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <p className="px-3 py-4 text-sm text-muted">
-                  No roster data yet.
-                </p>
-              )}
-            </div>
-            <Link
-              href={`/teams/${home.team.espn_id}`}
-              className="mt-2 inline-block text-sm text-accent hover:underline"
-            >
-              Full team page →
-            </Link>
-          </section>
+          {/* Power rankings */}
+          <PowerRankingsCard
+            year={power.year}
+            rows={power.rows}
+            preseason={power.preseason}
+            highlightEspnId={home.team.espn_id}
+          />
         </div>
       </div>
 
-      {/* Power rankings */}
-      <div className="mt-8">
-        <PowerRankingsCard
-          year={power.year}
-          rows={power.rows}
-          highlightEspnId={home.team.espn_id}
-        />
-      </div>
+      {/* Standings by division */}
+      {divisions.length > 0 && (
+        <div className="mt-10">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+              Standings
+            </h2>
+            <Link
+              href="/standings"
+              className="text-xs text-accent hover:underline"
+            >
+              Full standings →
+            </Link>
+          </div>
+          <div className="grid gap-8 lg:grid-cols-2">
+            {divisions.map((d) => (
+              <section key={d.name}>
+                <h3 className="mb-2 text-base font-semibold">{d.name}</h3>
+                <StandingsTable standings={d.standings} />
+              </section>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Quick links */}
       <div className="mt-8 flex flex-wrap gap-2 text-sm">

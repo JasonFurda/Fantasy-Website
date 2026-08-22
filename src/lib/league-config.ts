@@ -53,3 +53,39 @@ export const FINAL_PLACEMENT_BY_YEAR: Record<number, Record<number, number>> = {
 export function finalPlacement(espnId: number, year: number): number | null {
   return FINAL_PLACEMENT_BY_YEAR[year]?.[espnId] ?? null;
 }
+
+/**
+ * Manual preseason power rankings (by espn_id, best → worst), shown on the
+ * homepage before any games are played that season — the algorithm needs game
+ * scores, which don't exist yet. EDIT each preseason; once games are played the
+ * computed rankings take over automatically.
+ */
+export const PRESEASON_POWER_RANKINGS: Record<number, number[]> = {
+  // BiJettas, Magic in the Hampton, Threepeat, Strib Club, Immaculate Concepcion,
+  // Maltby's Mans, 2 Warrens 1 Love, Sauce, Chathamite, Holier than Thou
+  2026: [5, 1, 10, 11, 6, 12, 3, 7, 13, 4],
+};
+
+export function preseasonPowerRankings(year: number): number[] {
+  return PRESEASON_POWER_RANKINGS[year] ?? [];
+}
+
+/**
+ * League divisions per year, by espn_id (from ESPN's schedule settings). Used to
+ * split standings by division on the homepage. EDIT when divisions change.
+ */
+export const DIVISIONS_BY_YEAR: Record<
+  number,
+  { name: string; espnIds: number[] }[]
+> = {
+  2026: [
+    { name: "Chamoms", espnIds: [1, 3, 5, 6, 11] },
+    { name: "BBAFA", espnIds: [4, 7, 10, 12, 13] },
+  ],
+};
+
+export function divisionsFor(
+  year: number,
+): { name: string; espnIds: number[] }[] {
+  return DIVISIONS_BY_YEAR[year] ?? [];
+}
