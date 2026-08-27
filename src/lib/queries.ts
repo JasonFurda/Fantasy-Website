@@ -1493,7 +1493,7 @@ export const POSITION_STRENGTH_DEFS = [
  */
 export const getPositionStrength = cached(
   getPositionStrengthImpl,
-  "getPositionStrength",
+  "getPositionStrength-v2",
 );
 async function getPositionStrengthImpl(
   year: number,
