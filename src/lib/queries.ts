@@ -1478,10 +1478,10 @@ export type PositionStrength = {
 
 // How many of each position count toward a team's positional strength.
 export const POSITION_STRENGTH_DEFS = [
-  { key: "QB", pos: "QB", label: "QB", count: 2 },
+  { key: "QB", pos: "QB", label: "QB", count: 1 },
   { key: "RB", pos: "RB", label: "RB", count: 3 },
   { key: "WR", pos: "WR", label: "WR", count: 3 },
-  { key: "TE", pos: "TE", label: "TE", count: 2 },
+  { key: "TE", pos: "TE", label: "TE", count: 1 },
   { key: "K", pos: "K", label: "K", count: 1 },
   { key: "DST", pos: "D/ST", label: "D/ST", count: 1 },
 ] as const;
