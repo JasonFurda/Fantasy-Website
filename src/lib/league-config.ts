@@ -21,6 +21,24 @@ export function isPlayoffWeek(year: number, week: number): boolean {
 }
 
 /**
+ * Fixed per-position baseline for a "good" fantasy week. Used to judge weekly
+ * boom/bust and to color the weekly chart, so a "bust" means the same thing for
+ * every player at a position. Boom = ≥ 1.25× baseline, bust = ≤ 0.75× baseline.
+ */
+export const POS_FANTASY_BASELINE: Record<string, number> = {
+  QB: 20,
+  RB: 15,
+  WR: 15,
+  TE: 12,
+  K: 8,
+  "D/ST": 8,
+};
+
+export function baselineFor(position: string): number {
+  return POS_FANTASY_BASELINE[position] ?? 12;
+}
+
+/**
  * Actual playoff champions per year, keyed by ESPN franchise id (espn_id).
  * EDIT this each season once the title is decided — it's not derivable from
  * the data (regular-season #1 ≠ champion).

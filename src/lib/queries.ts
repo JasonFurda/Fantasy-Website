@@ -10,6 +10,7 @@ import {
   divisionsFor,
 } from "@/lib/league-config";
 import { teamColor } from "@/lib/teams-config";
+import { volatility } from "@/lib/volatility";
 
 // The database only changes weekly (GitHub Actions sync), so read results are
 // cached and reused across requests — this is what makes tab switches feel
@@ -678,7 +679,14 @@ export type PlayerCompRow = {
   games: number;
   totalPts: number;
   avgPts: number;
-  variance: number;
+  variance: number; // over weeks played
+  sd: number;
+  cv: number | null;
+  consistency: number | null; // 0-100, higher = steadier
+  floor: number | null; // 20th-pctile week
+  ceiling: number | null; // 80th-pctile week
+  bustPct: number | null;
+  boomPct: number | null;
   s: Record<string, number>; // summed raw NFL stats
 };
 
@@ -759,6 +767,7 @@ async function getPlayerComparisonImpl(
     name: string;
     pts: number;
     weekly: number[];
+    played: number[]; // points in weeks the player actually played (game_played>0)
     games: number;
     s: Record<string, number>;
     teamCounts: Map<number, number>;
@@ -773,6 +782,7 @@ async function getPlayerComparisonImpl(
         name: r.player_name,
         pts: 0,
         weekly: [],
+        played: [],
         games: 0,
         s: {},
         teamCounts: new Map(),
@@ -783,7 +793,10 @@ async function getPlayerComparisonImpl(
     const pts = Number(r.points ?? 0);
     a.pts += pts;
     a.weekly.push(pts);
-    if ((r.game_played ?? 0) > 0) a.games += 1;
+    if ((r.game_played ?? 0) > 0) {
+      a.games += 1;
+      a.played.push(pts);
+    }
     const st = r.stats ?? {};
     for (const k of COMP_STAT_KEYS) {
       const v = Number(st[k] ?? 0);
@@ -823,6 +836,37 @@ async function getPlayerComparisonImpl(
     stats: Record<string, number> | null;
   }[];
 
+  // Weeks a player scored while NOT on a fantasy roster (waiver wire). Merged
+  // with roster weeks so volatility reflects the player's full weekly game log,
+  // not just the weeks they happened to be rostered.
+  const psNames = ps.map((r) => r.player_name);
+  const faByPlayer = new Map<string, number[]>();
+  if (psNames.length > 0) {
+    const NCHUNK = 200;
+    const nameChunks: string[][] = [];
+    for (let i = 0; i < psNames.length; i += NCHUNK)
+      nameChunks.push(psNames.slice(i, i + NCHUNK));
+    const faResults = await Promise.all(
+      nameChunks.map((names) =>
+        supabase
+          .from("free_agent_week")
+          .select("player_name, points")
+          .eq("year", year)
+          .in("player_name", names),
+      ),
+    );
+    for (const { data } of faResults) {
+      for (const r of (data ?? []) as {
+        player_name: string;
+        points: number | null;
+      }[]) {
+        const arr = faByPlayer.get(r.player_name) ?? [];
+        arr.push(Number(r.points ?? 0));
+        faByPlayer.set(r.player_name, arr);
+      }
+    }
+  }
+
   const out: PlayerCompRow[] = ps.map((r) => {
     const a = byPlayer.get(r.player_name);
     let fantasyTeam: { name: string; espnId: number } | null = null;
@@ -831,13 +875,11 @@ async function getPlayerComparisonImpl(
       const team = tid != null ? teamById.get(tid) : null;
       if (team) fantasyTeam = { name: team.name.trim(), espnId: team.espn_id };
     }
-    const weekly = a?.weekly ?? [];
-    const mean = weekly.length
-      ? weekly.reduce((x, y) => x + y, 0) / weekly.length
-      : 0;
-    const variance = weekly.length
-      ? weekly.reduce((x, y) => x + (y - mean) ** 2, 0) / weekly.length
-      : 0;
+    const playedAll = [
+      ...(a?.played ?? []),
+      ...(faByPlayer.get(r.player_name) ?? []),
+    ];
+    const vol = volatility(playedAll, position);
     const games = r.games || 0;
     const totalPts = Number(r.total_points);
     return {
@@ -847,7 +889,14 @@ async function getPlayerComparisonImpl(
       games,
       totalPts,
       avgPts: games ? totalPts / games : 0,
-      variance,
+      variance: vol.variance,
+      sd: vol.sd,
+      cv: vol.cv,
+      consistency: vol.consistency,
+      floor: vol.floor,
+      ceiling: vol.ceiling,
+      bustPct: vol.bustPct,
+      boomPct: vol.boomPct,
       s: r.stats ?? {},
     };
   });

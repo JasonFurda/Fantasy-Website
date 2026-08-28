@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { PlayerDetail, PlayerSeasonLine, PlayerName } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { playoffStartWeek } from "@/lib/league-config";
+import { volatility } from "@/lib/volatility";
 import ComparePicker from "@/components/ComparePicker";
 
 const nf = (v: number, d = 0) => (v || 0).toFixed(d);
@@ -239,6 +240,8 @@ export default function PlayerDetailModal({
 }) {
   const cols = STAT_COLS[data.position] ?? [];
   const cur = data.seasons.find((s) => s.year === data.year) ?? null;
+  const playedPts = data.weekly.filter((w) => !w.dnp).map((w) => w.points);
+  const vol = volatility(playedPts, data.position);
   const totTgt = data.nflShare
     ? data.nflShare.mates.reduce((a, m) => a + m.targets, 0)
     : 0;
@@ -313,6 +316,38 @@ export default function PlayerDetailModal({
             />
             <Chip label="Games" value={cur?.games ? String(cur.games) : "—"} />
           </div>
+
+          {/* Consistency / volatility */}
+          {playedPts.length > 0 && (
+            <section>
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">
+                Consistency
+              </h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <Chip
+                  label="Consistency"
+                  value={vol.consistency == null ? "—" : String(vol.consistency)}
+                />
+                <Chip
+                  label="Floor"
+                  value={vol.floor == null ? "—" : vol.floor.toFixed(1)}
+                />
+                <Chip
+                  label="Bust wk %"
+                  value={vol.bustPct == null ? "—" : `${Math.round(vol.bustPct)}%`}
+                />
+                <Chip
+                  label="Boom wk %"
+                  value={vol.boomPct == null ? "—" : `${Math.round(vol.boomPct)}%`}
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                Consistency 0–100 (higher = steadier). Floor = a typical bad week
+                (20th-percentile). Bust / Boom = weeks under 0.75× / over 1.25×
+                the {data.position || "position"} baseline.
+              </p>
+            </section>
+          )}
 
           {/* Weekly performance */}
           <section>

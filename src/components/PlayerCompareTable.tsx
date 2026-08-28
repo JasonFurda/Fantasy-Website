@@ -18,16 +18,42 @@ type Col = {
   label: string;
   get: (r: PlayerCompRow) => string;
   sortVal: (r: PlayerCompRow) => number;
+  title?: string;
 };
 
 const COMMON: Col[] = [
-  { label: "G", get: (r) => (r.games ? String(r.games) : "—"), sortVal: (r) => r.games },
-  { label: "Total", get: (r) => n(r.totalPts, 1), sortVal: (r) => r.totalPts },
-  { label: "Avg", get: (r) => (r.games ? n(r.avgPts, 1) : "—"), sortVal: (r) => r.avgPts },
+  { label: "G", get: (r) => (r.games ? String(r.games) : "—"), sortVal: (r) => r.games, title: "Games played" },
+  { label: "Total", get: (r) => n(r.totalPts, 1), sortVal: (r) => r.totalPts, title: "Total fantasy points" },
+  { label: "Avg", get: (r) => (r.games ? n(r.avgPts, 1) : "—"), sortVal: (r) => r.avgPts, title: "Points per game" },
   {
-    label: "Var",
-    get: (r) => (r.fantasyTeam ? n(r.variance, 1) : "—"),
-    sortVal: (r) => (r.fantasyTeam ? r.variance : -1),
+    label: "Cons",
+    get: (r) => (r.consistency == null ? "—" : String(r.consistency)),
+    sortVal: (r) => r.consistency ?? -1,
+    title: "Consistency (0-100), higher = steadier week to week. = 100 × (1 − SD/avg).",
+  },
+  {
+    label: "Floor",
+    get: (r) => (r.floor == null ? "—" : n(r.floor, 1)),
+    sortVal: (r) => r.floor ?? -1,
+    title: "Floor: a typical bad week (20th-percentile weekly score). Higher = safer.",
+  },
+  {
+    label: "Bust%",
+    get: (r) => (r.bustPct == null ? "—" : `${Math.round(r.bustPct)}%`),
+    sortVal: (r) => r.bustPct ?? -1,
+    title: "Share of weeks below 0.75× the positional baseline. Lower = safer.",
+  },
+  {
+    label: "Boom%",
+    get: (r) => (r.boomPct == null ? "—" : `${Math.round(r.boomPct)}%`),
+    sortVal: (r) => r.boomPct ?? -1,
+    title: "Share of weeks above 1.25× the positional baseline. Higher = more upside.",
+  },
+  {
+    label: "SD",
+    get: (r) => (r.games ? n(r.sd, 1) : "—"),
+    sortVal: (r) => r.sd,
+    title: "Standard deviation of weekly points (raw volatility). Lower = steadier.",
   },
 ];
 
@@ -130,14 +156,16 @@ export default function PlayerCompareTable({
     label: string,
     numeric: boolean,
     extra = "",
+    title?: string,
   ) => (
-    <th className={`px-3 py-3 font-medium ${extra}`}>
+    <th key={label} className={`px-3 py-3 font-medium ${extra}`}>
       <button
         type="button"
         onClick={() => onSort(label, numeric)}
+        title={title}
         className={`inline-flex items-center gap-0.5 transition-colors hover:text-foreground ${
           sortKey === label ? "text-foreground" : ""
-        }`}
+        } ${title ? "cursor-help" : ""}`}
       >
         {label}
         <span className="tabular-nums">{arrow(label)}</span>
@@ -154,7 +182,7 @@ export default function PlayerCompareTable({
             {sortableHead("Player", false)}
             <th className="px-3 py-3 font-medium">Fantasy</th>
             <th className="px-3 py-3 font-medium">NFL</th>
-            {cols.map((c) => sortableHead(c.label, true, "text-right"))}
+            {cols.map((c) => sortableHead(c.label, true, "text-right", c.title))}
           </tr>
         </thead>
         <tbody>

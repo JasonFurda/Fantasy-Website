@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { PlayerDetail, PlayerSeasonLine } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { playoffStartWeek } from "@/lib/league-config";
+import { volatility } from "@/lib/volatility";
 import { WeeklyBars, Chip } from "@/components/PlayerDetailModal";
 
 const nf = (v: number, d = 0) => (v || 0).toFixed(d);
@@ -78,20 +79,24 @@ function curOf(d: PlayerDetail): PlayerSeasonLine | null {
   return d.seasons.find((s) => s.year === d.year) ?? null;
 }
 
+function playedPts(d: PlayerDetail): number[] {
+  return d.weekly.filter((w) => !w.dnp).map((w) => w.points);
+}
+
 function buildMetrics(a: PlayerDetail, b: PlayerDetail): Metric[] {
   const ca = curOf(a);
   const cb = curOf(b);
+  const va = volatility(playedPts(a), a.position);
+  const vb = volatility(playedPts(b), b.position);
   const metrics: Metric[] = [
     { label: "Total", a: ca?.totalPts ?? null, b: cb?.totalPts ?? null, higherBetter: true, fmt: r1 },
     { label: "Avg / wk", a: a.avg || null, b: b.avg || null, higherBetter: true, fmt: r1 },
-    {
-      label: "Best wk",
-      a: a.bestWeek?.points ?? null,
-      b: b.bestWeek?.points ?? null,
-      higherBetter: true,
-      fmt: r1,
-    },
+    { label: "Best wk", a: a.bestWeek?.points ?? null, b: b.bestWeek?.points ?? null, higherBetter: true, fmt: r1 },
     { label: "Games", a: ca?.games ?? null, b: cb?.games ?? null, higherBetter: true, fmt: (v) => nf(v) },
+    { label: "Consistency", a: va.consistency, b: vb.consistency, higherBetter: true, fmt: (v) => nf(v) },
+    { label: "Floor", a: va.floor, b: vb.floor, higherBetter: true, fmt: r1 },
+    { label: "Bust %", a: va.bustPct, b: vb.bustPct, higherBetter: false, fmt: (v) => `${Math.round(v)}%` },
+    { label: "Boom %", a: va.boomPct, b: vb.boomPct, higherBetter: true, fmt: (v) => `${Math.round(v)}%` },
   ];
 
   // Position-specific stats only when both players share a position.
