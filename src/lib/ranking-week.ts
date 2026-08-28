@@ -43,6 +43,14 @@ function niceDate(d: Date): string {
   return `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
+/** Short label for a stored week_start (a Thursday, YYYY-MM-DD Eastern),
+ *  e.g. "Aug 27". The string is already an Eastern calendar date, so no
+ *  timezone conversion is needed. */
+export function weekStartLabel(weekStart: string): string {
+  const [, m, d] = weekStart.split("-").map(Number);
+  return `${MONTHS[(m ?? 1) - 1]} ${d}`;
+}
+
 /** The submission window that `now` falls in. */
 export function currentRankingWeek(now: Date = new Date()): RankingWeek {
   const { y, m, day } = easternYMD(now);

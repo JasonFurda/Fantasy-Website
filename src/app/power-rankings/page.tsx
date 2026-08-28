@@ -6,8 +6,10 @@ import {
   getPositionStrength,
   POSITION_STRENGTH_DEFS,
 } from "@/lib/queries";
+import { getManualPowerRankings, getManualRankingHistory } from "@/lib/rankings";
 import { teamColor } from "@/lib/teams-config";
 import { getMyTeamEspnId } from "@/lib/my-team-server";
+import RankingHistoryChart from "@/components/RankingHistoryChart";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +129,54 @@ export default async function PowerRankingsPage({
   );
 }
 
+function RankingsTable({
+  rows,
+  highlightEspnId,
+}: {
+  rows: { rank: number; team: { id: number; espn_id: number; name: string }; change: number | null }[];
+  highlightEspnId?: number | null;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <table className="w-full min-w-[28rem] text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+            <th className="px-4 py-3 font-medium">#</th>
+            <th className="px-4 py-3 font-medium">Team</th>
+            <th className="px-4 py-3 text-right font-medium">Last week</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.team.id}
+              className={`border-b border-border/60 last:border-0 hover:bg-surface-2 ${
+                highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
+              }`}
+            >
+              <td className="px-4 py-3">
+                <RankBadge rank={r.rank} />
+              </td>
+              <td className="px-4 py-3">
+                <TeamCell espnId={r.team.espn_id} name={r.team.name.trim()} />
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums">
+                {r.change == null || r.change === 0 ? (
+                  <span className="text-muted">—</span>
+                ) : r.change > 0 ? (
+                  <span className="text-accent">▲ {r.change}</span>
+                ) : (
+                  <span className="text-red-400">▼ {Math.abs(r.change)}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 async function OverallRankings({
   year,
   highlightEspnId,
@@ -134,12 +184,42 @@ async function OverallRankings({
   year: number;
   highlightEspnId?: number | null;
 }) {
+  // Manual weekly rankings take over once the season has any submissions.
+  const manual = await getManualPowerRankings(year);
+  if (manual) {
+    const history = await getManualRankingHistory(year);
+    return (
+      <>
+        <p className="mb-4 text-sm text-muted">
+          Weekly power rankings — week of{" "}
+          <span className="text-foreground">{manual.label}</span>.{" "}
+          <span className="text-muted">
+            “Last week” shows movement since the previous week.
+          </span>
+        </p>
+
+        <RankingsTable rows={manual.rows} highlightEspnId={highlightEspnId} />
+
+        {history.weeks.length >= 2 && (
+          <div className="mt-8">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
+              Rank by week
+            </h2>
+            <RankingHistoryChart data={history} />
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Fallback until a ranking is submitted (and for past seasons): the computed
+  // rankings, else the hand-entered preseason order.
   let rows = await getPowerRankings(year);
   let preseason = false;
   if (rows.length === 0) {
-    const manual = await getPreseasonPowerRankings(year);
-    if (manual.length > 0) {
-      rows = manual;
+    const pre = await getPreseasonPowerRankings(year);
+    if (pre.length > 0) {
+      rows = pre;
       preseason = true;
     }
   }
@@ -157,43 +237,7 @@ async function OverallRankings({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full min-w-[28rem] text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-              <th className="px-4 py-3 font-medium">#</th>
-              <th className="px-4 py-3 font-medium">Team</th>
-              <th className="px-4 py-3 text-right font-medium">Last week</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr
-                key={r.team.id}
-                className={`border-b border-border/60 last:border-0 hover:bg-surface-2 ${
-                  highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
-                }`}
-              >
-                <td className="px-4 py-3">
-                  <RankBadge rank={r.rank} />
-                </td>
-                <td className="px-4 py-3">
-                  <TeamCell espnId={r.team.espn_id} name={r.team.name.trim()} />
-                </td>
-                <td className="px-4 py-3 text-right tabular-nums">
-                  {r.change == null || r.change === 0 ? (
-                    <span className="text-muted">—</span>
-                  ) : r.change > 0 ? (
-                    <span className="text-accent">▲ {r.change}</span>
-                  ) : (
-                    <span className="text-red-400">▼ {Math.abs(r.change)}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <RankingsTable rows={rows} highlightEspnId={highlightEspnId} />
     </>
   );
 }

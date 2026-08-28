@@ -7,10 +7,10 @@ import {
   buildStandings,
   getCurrentFranchises,
   getTeamHome,
-  getLatestPowerRankings,
   getDivisionStandings,
   type PowerRow,
 } from "@/lib/queries";
+import { getHomepagePowerRankings } from "@/lib/rankings";
 import { teamColor } from "@/lib/teams-config";
 import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import ArtSpotlight from "@/components/ArtSpotlight";
@@ -128,7 +128,7 @@ export default async function Home() {
       ? Number(raw)
       : null;
 
-  const power = await getLatestPowerRankings();
+  const power = await getHomepagePowerRankings();
 
   // A team is selected → personalized homepage.
   if (chosen != null) {
