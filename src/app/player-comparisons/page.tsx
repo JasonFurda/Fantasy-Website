@@ -93,7 +93,7 @@ export default async function PlayerComparisonsPage({
     }`;
 
   return (
-    <main className="mx-auto max-w-6xl px-5 py-10">
+    <main className="mx-auto max-w-[1800px] px-5 py-10">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-2xl font-bold tracking-tight">Player Comparisons</h1>
         <nav className="flex gap-1 rounded-lg border border-border bg-surface p-1">
