@@ -12,11 +12,13 @@ import {
 import { teamColor } from "@/lib/teams-config";
 import { volatility } from "@/lib/volatility";
 
-// The database only changes weekly (GitHub Actions sync), so read results are
-// cached and reused across requests — this is what makes tab switches feel
-// instant instead of re-querying Supabase every navigation. `cached()` wraps a
-// query function; the cache key is the function args plus the given label.
-const READ_TTL_SECONDS = 300;
+// The database only changes once a day (GitHub Actions sync runs daily), so read
+// results are cached and reused across requests — this is what makes navigation
+// feel instant instead of re-querying Supabase (a cold render costs seconds).
+// A short TTL made caches expire constantly on this low-traffic site, so most
+// visits hit a cold render; an hour is still far fresher than the daily data.
+// `cached()` wraps a query function; the cache key is the args plus the label.
+const READ_TTL_SECONDS = 3600;
 function cached<A extends unknown[], R>(
   fn: (...args: A) => Promise<R>,
   label: string,
@@ -748,17 +750,26 @@ async function getPlayerComparisonImpl(
   const CHUNK = 20;
   const chunks: number[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
-  const chunkResults = await Promise.all(
-    chunks.map((chunk) =>
-      supabase
-        .from("player_slots")
-        .select(
-          "player_name, pro_team, points, game_played, is_bench, team_side, matchup_id, stats",
-        )
-        .eq("position", position)
-        .in("matchup_id", chunk),
+  // player_slots (per-week) and player_season (season totals) are independent —
+  // fetch them together so a cold render doesn't pay for them back to back.
+  const [chunkResults, psRes] = await Promise.all([
+    Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("player_slots")
+          .select(
+            "player_name, pro_team, points, game_played, is_bench, team_side, matchup_id, stats",
+          )
+          .eq("position", position)
+          .in("matchup_id", chunk),
+      ),
     ),
-  );
+    supabase
+      .from("player_season")
+      .select("player_name, pro_team, total_points, games, stats")
+      .eq("year", year)
+      .eq("position", position),
+  ]);
   for (const { data } of chunkResults) {
     if (data) rows.push(...(data as Raw[]));
   }
@@ -823,12 +834,7 @@ async function getPlayerComparisonImpl(
   };
 
   // Full-season totals + stats for everyone (rostered + free agents).
-  const { data: psRaw } = await supabase
-    .from("player_season")
-    .select("player_name, pro_team, total_points, games, stats")
-    .eq("year", year)
-    .eq("position", position);
-  const ps = (psRaw ?? []) as {
+  const ps = (psRes.data ?? []) as {
     player_name: string;
     pro_team: string;
     total_points: number;
@@ -1049,15 +1055,42 @@ async function getPlayerDetailImpl(
   const slotChunks: number[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK)
     slotChunks.push(ids.slice(i, i + CHUNK));
-  const slotResults = await Promise.all(
-    slotChunks.map((chunk) =>
-      supabase
-        .from("player_slots")
-        .select("matchup_id, team_side, points, is_bye, injury_status")
-        .eq("player_name", name)
-        .in("matchup_id", chunk),
+  // Every independent per-player read runs concurrently (including the heavier
+  // NFL-share comparison) so a cold render is one round-trip deep, not five.
+  const [slotResults, faRes, byeResults, comp] = await Promise.all([
+    Promise.all(
+      slotChunks.map((chunk) =>
+        supabase
+          .from("player_slots")
+          .select("matchup_id, team_side, points, is_bye, injury_status")
+          .eq("player_name", name)
+          .in("matchup_id", chunk),
+      ),
     ),
-  );
+    supabase
+      .from("free_agent_week")
+      .select("week, points")
+      .eq("year", year)
+      .eq("player_name", name),
+    nflTeam
+      ? Promise.all(
+          slotChunks.map((chunk) =>
+            supabase
+              .from("player_slots")
+              .select("matchup_id")
+              .eq("pro_team", nflTeam)
+              .eq("is_bye", true)
+              .in("matchup_id", chunk),
+          ),
+        )
+      : Promise.resolve(
+          [] as { data: { matchup_id: number }[] | null }[],
+        ),
+    ["WR", "RB", "TE"].includes(position) && nflTeam
+      ? getPlayerComparison(year, position)
+      : Promise.resolve(null),
+  ]);
+
   for (const { data } of slotResults) {
     for (const r of (data ?? []) as {
       matchup_id: number;
@@ -1084,12 +1117,10 @@ async function getPlayerDetailImpl(
     }
   }
 
-  const { data: faRaw } = await supabase
-    .from("free_agent_week")
-    .select("week, points")
-    .eq("year", year)
-    .eq("player_name", name);
-  for (const r of (faRaw ?? []) as { week: number; points: number | null }[]) {
+  for (const r of (faRes.data ?? []) as {
+    week: number;
+    points: number | null;
+  }[]) {
     const week = Number(r.week);
     if (!wk.has(week))
       wk.set(week, {
@@ -1103,23 +1134,11 @@ async function getPlayerDetailImpl(
   // The player's NFL team bye week(s), from any rostered player of that team —
   // so a bye is labeled even in weeks this player wasn't rostered.
   const teamByeWeeks = new Set<number>();
-  if (nflTeam) {
-    const byeResults = await Promise.all(
-      slotChunks.map((chunk) =>
-        supabase
-          .from("player_slots")
-          .select("matchup_id")
-          .eq("pro_team", nflTeam)
-          .eq("is_bye", true)
-          .in("matchup_id", chunk),
-      ),
-    );
-    for (const { data } of byeResults)
-      for (const r of (data ?? []) as { matchup_id: number }[]) {
-        const w = weekByMatchup.get(r.matchup_id);
-        if (w != null) teamByeWeeks.add(w);
-      }
-  }
+  for (const { data } of byeResults)
+    for (const r of (data ?? []) as { matchup_id: number }[]) {
+      const w = weekByMatchup.get(r.matchup_id);
+      if (w != null) teamByeWeeks.add(w);
+    }
 
   // Most-frequent fantasy team that rostered them this season → header label.
   let fantasyTeam: { name: string; espnId: number } | null = null;
@@ -1161,8 +1180,7 @@ async function getPlayerDetailImpl(
 
   // Share of the NFL team's targets/points among fantasy-relevant teammates.
   let nflShare: PlayerDetail["nflShare"] = null;
-  if (["WR", "RB", "TE"].includes(position) && nflTeam) {
-    const comp = await getPlayerComparison(year, position);
+  if (comp && nflTeam) {
     const mates = comp
       .filter((c) => c.nflTeam === nflTeam)
       .map((c) => ({
