@@ -892,6 +892,31 @@ export type PlayerDetail = {
   nflShare: { nflTeam: string; mates: NflMate[] } | null; // teammates' target/points split
 };
 
+export type PlayerName = { name: string; position: string };
+
+/** Every distinct player on record (for the compare picker), with their most
+ *  recent position. Sorted by name. */
+export const getAllPlayerNames = cached(async function getAllPlayerNames(): Promise<
+  PlayerName[]
+> {
+  const { data } = await supabase
+    .from("player_season")
+    .select("player_name, position, year")
+    .order("year", { ascending: false });
+  const seen = new Map<string, string>();
+  for (const r of (data ?? []) as {
+    player_name: string;
+    position: string | null;
+    year: number;
+  }[]) {
+    if (r.player_name && !seen.has(r.player_name))
+      seen.set(r.player_name, r.position ?? "");
+  }
+  return [...seen.entries()]
+    .map(([name, position]) => ({ name, position }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}, "getAllPlayerNames");
+
 /** Everything for one player's detail window: header, weekly scoring for the
  *  season, season-by-season stat lines, and their share of the NFL team. */
 export const getPlayerDetail = cached(getPlayerDetailImpl, "getPlayerDetail");

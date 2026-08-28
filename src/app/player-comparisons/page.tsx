@@ -4,10 +4,12 @@ import {
   getPlayerComparison,
   getDraftValue,
   getPlayerDetail,
+  getAllPlayerNames,
   type PlayerCompRow,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import PlayerDetailModal from "@/components/PlayerDetailModal";
+import PlayerCompareModal from "@/components/PlayerCompareModal";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +101,8 @@ export default async function PlayerComparisonsPage({
     pos?: string;
     player?: string;
     pyear?: string;
+    compare?: string;
+    cyear?: string;
   }>;
 }) {
   const seasons = await getSeasons();
@@ -127,13 +131,31 @@ export default async function PlayerComparisonsPage({
     player && sp.pyear && years.includes(Number(sp.pyear))
       ? Number(sp.pyear)
       : year;
-  const detail = player ? await getPlayerDetail(player, detailYear) : null;
+  const compareName = sp.compare ?? null;
+  const cyear =
+    compareName && sp.cyear && years.includes(Number(sp.cyear))
+      ? Number(sp.cyear)
+      : detailYear;
+
+  const [detail, detailB, allPlayers] = await Promise.all([
+    player ? getPlayerDetail(player, detailYear) : null,
+    compareName ? getPlayerDetail(compareName, cyear) : null,
+    player ? getAllPlayerNames() : Promise.resolve([]),
+  ]);
+
   const posQ = isDraft ? "draft" : posDef.key;
-  const closeHref = `/player-comparisons?year=${year}&pos=${posQ}`;
-  const playerYearHref = (y: number) =>
-    `/player-comparisons?year=${year}&pos=${posQ}&player=${encodeURIComponent(
-      player ?? "",
-    )}&pyear=${y}`;
+  const base = `/player-comparisons?year=${year}&pos=${posQ}`;
+  const closeHref = base;
+  const encP = encodeURIComponent(player ?? "");
+  const encC = encodeURIComponent(compareName ?? "");
+  const playerYearHref = (y: number) => `${base}&player=${encP}&pyear=${y}`;
+  // Single-card "Compare" picker → open the compare view with this player.
+  const compareTemplate = `${base}&player=${encP}&pyear=${detailYear}&compare=__NAME__&cyear=${detailYear}`;
+  // Season switchers inside the compare view keep the other side fixed.
+  const aYearHref = (y: number) =>
+    `${base}&player=${encP}&pyear=${y}&compare=${encC}&cyear=${cyear}`;
+  const bYearHref = (y: number) =>
+    `${base}&player=${encP}&pyear=${detailYear}&compare=${encC}&cyear=${y}`;
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -350,13 +372,22 @@ export default async function PlayerComparisonsPage({
         </>
       )}
 
-      {detail && (
+      {detail && compareName && detailB ? (
+        <PlayerCompareModal
+          a={detail}
+          b={detailB}
+          closeHref={closeHref}
+          aYearHref={aYearHref}
+          bYearHref={bYearHref}
+        />
+      ) : detail ? (
         <PlayerDetailModal
           data={detail}
           closeHref={closeHref}
           yearHref={playerYearHref}
+          compare={{ players: allPlayers, hrefTemplate: compareTemplate }}
         />
-      )}
+      ) : null}
     </main>
   );
 }

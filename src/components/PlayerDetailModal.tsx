@@ -1,7 +1,8 @@
 import Link from "next/link";
-import type { PlayerDetail, PlayerSeasonLine } from "@/lib/queries";
+import type { PlayerDetail, PlayerSeasonLine, PlayerName } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { playoffStartWeek } from "@/lib/league-config";
+import ComparePicker from "@/components/ComparePicker";
 
 const nf = (v: number, d = 0) => (v || 0).toFixed(d);
 const ratio = (a: number, b: number, d = 1) => (b ? (a / b).toFixed(d) : "—");
@@ -73,7 +74,7 @@ const POS_BASELINE: Record<string, number> = {
 
 // SVG bar chart of weekly fantasy points, colored against a fixed per-position
 // baseline, with 40+ point weeks flagged blue.
-function WeeklyBars({
+export function WeeklyBars({
   weekly,
   position,
   playoffStart,
@@ -216,7 +217,7 @@ function WeeklyBars({
   );
 }
 
-function Chip({ label, value }: { label: string; value: string }) {
+export function Chip({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-center">
       <div className="text-[10px] uppercase tracking-wide text-muted">{label}</div>
@@ -229,10 +230,12 @@ export default function PlayerDetailModal({
   data,
   closeHref,
   yearHref,
+  compare,
 }: {
   data: PlayerDetail;
   closeHref: string;
   yearHref?: (year: number) => string;
+  compare?: { players: PlayerName[]; hrefTemplate: string };
 }) {
   const cols = STAT_COLS[data.position] ?? [];
   const cur = data.seasons.find((s) => s.year === data.year) ?? null;
@@ -278,14 +281,22 @@ export default function PlayerDetailModal({
               )}
             </div>
           </div>
-          <Link
-            href={closeHref}
-            scroll={false}
-            aria-label="Close"
-            className="shrink-0 rounded-md px-2 py-1 text-muted hover:bg-surface-2 hover:text-foreground"
-          >
-            ✕
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            {compare && (
+              <ComparePicker
+                players={compare.players}
+                hrefTemplate={compare.hrefTemplate}
+              />
+            )}
+            <Link
+              href={closeHref}
+              scroll={false}
+              aria-label="Close"
+              className="rounded-md px-2 py-1 text-muted hover:bg-surface-2 hover:text-foreground"
+            >
+              ✕
+            </Link>
+          </div>
         </div>
 
         <div className="space-y-6 p-4 sm:p-5">

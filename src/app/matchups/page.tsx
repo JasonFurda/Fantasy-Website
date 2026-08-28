@@ -6,6 +6,7 @@ import {
   getMatchupDetail,
   getWeekOptimalRoster,
   getPlayerDetail,
+  getAllPlayerNames,
   type Team,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
@@ -14,6 +15,7 @@ import MatchupBoxScore from "@/components/MatchupBoxScore";
 import MatchupClash from "@/components/MatchupClash";
 import WeekOptimalRoster from "@/components/WeekOptimalRoster";
 import PlayerDetailModal from "@/components/PlayerDetailModal";
+import PlayerCompareModal from "@/components/PlayerCompareModal";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,8 @@ export default async function MatchupsPage({
     view?: string;
     player?: string;
     pyear?: string;
+    compare?: string;
+    cyear?: string;
   }>;
 }) {
   const seasons = await getSeasons();
@@ -82,9 +86,17 @@ export default async function MatchupsPage({
     sp.player && sp.pyear && years.includes(Number(sp.pyear))
       ? Number(sp.pyear)
       : year;
-  const playerDetail = sp.player
-    ? await getPlayerDetail(sp.player, detailYear)
-    : null;
+  const compareName = sp.compare ?? null;
+  const cyear =
+    compareName && sp.cyear && years.includes(Number(sp.cyear))
+      ? Number(sp.cyear)
+      : detailYear;
+
+  const [playerDetail, playerDetailB, allPlayers] = await Promise.all([
+    sp.player ? getPlayerDetail(sp.player, detailYear) : null,
+    compareName ? getPlayerDetail(compareName, cyear) : null,
+    sp.player ? getAllPlayerNames() : Promise.resolve([]),
+  ]);
 
   // Player links preserve the current view/week/matchup context.
   const baseParams = `year=${year}&week=${week}${
@@ -92,8 +104,15 @@ export default async function MatchupsPage({
   }${view === "optimal" ? "&view=optimal" : ""}`;
   const playerHref = (name: string) =>
     `/matchups?${baseParams}&player=${encodeURIComponent(name)}`;
+  const encP = encodeURIComponent(sp.player ?? "");
+  const encC = encodeURIComponent(compareName ?? "");
   const playerYearHref = (y: number) =>
-    `/matchups?${baseParams}&player=${encodeURIComponent(sp.player ?? "")}&pyear=${y}`;
+    `/matchups?${baseParams}&player=${encP}&pyear=${y}`;
+  const compareTemplate = `/matchups?${baseParams}&player=${encP}&pyear=${detailYear}&compare=__NAME__&cyear=${detailYear}`;
+  const aYearHref = (y: number) =>
+    `/matchups?${baseParams}&player=${encP}&pyear=${y}&compare=${encC}&cyear=${cyear}`;
+  const bYearHref = (y: number) =>
+    `/matchups?${baseParams}&player=${encP}&pyear=${detailYear}&compare=${encC}&cyear=${y}`;
 
   const tab = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -268,13 +287,22 @@ export default async function MatchupsPage({
         )}
       </main>
 
-      {playerDetail && (
+      {playerDetail && compareName && playerDetailB ? (
+        <PlayerCompareModal
+          a={playerDetail}
+          b={playerDetailB}
+          closeHref={`/matchups?${baseParams}`}
+          aYearHref={aYearHref}
+          bYearHref={bYearHref}
+        />
+      ) : playerDetail ? (
         <PlayerDetailModal
           data={playerDetail}
           closeHref={`/matchups?${baseParams}`}
           yearHref={playerYearHref}
+          compare={{ players: allPlayers, hrefTemplate: compareTemplate }}
         />
-      )}
+      ) : null}
     </>
   );
 }
