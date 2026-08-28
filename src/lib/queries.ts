@@ -907,8 +907,10 @@ async function getPlayerComparisonImpl(
 export type PlayerWeekPoint = {
   week: number;
   points: number;
-  dnp: boolean; // no game that week (bye / inactive / not on a roster or wire)
+  dnp: boolean; // no game that week (inactive / not on a roster or wire)
   freeAgent: boolean; // was on the waiver wire that week
+  bye: boolean; // the player's NFL team was on bye
+  injury: string | null; // injury tag for the week (live season only), else null
 };
 
 export type PlayerSeasonLine = {
@@ -966,6 +968,21 @@ export const getAllPlayerNames = cached(async function getAllPlayerNames(): Prom
     .sort((a, b) => a.name.localeCompare(b.name));
 }, "getAllPlayerNames");
 
+/** Short weekly injury tag, or null when healthy / unknown. */
+function injuryTag(status: string | null | undefined): string | null {
+  const s = (status ?? "").toUpperCase();
+  if (!s || s === "ACTIVE" || s === "NORMAL") return null;
+  const map: Record<string, string> = {
+    QUESTIONABLE: "Q",
+    DOUBTFUL: "D",
+    OUT: "OUT",
+    INJURY_RESERVE: "IR",
+    SUSPENSION: "SUS",
+    DAY_TO_DAY: "DTD",
+  };
+  return map[s] ?? s.slice(0, 3);
+}
+
 /** Everything for one player's detail window: header, weekly scoring for the
  *  season, season-by-season stat lines, and their share of the NFL team. */
 export const getPlayerDetail = cached(getPlayerDetailImpl, "getPlayerDetail");
@@ -973,15 +990,19 @@ async function getPlayerDetailImpl(
   name: string,
   year: number,
 ): Promise<PlayerDetail | null> {
-  const [matchups, teams, { data: psRaw }] = await Promise.all([
+  const [matchups, teams, allSeasons, { data: psRaw }] = await Promise.all([
     getMatchups(year),
     getTeams(year),
+    getSeasons(),
     supabase
       .from("player_season")
       .select("year, position, pro_team, total_points, games, stats")
       .eq("player_name", name)
       .order("year", { ascending: false }),
   ]);
+  // Injury status is only per-week accurate for the live (in-progress) season;
+  // past seasons carry a single end-of-year snapshot, so we suppress it there.
+  const injuryLive = allSeasons.find((s) => s.year === year)?.is_active ?? false;
 
   const seasons: PlayerSeasonLine[] = (
     (psRaw ?? []) as {
@@ -1019,7 +1040,10 @@ async function getPlayerDetailImpl(
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
   const ids = matchups.map((m) => m.id);
 
-  const wk = new Map<number, { points: number; freeAgent: boolean }>();
+  const wk = new Map<
+    number,
+    { points: number; freeAgent: boolean; bye: boolean; injury: string | null }
+  >();
   const teamCount = new Map<number, number>();
   const CHUNK = 20;
   const slotChunks: number[][] = [];
@@ -1029,7 +1053,7 @@ async function getPlayerDetailImpl(
     slotChunks.map((chunk) =>
       supabase
         .from("player_slots")
-        .select("matchup_id, team_side, points")
+        .select("matchup_id, team_side, points, is_bye, injury_status")
         .eq("player_name", name)
         .in("matchup_id", chunk),
     ),
@@ -1039,10 +1063,17 @@ async function getPlayerDetailImpl(
       matchup_id: number;
       team_side: "home" | "away";
       points: number | null;
+      is_bye: boolean | null;
+      injury_status: string | null;
     }[]) {
       const week = weekByMatchup.get(r.matchup_id);
       if (week == null) continue;
-      wk.set(week, { points: Number(r.points ?? 0), freeAgent: false });
+      wk.set(week, {
+        points: Number(r.points ?? 0),
+        freeAgent: false,
+        bye: !!r.is_bye,
+        injury: injuryLive ? injuryTag(r.injury_status) : null,
+      });
       const sides = sideTeam.get(r.matchup_id);
       const tid = sides
         ? r.team_side === "home"
@@ -1061,7 +1092,33 @@ async function getPlayerDetailImpl(
   for (const r of (faRaw ?? []) as { week: number; points: number | null }[]) {
     const week = Number(r.week);
     if (!wk.has(week))
-      wk.set(week, { points: Number(r.points ?? 0), freeAgent: true });
+      wk.set(week, {
+        points: Number(r.points ?? 0),
+        freeAgent: true,
+        bye: false,
+        injury: null,
+      });
+  }
+
+  // The player's NFL team bye week(s), from any rostered player of that team —
+  // so a bye is labeled even in weeks this player wasn't rostered.
+  const teamByeWeeks = new Set<number>();
+  if (nflTeam) {
+    const byeResults = await Promise.all(
+      slotChunks.map((chunk) =>
+        supabase
+          .from("player_slots")
+          .select("matchup_id")
+          .eq("pro_team", nflTeam)
+          .eq("is_bye", true)
+          .in("matchup_id", chunk),
+      ),
+    );
+    for (const { data } of byeResults)
+      for (const r of (data ?? []) as { matchup_id: number }[]) {
+        const w = weekByMatchup.get(r.matchup_id);
+        if (w != null) teamByeWeeks.add(w);
+      }
   }
 
   // Most-frequent fantasy team that rostered them this season → header label.
@@ -1087,9 +1144,12 @@ async function getPlayerDetailImpl(
       points: e ? e.points : 0,
       dnp: !e,
       freeAgent: e?.freeAgent ?? false,
+      bye: (e?.bye ?? false) || teamByeWeeks.has(w),
+      injury: e?.injury ?? null,
     });
   }
-  const played = weekly.filter((x) => !x.dnp);
+  // Bye weeks are not "did not play" volatility — exclude them from the metrics.
+  const played = weekly.filter((x) => !x.dnp && !x.bye);
   if (seasons.length === 0 && played.length === 0) return null;
 
   const avg = played.length

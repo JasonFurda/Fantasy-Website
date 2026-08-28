@@ -173,6 +173,45 @@ export function WeeklyBars({
       )}
       {weekly.map((w, i) => {
         const cx = i * SLOT + SLOT / 2;
+        const weekLabel = (
+          <text
+            x={cx}
+            y={H - 7}
+            textAnchor="middle"
+            fill={w.week >= playoffStart ? "var(--accent)" : "var(--muted)"}
+            fontSize={10}
+          >
+            {w.week}
+          </text>
+        );
+
+        // Bye week: no bar, just a "Bye" marker so it isn't read as a 0.
+        if (w.bye) {
+          return (
+            <g key={w.week}>
+              <line
+                x1={cx - BARW / 2}
+                y1={TOP + PLOT}
+                x2={cx + BARW / 2}
+                y2={TOP + PLOT}
+                stroke="var(--border)"
+                strokeWidth={2}
+              />
+              <text
+                x={cx}
+                y={TOP + PLOT - 6}
+                textAnchor="middle"
+                fill="var(--muted)"
+                fontSize={9}
+                opacity={0.75}
+              >
+                Bye
+              </text>
+              {weekLabel}
+            </g>
+          );
+        }
+
         const h = w.dnp ? 3 : Math.max(2, (Math.max(w.points, 0) / maxVal) * PLOT);
         const yTop = TOP + PLOT - h;
         return (
@@ -188,8 +227,8 @@ export function WeeklyBars({
             >
               <title>
                 {w.dnp
-                  ? `Week ${w.week}: did not play`
-                  : `Week ${w.week}: ${w.points.toFixed(1)} pts${w.freeAgent ? " (free agent)" : ""}`}
+                  ? `Week ${w.week}: did not play${w.injury ? ` (${w.injury})` : ""}`
+                  : `Week ${w.week}: ${w.points.toFixed(1)} pts${w.freeAgent ? " (free agent)" : ""}${w.injury ? ` · ${w.injury}` : ""}`}
               </title>
             </rect>
             <text
@@ -202,15 +241,19 @@ export function WeeklyBars({
             >
               {w.dnp ? "—" : w.points.toFixed(0)}
             </text>
-            <text
-              x={cx}
-              y={H - 7}
-              textAnchor="middle"
-              fill={w.week >= playoffStart ? "var(--accent)" : "var(--muted)"}
-              fontSize={10}
-            >
-              {w.week}
-            </text>
+            {w.injury && (
+              <text
+                x={cx}
+                y={H - 16}
+                textAnchor="middle"
+                fill="hsl(0 72% 55%)"
+                fontSize={8}
+                fontWeight={600}
+              >
+                {w.injury}
+              </text>
+            )}
+            {weekLabel}
           </g>
         );
       })}
