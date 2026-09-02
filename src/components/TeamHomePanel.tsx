@@ -5,12 +5,14 @@ import type {
   PowerRow,
   DivisionStandings,
 } from "@/lib/queries";
+import type { Article } from "@/lib/articles";
 import { teamColor } from "@/lib/teams-config";
 import { homepageConfig } from "@/lib/homepage-config";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import PowerRankingsCard from "@/components/PowerRankingsCard";
 import StandingsTable from "@/components/StandingsTable";
+import ArticlesCard from "@/components/ArticlesCard";
 
 function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
   const oppEspn = m.opponent?.espn_id ?? 0;
@@ -54,10 +56,12 @@ export default function TeamHomePanel({
   home,
   power,
   divisions,
+  articles,
 }: {
   home: TeamHome;
   power: { year: number; rows: PowerRow[]; preseason: boolean };
   divisions: DivisionStandings[];
+  articles: Article[];
 }) {
   const color = teamColor(home.team.espn_id);
   const { recap } = homepageConfig;
@@ -162,22 +166,9 @@ export default function TeamHomePanel({
         </div>
       )}
 
-      {/* Quick links */}
-      <div className="mt-8 flex flex-wrap gap-2 text-sm">
-        {[
-          { href: "/standings", label: "Standings" },
-          { href: `/matchups?year=${home.year}`, label: "Matchups" },
-          { href: "/power-rankings", label: "Power Rankings" },
-          { href: "/player-comparisons", label: "Players" },
-        ].map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className="rounded-md border border-border px-3 py-1.5 text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-          >
-            {l.label}
-          </Link>
-        ))}
+      {/* Articles */}
+      <div className="mt-10">
+        <ArticlesCard articles={articles} />
       </div>
     </main>
   );
