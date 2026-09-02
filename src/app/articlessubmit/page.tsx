@@ -1,37 +1,31 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { isValidArticleToken } from "@/lib/articles-auth";
 import { getArticles } from "@/lib/articles";
 import ArticleSubmitForm from "@/components/ArticleSubmitForm";
 
 export const dynamic = "force-dynamic";
 
-// Keep the submission tool out of search engines even if the URL leaks.
+// Unlisted, not gated: anyone with the URL can publish. It's kept out of the
+// nav and out of search results so it stays a link Jason hands out, but the
+// page (and the server action behind it) are open — treat submissions as
+// untrusted input and keep the body rendered as plain text, never HTML.
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
   title: "Write an Article",
 };
 
-export default async function ArticlesEntryPage({
-  params,
-}: {
-  params: Promise<{ token: string }>;
-}) {
-  const { token } = await params;
-  if (!isValidArticleToken(token)) notFound();
-
+export default async function ArticlesSubmitPage() {
   const recent = await getArticles(5);
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-10">
       <h1 className="text-2xl font-bold tracking-tight">Write an article</h1>
       <p className="mt-1 mb-6 text-sm text-muted">
-        Anyone with this link can publish to the league site. Hot takes,
-        recaps, trade rants — it all goes on the homepage.
+        Anything you publish here goes straight onto the league homepage. Hot
+        takes, recaps, trade rants — all fair game.
       </p>
 
-      <ArticleSubmitForm token={token} />
+      <ArticleSubmitForm />
 
       {recent.length > 0 && (
         <section className="mt-10 border-t border-border pt-6">

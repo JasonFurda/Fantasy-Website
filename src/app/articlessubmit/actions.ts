@@ -1,6 +1,5 @@
 "use server";
 
-import { isValidArticleToken } from "@/lib/articles-auth";
 import { createArticle } from "@/lib/articles";
 import { TITLE_MAX, AUTHOR_MAX, BODY_MAX } from "@/lib/article-format";
 
@@ -10,17 +9,13 @@ export type ArticleSubmitState = {
   slug?: string;
 };
 
-/** Publish a submitted article. Re-verifies the secret server-side — a direct
- *  POST to this action can't bypass the page's 404. */
+/** Publish a submitted article. Open by design (see /articlessubmit): this
+ *  action is reachable by anyone, so every field is validated and length-capped
+ *  here rather than trusting the form. */
 export async function submitArticle(
   _prev: ArticleSubmitState,
   formData: FormData,
 ): Promise<ArticleSubmitState> {
-  const token = String(formData.get("token") ?? "");
-  if (!isValidArticleToken(token)) {
-    return { ok: false, message: "Not authorized." };
-  }
-
   const title = String(formData.get("title") ?? "").trim();
   const author = String(formData.get("author") ?? "").trim();
   const body = String(formData.get("body") ?? "").replace(/\r\n/g, "\n").trim();

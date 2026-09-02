@@ -11,25 +11,38 @@ import {
 import {
   submitArticle,
   type ArticleSubmitState,
-} from "@/app/articles-entry/actions";
+} from "@/app/articlessubmit/actions";
 
 const INITIAL: ArticleSubmitState = { ok: false, message: "" };
 
 const inputCls =
   "w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent";
 
-export default function ArticleSubmitForm({ token }: { token: string }) {
+export default function ArticleSubmitForm() {
   const [state, formAction, pending] = useActionState(submitArticle, INITIAL);
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [body, setBody] = useState("");
   const [preview, setPreview] = useState(false);
+  // Which published slug the writer has already dismissed via "Write another".
+  // useActionState has no reset, so this is what takes the success panel back
+  // to an empty form — and it re-arms itself when the next publish returns a
+  // different slug.
+  const [dismissed, setDismissed] = useState<string | null>(null);
 
   const paras = paragraphs(body);
 
+  const startAnother = () => {
+    setDismissed(state.slug ?? null);
+    setTitle("");
+    setAuthor("");
+    setBody("");
+    setPreview(false);
+  };
+
   // After a successful publish, show the link instead of the form — the action
   // creates a new article every time, so leaving the form filled invites dupes.
-  if (state.ok && state.slug) {
+  if (state.ok && state.slug && state.slug !== dismissed) {
     return (
       <div className="rounded-xl border border-accent/40 bg-accent/10 px-5 py-6">
         <h2 className="text-lg font-semibold text-accent">
@@ -45,13 +58,13 @@ export default function ArticleSubmitForm({ token }: { token: string }) {
           >
             Read it →
           </Link>
-          <Link
-            href={`/articles-entry/${token}`}
-            prefetch={false}
+          <button
+            type="button"
+            onClick={startAnother}
             className="rounded-lg border border-border px-4 py-2 text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
           >
             Write another
-          </Link>
+          </button>
         </div>
       </div>
     );
@@ -59,8 +72,6 @@ export default function ArticleSubmitForm({ token }: { token: string }) {
 
   return (
     <form action={formAction} className="space-y-4">
-      <input type="hidden" name="token" value={token} />
-
       <div>
         <label
           htmlFor="article-title"
