@@ -9,7 +9,7 @@ import { teamColor } from "@/lib/teams-config";
 import { homepageConfig } from "@/lib/homepage-config";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 import ArtSpotlight from "@/components/ArtSpotlight";
-import StandingsTable from "@/components/StandingsTable";
+import DivisionStandingsPanel from "@/components/DivisionStandingsPanel";
 import ArticlesCard from "@/components/ArticlesCard";
 
 function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
@@ -134,32 +134,10 @@ export default function TeamHomePanel({
       </div>
 
       {/* Standings by division */}
-      {divisions.length > 0 && (
-        <div className="mt-10">
-          <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-              Standings
-            </h2>
-            <Link
-              href="/standings"
-              className="text-xs text-accent hover:underline"
-            >
-              Full standings →
-            </Link>
-          </div>
-          <div className="grid gap-8 lg:grid-cols-2">
-            {divisions.map((d) => (
-              <section key={d.name}>
-                <h3 className="mb-2 text-base font-semibold">{d.name}</h3>
-                <StandingsTable
-                  standings={d.standings}
-                  highlightEspnId={home.team.espn_id}
-                />
-              </section>
-            ))}
-          </div>
-        </div>
-      )}
+      <DivisionStandingsPanel
+        divisions={divisions}
+        highlightEspnId={home.team.espn_id}
+      />
     </main>
   );
 }

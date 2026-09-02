@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { homepageConfig } from "@/lib/homepage-config";
 import {
+  getSeasons,
   getTeams,
   getMatchups,
   buildStandings,
@@ -15,6 +15,7 @@ import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import ChampionBanner from "@/components/ChampionBanner";
 import StandingsTable from "@/components/StandingsTable";
+import DivisionStandingsPanel from "@/components/DivisionStandingsPanel";
 import ArticlesCard from "@/components/ArticlesCard";
 import TeamPickerModal from "@/components/TeamPickerModal";
 import TeamHomePanel from "@/components/TeamHomePanel";
@@ -25,8 +26,17 @@ export const dynamic = "force-dynamic";
 /** Articles shown on the homepage; the rest live on /articles. */
 const HOME_ARTICLE_COUNT = 3;
 
-function RecapHome({ articles }: { articles: Article[] }) {
+/** The season the homepage reflects: the active one, else the newest. Mirrors
+ *  how getTeamHome picks its year so both homepages show the same standings. */
+async function currentSeasonDivisions() {
+  const seasons = await getSeasons(); // newest first
+  const year = (seasons.find((s) => s.is_active) ?? seasons[0])?.year;
+  return year == null ? [] : getDivisionStandings(year);
+}
+
+async function RecapHome({ articles }: { articles: Article[] }) {
   const { recap } = homepageConfig;
+  const divisions = await currentSeasonDivisions();
   return (
     <main className="mx-auto max-w-[1800px] px-8 py-12">
       <div className="grid gap-10 lg:grid-cols-[1.5fr_1fr] lg:items-stretch">
@@ -47,12 +57,7 @@ function RecapHome({ articles }: { articles: Article[] }) {
         </div>
       </div>
 
-      <p className="mt-8 text-center text-sm text-muted">
-        Looking for the full table?{" "}
-        <Link href="/standings" className="text-accent hover:underline">
-          View season standings →
-        </Link>
-      </p>
+      <DivisionStandingsPanel divisions={divisions} />
     </main>
   );
 }
