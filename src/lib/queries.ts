@@ -1280,6 +1280,283 @@ async function getDraftValueImpl(year: number): Promise<DraftValueRow[]> {
   return out.sort((a, b) => b.value - a.value);
 }
 
+// ---------------------------------------------------------------------------
+// Defense vs. position: how many fantasy points each NFL defense gives up to
+// each position, and the weekly Outlook built on top of it.
+// ---------------------------------------------------------------------------
+
+/** Positions rated, in display order. */
+export const DEF_POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"];
+
+/** ESPN marks a bye with opponent "BYE" — not a defense, never rated. */
+const BYE = "BYE";
+
+/** Below this many player-games the average is too noisy to lean on; the UI
+ *  greys it out rather than hiding it. */
+export const DEF_MIN_SAMPLES = 6;
+
+/** A season needs this many played weeks before its own defense numbers beat
+ *  last season's full sample. */
+const DEF_MIN_WEEKS = 4;
+
+export type DefenseVsPos = {
+  defense: string;
+  position: string;
+  /** Player-games counted. */
+  samples: number;
+  /** Fantasy points allowed per player-game. */
+  avgAllowed: number;
+  /** 1 = gives up the most points to this position (the softest matchup). */
+  rank: number;
+  /** avgAllowed minus the league average for the position. */
+  vsLeague: number;
+  /** True when `samples` is too small to trust. */
+  thin: boolean;
+};
+
+export type DefenseRatings = {
+  /** Season the numbers come from — not necessarily the season being viewed. */
+  year: number;
+  weeks: number;
+  positions: string[];
+  defenses: string[];
+  leagueAvg: Record<string, number>;
+  /** defense -> position -> rating */
+  table: Record<string, Record<string, DefenseVsPos>>;
+};
+
+/** Weeks of a season that have actually been played. */
+async function playedWeekCount(year: number): Promise<number> {
+  const matchups = await getMatchups(year);
+  const weeks = new Set<number>();
+  for (const m of matchups) if (isPlayed(m)) weeks.add(m.week);
+  return weeks.size;
+}
+
+/** Which season's games to rate defenses on: the newest one that has played
+ *  enough weeks to stand on its own, else the newest with any games at all.
+ *  Early in a season last year's full sample beats three noisy weeks. */
+export const getDefenseRatingsYear = cached(
+  getDefenseRatingsYearImpl,
+  "getDefenseRatingsYear",
+);
+async function getDefenseRatingsYearImpl(): Promise<number | null> {
+  const seasons = await getSeasons(); // newest first
+  let fallback: number | null = null;
+  for (const s of seasons) {
+    const weeks = await playedWeekCount(s.year);
+    if (weeks >= DEF_MIN_WEEKS) return s.year;
+    if (weeks > 0 && fallback == null) fallback = s.year;
+  }
+  return fallback;
+}
+
+/** Fantasy points each defense allows per player-game, by position.
+ *
+ *  Counts every rostered player who actually played (starters and bench alike)
+ *  against that defense. Free agents are excluded — free_agent_week has no
+ *  opponent column — so this measures production by rostered players, which
+ *  skews slightly high. Byes are excluded outright. */
+export const getDefenseRatings = cached(
+  getDefenseRatingsImpl,
+  "getDefenseRatings",
+);
+async function getDefenseRatingsImpl(year: number): Promise<DefenseRatings> {
+  const matchups = await getMatchups(year);
+  const ids = matchups.map((m) => m.id);
+  const empty: DefenseRatings = {
+    year,
+    weeks: 0,
+    positions: DEF_POSITIONS,
+    defenses: [],
+    leagueAvg: {},
+    table: {},
+  };
+  if (ids.length === 0) return empty;
+
+  type Raw = {
+    position: string | null;
+    opponent: string | null;
+    points: number | null;
+    game_played: number | null;
+  };
+  const CHUNK = 20;
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK)
+    chunks.push(ids.slice(i, i + CHUNK));
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("player_slots")
+        .select("position, opponent, points, game_played")
+        .in("matchup_id", chunk),
+    ),
+  );
+
+  const agg = new Map<string, { sum: number; n: number }>();
+  const posTotal = new Map<string, { sum: number; n: number }>();
+  const defenses = new Set<string>();
+
+  for (const { data } of results) {
+    for (const r of (data ?? []) as Raw[]) {
+      const pos = r.position;
+      const def = r.opponent;
+      if (!pos || !def || def === BYE) continue;
+      if (!(Number(r.game_played) > 0)) continue;
+      if (!DEF_POSITIONS.includes(pos)) continue;
+      const pts = Number(r.points ?? 0);
+      defenses.add(def);
+
+      const key = def + "|" + pos;
+      const cell = agg.get(key);
+      if (cell) {
+        cell.sum += pts;
+        cell.n += 1;
+      } else {
+        agg.set(key, { sum: pts, n: 1 });
+      }
+      const pt = posTotal.get(pos);
+      if (pt) {
+        pt.sum += pts;
+        pt.n += 1;
+      } else {
+        posTotal.set(pos, { sum: pts, n: 1 });
+      }
+    }
+  }
+  if (agg.size === 0) return empty;
+
+  const leagueAvg: Record<string, number> = {};
+  for (const [pos, t] of posTotal) leagueAvg[pos] = t.n ? t.sum / t.n : 0;
+
+  // Rank within each position: 1 = allows the most.
+  const table: Record<string, Record<string, DefenseVsPos>> = {};
+  for (const pos of DEF_POSITIONS) {
+    const cells = [...defenses]
+      .map((def) => {
+        const cell = agg.get(def + "|" + pos);
+        return cell && cell.n > 0
+          ? { def, avg: cell.sum / cell.n, n: cell.n }
+          : null;
+      })
+      .filter((c): c is { def: string; avg: number; n: number } => c !== null)
+      .sort((a, b) => b.avg - a.avg);
+
+    cells.forEach((c, i) => {
+      const forDef = table[c.def] ?? (table[c.def] = {});
+      forDef[pos] = {
+        defense: c.def,
+        position: pos,
+        samples: c.n,
+        avgAllowed: c.avg,
+        rank: i + 1,
+        vsLeague: c.avg - (leagueAvg[pos] ?? 0),
+        thin: c.n < DEF_MIN_SAMPLES,
+      };
+    });
+  }
+
+  return {
+    year,
+    weeks: await playedWeekCount(year),
+    positions: DEF_POSITIONS,
+    defenses: [...defenses].sort(),
+    leagueAvg,
+    table,
+  };
+}
+
+export type OutlookPlayer = {
+  slot: string;
+  isBench: boolean;
+  playerName: string;
+  position: string | null;
+  proTeam: string | null;
+  /** NFL opponent for the week, or "BYE". */
+  opponent: string | null;
+  projected: number | null;
+  /** How that opponent defends this player's position. Null on a bye, for an
+   *  unrated position, or when that defense has no data. */
+  rating: DefenseVsPos | null;
+};
+
+export type TeamOutlook = {
+  year: number;
+  week: number;
+  team: Team;
+  fantasyOpponent: Team | null;
+  /** True when the week's games have already been played. */
+  played: boolean;
+  starters: OutlookPlayer[];
+  bench: OutlookPlayer[];
+  ratings: DefenseRatings | null;
+};
+
+/** One franchise's next (or most recent) week, with each player's matchup
+ *  graded against how that defense treats their position. */
+export const getTeamOutlook = cached(getTeamOutlookImpl, "getTeamOutlook");
+async function getTeamOutlookImpl(espnId: number): Promise<TeamOutlook | null> {
+  const home = await getTeamHome(espnId);
+  if (!home) return null;
+  const match = home.upcoming[0] ?? home.lastResult;
+  if (!match) return null;
+
+  const ratingsYear = await getDefenseRatingsYear();
+  const [slotsRes, ratings] = await Promise.all([
+    supabase
+      .from("player_slots")
+      .select(
+        "slot, player_name, position, pro_team, opponent, projected, points, is_bench, sort_idx",
+      )
+      .eq("matchup_id", match.matchupId)
+      .eq("team_side", match.isHome ? "home" : "away")
+      .order("sort_idx", { ascending: true }),
+    ratingsYear == null ? Promise.resolve(null) : getDefenseRatings(ratingsYear),
+  ]);
+
+  type SRow = {
+    slot: string;
+    player_name: string;
+    position: string | null;
+    pro_team: string | null;
+    opponent: string | null;
+    projected: number | null;
+    points: number | null;
+    is_bench: boolean | null;
+  };
+
+  const toPlayer = (r: SRow): OutlookPlayer => {
+    const pos = r.position;
+    const opp = r.opponent;
+    const rating =
+      ratings && pos && opp && opp !== BYE
+        ? (ratings.table[opp]?.[pos] ?? null)
+        : null;
+    return {
+      slot: r.slot,
+      isBench: Boolean(r.is_bench),
+      playerName: r.player_name,
+      position: pos,
+      proTeam: r.pro_team,
+      opponent: opp,
+      projected: r.projected == null ? null : Number(r.projected),
+      rating,
+    };
+  };
+
+  const rows = ((slotsRes.data ?? []) as SRow[]).map(toPlayer);
+  return {
+    year: home.year,
+    week: match.week,
+    team: home.team,
+    fantasyOpponent: match.opponent,
+    played: match.played,
+    starters: rows.filter((r) => !r.isBench),
+    bench: rows.filter((r) => r.isBench),
+    ratings,
+  };
+}
+
 export type DraftRecapPick = {
   round: number;
   pick: number; // pick within the round

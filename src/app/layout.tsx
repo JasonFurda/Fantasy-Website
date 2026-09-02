@@ -31,7 +31,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <header className="sticky top-0 z-30 border-b border-border bg-surface/80 backdrop-blur">
-          <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3">
             <Link href="/" className="flex items-center gap-2 font-semibold">
               <span className="inline-block h-2.5 w-2.5 rounded-full bg-accent" />
               <span className="tracking-tight">Chamoms Fantasy</span>
