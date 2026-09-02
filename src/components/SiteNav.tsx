@@ -13,6 +13,7 @@ const NAV = [
   { href: "/teams", label: "Teams" },
   { href: "/year-stats", label: "Year Stats" },
   { href: "/player-comparisons", label: "Players" },
+  { href: "/draft-recap", label: "Draft Recap" },
 ];
 
 export default function SiteNav() {
@@ -24,7 +25,7 @@ export default function SiteNav() {
   return (
     <>
       {/* Desktop */}
-      <nav className="hidden items-center gap-1 text-sm md:flex">
+      <nav className="hidden items-center gap-1 text-sm lg:flex">
         {NAV.map((item) => (
           <Link
             key={item.href}
@@ -43,7 +44,7 @@ export default function SiteNav() {
         onClick={() => setOpen((o) => !o)}
         aria-label="Menu"
         aria-expanded={open}
-        className="rounded-md p-2 text-foreground md:hidden"
+        className="rounded-md p-2 text-foreground lg:hidden"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           {open ? (
@@ -60,7 +61,7 @@ export default function SiteNav() {
 
       {/* Mobile dropdown */}
       {open && (
-        <div className="absolute inset-x-0 top-full border-b border-border bg-surface md:hidden">
+        <div className="absolute inset-x-0 top-full border-b border-border bg-surface lg:hidden">
           <nav className="mx-auto flex max-w-5xl flex-col px-3 py-2">
             {NAV.map((item) => (
               <Link

@@ -1280,6 +1280,132 @@ async function getDraftValueImpl(year: number): Promise<DraftValueRow[]> {
   return out.sort((a, b) => b.value - a.value);
 }
 
+export type DraftRecapPick = {
+  round: number;
+  pick: number; // pick within the round
+  overall: number;
+  playerName: string;
+  position: string | null;
+  nflTeam: string | null;
+  drafter: { name: string; espnId: number } | null;
+  /** Season points and value, or null for picks the value metric doesn't cover
+   *  (it is defined for TE/RB/WR only) and for players who never appeared. */
+  totalPts: number | null;
+  value: number | null;
+};
+
+export type DraftRecap = {
+  year: number;
+  teamCount: number;
+  totalPicks: number;
+  rounds: { round: number; picks: DraftRecapPick[] }[];
+  /** Best picks by draft value, best first. Empty until the season has points. */
+  topValue: DraftRecapPick[];
+  /** False before the season has produced any points (e.g. a fresh draft). */
+  scored: boolean;
+};
+
+/** The full draft board for a year, with each pick's Draft Pick Value.
+ *
+ *  Points and value come straight from getDraftValue so this page and the
+ *  Draft Value tab can never disagree — which also means they are only present
+ *  for TE/RB/WR, the positions that metric is defined over. Every other pick
+ *  still gets its position and NFL team (from player_season) so the board is
+ *  complete. */
+export const getDraftRecap = cached(getDraftRecapImpl, "getDraftRecap");
+async function getDraftRecapImpl(year: number): Promise<DraftRecap> {
+  const [teams, valueRows] = await Promise.all([
+    getTeams(year),
+    getDraftValue(year),
+  ]);
+  const teamCount = teams.length || 8;
+  const nameByEspn = new Map<number, string>(
+    teams.map((t) => [t.espn_id, t.name.trim()]),
+  );
+  const valueByName = new Map(valueRows.map((r) => [r.name, r]));
+
+  const { data: draftRaw } = await supabase
+    .from("draft_picks")
+    .select("player_name, round, pick, drafted_by")
+    .eq("year", year);
+  const raw = (draftRaw ?? []) as {
+    player_name: string;
+    round: number;
+    pick: number;
+    drafted_by: number | null;
+  }[];
+  if (raw.length === 0) {
+    return {
+      year,
+      teamCount,
+      totalPicks: 0,
+      rounds: [],
+      topValue: [],
+      scored: false,
+    };
+  }
+
+  // Position / NFL team for the picks getDraftValue skips (QB, K, D/ST).
+  // Filtered to the drafted names so this stays one small request.
+  const { data: seasonRaw } = await supabase
+    .from("player_season")
+    .select("player_name, position, pro_team")
+    .eq("year", year)
+    .in(
+      "player_name",
+      raw.map((d) => d.player_name),
+    );
+  const metaByName = new Map(
+    ((seasonRaw ?? []) as {
+      player_name: string;
+      position: string | null;
+      pro_team: string | null;
+    }[]).map((r) => [r.player_name, r]),
+  );
+
+  const picks: DraftRecapPick[] = raw.map((d) => {
+    const v = valueByName.get(d.player_name);
+    const meta = metaByName.get(d.player_name);
+    return {
+      round: d.round,
+      pick: d.pick,
+      overall: (d.round - 1) * teamCount + d.pick,
+      playerName: d.player_name,
+      position: v?.position ?? meta?.position ?? null,
+      nflTeam: v?.nflTeam || meta?.pro_team || null,
+      drafter:
+        d.drafted_by != null && nameByEspn.has(d.drafted_by)
+          ? { name: nameByEspn.get(d.drafted_by)!, espnId: d.drafted_by }
+          : null,
+      totalPts: v ? v.totalPts : null,
+      value: v ? v.value : null,
+    };
+  });
+
+  const byRound = new Map<number, DraftRecapPick[]>();
+  for (const p of picks) {
+    const list = byRound.get(p.round);
+    if (list) list.push(p);
+    else byRound.set(p.round, [p]);
+  }
+  const rounds = [...byRound.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, ps]) => ({
+      round,
+      picks: ps.sort((a, b) => a.pick - b.pick),
+    }));
+
+  const scored = picks.some((p) => (p.totalPts ?? 0) > 0);
+  const topValue = scored
+    ? [...picks]
+        .filter((p) => p.value != null && p.value > 0)
+        .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+        .slice(0, 5)
+    : [];
+
+  return { year, teamCount, totalPicks: picks.length, rounds, topValue, scored };
+}
+
 export type SlotRow = {
   slot: string;
   playerName: string;
