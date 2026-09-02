@@ -215,31 +215,11 @@ async function OverallRankings({
   // Fallback until a ranking is submitted (and for past seasons): the computed
   // rankings, else the hand-entered preseason order.
   let rows = await getPowerRankings(year);
-  let preseason = false;
   if (rows.length === 0) {
-    const pre = await getPreseasonPowerRankings(year);
-    if (pre.length > 0) {
-      rows = pre;
-      preseason = true;
-    }
+    rows = await getPreseasonPowerRankings(year);
   }
 
-  return (
-    <>
-      {preseason && (
-        <div className="mb-4 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm">
-          <span className="font-semibold text-accent">Preseason rankings.</span>{" "}
-          <span className="text-muted">
-            No games have been played yet — these are Jason&apos;s subjective
-            opinion, not the algorithm. They&apos;ll switch to computed rankings
-            once the season starts.
-          </span>
-        </div>
-      )}
-
-      <RankingsTable rows={rows} highlightEspnId={highlightEspnId} />
-    </>
-  );
+  return <RankingsTable rows={rows} highlightEspnId={highlightEspnId} />;
 }
 
 async function PositionRankings({
