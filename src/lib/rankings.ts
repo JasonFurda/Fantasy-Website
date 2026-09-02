@@ -4,7 +4,6 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import {
   getSeasons,
   getTeams,
-  getLatestPowerRankings,
   type Team,
   type PowerRow,
 } from "@/lib/queries";
@@ -169,19 +168,4 @@ export async function getManualRankingHistory(
     // Only teams that appear in at least one week.
     .filter((s) => s.ranks.some((r) => r != null));
   return { weeks, series };
-}
-
-/** Homepage power rankings, preferring the manual weekly ranking when a season
- *  has submissions, else the existing computed/preseason logic. */
-export async function getHomepagePowerRankings(): Promise<{
-  year: number;
-  rows: PowerRow[];
-  preseason: boolean;
-}> {
-  const seasons = await getSeasons(); // newest first
-  for (const s of seasons) {
-    const weekly = await getManualPowerRankings(s.year);
-    if (weekly) return { year: s.year, rows: weekly.rows, preseason: false };
-  }
-  return getLatestPowerRankings();
 }

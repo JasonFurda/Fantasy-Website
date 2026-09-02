@@ -8,17 +8,13 @@ import {
   getCurrentFranchises,
   getTeamHome,
   getDivisionStandings,
-  type PowerRow,
 } from "@/lib/queries";
-import { getHomepagePowerRankings } from "@/lib/rankings";
 import { getArticles, type Article } from "@/lib/articles";
 import { teamColor } from "@/lib/teams-config";
 import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import ChampionBanner from "@/components/ChampionBanner";
-import PlayoffBracket from "@/components/PlayoffBracket";
 import StandingsTable from "@/components/StandingsTable";
-import PowerRankingsCard from "@/components/PowerRankingsCard";
 import ArticlesCard from "@/components/ArticlesCard";
 import TeamPickerModal from "@/components/TeamPickerModal";
 import TeamHomePanel from "@/components/TeamHomePanel";
@@ -26,12 +22,10 @@ import ChangeTeamButton from "@/components/ChangeTeamButton";
 
 export const dynamic = "force-dynamic";
 
-type Power = { year: number; rows: PowerRow[]; preseason: boolean };
-
 /** Articles shown on the homepage; the rest live on /articles. */
 const HOME_ARTICLE_COUNT = 3;
 
-function RecapHome({ power, articles }: { power: Power; articles: Article[] }) {
+function RecapHome({ articles }: { articles: Article[] }) {
   const { recap } = homepageConfig;
   return (
     <main className="mx-auto max-w-[1800px] px-8 py-12">
@@ -45,23 +39,12 @@ function RecapHome({ power, articles }: { power: Power; articles: Article[] }) {
             owner={recap.champion.owner}
             blurb={recap.champion.blurb}
           />
-          <PlayoffBracket
-            bracket={recap.bracket}
-            champion={recap.champion.teamName}
+          <ArticlesCard
+            articles={articles}
+            variant="list"
+            className="flex-1"
           />
         </div>
-      </div>
-
-      <div className="mt-10">
-        <PowerRankingsCard
-          year={power.year}
-          rows={power.rows}
-          preseason={power.preseason}
-        />
-      </div>
-
-      <div className="mt-10">
-        <ArticlesCard articles={articles} />
       </div>
 
       <p className="mt-8 text-center text-sm text-muted">
@@ -74,13 +57,7 @@ function RecapHome({ power, articles }: { power: Power; articles: Article[] }) {
   );
 }
 
-async function DivisionsHome({
-  power,
-  articles,
-}: {
-  power: Power;
-  articles: Article[];
-}) {
+async function DivisionsHome({ articles }: { articles: Article[] }) {
   const { divisions } = homepageConfig;
   const [teams, matchups] = await Promise.all([
     getTeams(divisions.seasonYear),
@@ -117,14 +94,6 @@ async function DivisionsHome({
       </div>
 
       <div className="mt-10">
-        <PowerRankingsCard
-          year={power.year}
-          rows={power.rows}
-          preseason={power.preseason}
-        />
-      </div>
-
-      <div className="mt-10">
         <ArticlesCard articles={articles} />
       </div>
     </main>
@@ -147,10 +116,7 @@ export default async function Home() {
       ? Number(raw)
       : null;
 
-  const [power, articles] = await Promise.all([
-    getHomepagePowerRankings(),
-    getArticles(HOME_ARTICLE_COUNT),
-  ]);
+  const articles = await getArticles(HOME_ARTICLE_COUNT);
 
   // A team is selected → personalized homepage.
   if (chosen != null) {
@@ -160,7 +126,6 @@ export default async function Home() {
       return (
         <TeamHomePanel
           home={home}
-          power={power}
           divisions={divisions}
           articles={articles}
         />
@@ -170,9 +135,9 @@ export default async function Home() {
 
   const defaultHome =
     homepageConfig.mode === "divisions" ? (
-      <DivisionsHome power={power} articles={articles} />
+      <DivisionsHome articles={articles} />
     ) : (
-      <RecapHome power={power} articles={articles} />
+      <RecapHome articles={articles} />
     );
 
   // Explicitly browsing without a team → default homepage + a way to pick one.

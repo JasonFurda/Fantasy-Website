@@ -19,11 +19,9 @@ export default async function ArticlesSubmitPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-10">
-      <h1 className="text-2xl font-bold tracking-tight">Write an article</h1>
-      <p className="mt-1 mb-6 text-sm text-muted">
-        Anything you publish here goes straight onto the league homepage. Hot
-        takes, recaps, trade rants — all fair game.
-      </p>
+      <h1 className="mb-6 text-2xl font-bold tracking-tight">
+        Write an article
+      </h1>
 
       <ArticleSubmitForm />
 

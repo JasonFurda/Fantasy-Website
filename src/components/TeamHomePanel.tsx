@@ -2,7 +2,6 @@ import Link from "next/link";
 import type {
   TeamHome,
   UpcomingMatch,
-  PowerRow,
   DivisionStandings,
 } from "@/lib/queries";
 import type { Article } from "@/lib/articles";
@@ -10,7 +9,6 @@ import { teamColor } from "@/lib/teams-config";
 import { homepageConfig } from "@/lib/homepage-config";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 import ArtSpotlight from "@/components/ArtSpotlight";
-import PowerRankingsCard from "@/components/PowerRankingsCard";
 import StandingsTable from "@/components/StandingsTable";
 import ArticlesCard from "@/components/ArticlesCard";
 
@@ -54,12 +52,10 @@ function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
 
 export default function TeamHomePanel({
   home,
-  power,
   divisions,
   articles,
 }: {
   home: TeamHome;
-  power: { year: number; rows: PowerRow[]; preseason: boolean };
   divisions: DivisionStandings[];
   articles: Article[];
 }) {
@@ -128,12 +124,11 @@ export default function TeamHomePanel({
             </div>
           </section>
 
-          {/* Power rankings */}
-          <PowerRankingsCard
-            year={power.year}
-            rows={power.rows}
-            preseason={power.preseason}
-            highlightEspnId={home.team.espn_id}
+          {/* Articles */}
+          <ArticlesCard
+            articles={articles}
+            variant="list"
+            className="flex-1"
           />
         </div>
       </div>
@@ -165,11 +160,6 @@ export default function TeamHomePanel({
           </div>
         </div>
       )}
-
-      {/* Articles */}
-      <div className="mt-10">
-        <ArticlesCard articles={articles} />
-      </div>
     </main>
   );
 }

@@ -86,7 +86,6 @@ export default function ArticleSubmitForm() {
           onChange={(e) => setTitle(e.target.value)}
           maxLength={TITLE_MAX}
           required
-          placeholder="Week 3 was a war crime"
           className={inputCls}
         />
       </div>
@@ -105,7 +104,6 @@ export default function ArticleSubmitForm() {
           onChange={(e) => setAuthor(e.target.value)}
           maxLength={AUTHOR_MAX}
           required
-          placeholder="Who's writing this?"
           className={`${inputCls} sm:max-w-xs`}
         />
       </div>
@@ -164,9 +162,6 @@ export default function ArticleSubmitForm() {
             onChange={(e) => setBody(e.target.value)}
             required
             rows={16}
-            placeholder={
-              "Write away.\n\nLeave a blank line between paragraphs."
-            }
             className={`${inputCls} min-h-[18rem] resize-y leading-relaxed`}
           />
         )}
