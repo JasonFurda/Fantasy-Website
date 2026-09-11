@@ -53,7 +53,14 @@ export default async function StandingsPage({
     ]);
     standings = buildStandings(teams, matchups);
     teamCount = teams.length;
-    subtitle = `${selectedYear} season · ${teams.length} teams · through week ${season.current_week}`;
+    // current_week is the week being scored, so in the live season it hasn't
+    // finished and doesn't count toward these records yet.
+    const liveWeek = season.is_active ? season.current_week : null;
+    const completed = liveWeek != null ? liveWeek - 1 : season.current_week;
+    const through =
+      completed > 0 ? `through week ${completed}` : "no completed weeks yet";
+    const live = liveWeek != null ? ` · week ${liveWeek} in progress` : "";
+    subtitle = `${selectedYear} season · ${teams.length} teams · ${through}${live}`;
   }
 
   const tabClass = (active: boolean) =>

@@ -51,6 +51,10 @@ export type Matchup = {
   away_team_id: number;
   home_score: number | null;
   away_score: number | null;
+  /** False while the week is still being played. Scores tick up live from
+   *  Thursday night on, so a leading team is not a winning team yet — see
+   *  getMatchups for how the live week is identified. */
+  final: boolean;
 };
 
 export type Standing = {
@@ -63,10 +67,27 @@ export type Standing = {
   pointsAgainst: number;
 };
 
+/** A matchup that counts toward records, standings and season stats: its week
+ *  has finished AND it has scores. Everything that aggregates results should go
+ *  through this rather than testing the scores directly — mid-week the live
+ *  week has real-looking scores that are only partial. */
 function isPlayed(m: Matchup): boolean {
+  if (!m.final) return false;
   const hs = m.home_score ?? 0;
   const as = m.away_score ?? 0;
   return !(hs === 0 && as === 0);
+}
+
+/** The first week whose games aren't all in yet, for one season.
+ *  `current_week` is ESPN's scoringPeriodId — the week being scored right now —
+ *  so in the live season that week and everything after it are unfinished. A
+ *  season that is over is final all the way through.
+ *
+ *  This means a week starts counting when the daily sync sees ESPN roll over to
+ *  the next scoring period (Tuesday), not the instant the last game ends. */
+export function firstUnfinishedWeek(season: Season | undefined): number {
+  if (!season || !season.is_active) return Number.POSITIVE_INFINITY;
+  return season.current_week;
 }
 
 export const getSeasons = cached(async function getSeasons(): Promise<Season[]> {
@@ -90,12 +111,19 @@ export const getTeams = cached(async function getTeams(
 export const getMatchups = cached(async function getMatchups(
   year: number,
 ): Promise<Matchup[]> {
-  const { data } = await supabase
-    .from("matchups")
-    .select("id, year, week, home_team_id, away_team_id, home_score, away_score")
-    .eq("year", year)
-    .order("week", { ascending: true });
-  return (data as Matchup[]) ?? [];
+  const [seasons, res] = await Promise.all([
+    getSeasons(),
+    supabase
+      .from("matchups")
+      .select(
+        "id, year, week, home_team_id, away_team_id, home_score, away_score",
+      )
+      .eq("year", year)
+      .order("week", { ascending: true }),
+  ]);
+  const liveFrom = firstUnfinishedWeek(seasons.find((s) => s.year === year));
+  const rows = (res.data as Omit<Matchup, "final">[] | null) ?? [];
+  return rows.map((m) => ({ ...m, final: m.week < liveFrom }));
 }, "getMatchups");
 
 export function buildStandings(teams: Team[], matchups: Matchup[]): Standing[] {
@@ -146,6 +174,17 @@ export function buildStandings(teams: Team[], matchups: Matchup[]): Standing[] {
         b.pointsFor - a.pointsFor,
     )
     .map((s, i) => ({ ...s, rank: i + 1 }));
+}
+
+/** Games that actually counted toward a record. Before the first week of a
+ *  season finishes this is 0 for everyone, which means the standings order is
+ *  arbitrary — callers must not present it as a placement. */
+export function gamesPlayed(s: {
+  wins: number;
+  losses: number;
+  ties: number;
+}): number {
+  return s.wins + s.losses + s.ties;
 }
 
 export function winPct(s: Standing): number {
@@ -338,9 +377,9 @@ async function getYearStatsImpl(year: number): Promise<YearStats> {
   // --- 200 Club / Sub-100 Club (single-game team scores, all weeks) ---
   const games: GameRow[] = [];
   for (const m of matchups) {
+    if (!isPlayed(m)) continue;
     const hs = m.home_score ?? 0;
     const as = m.away_score ?? 0;
-    if (hs === 0 && as === 0) continue; // unplayed
     const home = teamById.get(m.home_team_id) ?? null;
     const away = teamById.get(m.away_team_id) ?? null;
     games.push({
@@ -373,9 +412,7 @@ async function getYearStatsImpl(year: number): Promise<YearStats> {
 
   // --- Mismanagement (% of optimal points) ---
   // All played weeks, including playoffs (mismanagement spans the whole season).
-  const playedIds = matchups
-    .filter((m) => (m.home_score ?? 0) !== 0 || (m.away_score ?? 0) !== 0)
-    .map((m) => m.id);
+  const playedIds = matchups.filter(isPlayed).map((m) => m.id);
   const matchupSide = new Map<number, { home: number; away: number }>();
   for (const m of matchups) {
     matchupSide.set(m.id, { home: m.home_team_id, away: m.away_team_id });
@@ -2238,9 +2275,9 @@ async function getPowerRankingsImpl(year: number): Promise<PowerRow[]> {
   };
   let maxWeek = 0;
   for (const m of matchups) {
+    if (!isPlayed(m)) continue;
     const hs = m.home_score ?? 0;
     const as = m.away_score ?? 0;
-    if (hs === 0 && as === 0) continue; // unplayed
     push(m.home_team_id, m.week, hs);
     push(m.away_team_id, m.week, as);
     if (m.week > maxWeek) maxWeek = m.week;
@@ -2450,7 +2487,9 @@ async function getFranchiseSummariesImpl(): Promise<FranchiseSummary[]> {
         f.latest = {
           year,
           record: `${st.wins}-${st.losses}${st.ties ? `-${st.ties}` : ""}`,
-          rank: finalPlacement(st.team.espn_id, year) ?? st.rank,
+          rank:
+            finalPlacement(st.team.espn_id, year) ??
+            (gamesPlayed(st) > 0 ? st.rank : 0),
           teamCount: standings.length,
           pointsFor: st.pointsFor,
         };
@@ -2490,7 +2529,9 @@ async function getFranchiseImpl(espnId: number): Promise<Franchise | null> {
       name: row.name,
       owner: row.owner,
       teamId: row.id,
-      rank: finalPlacement(espnId, row.year) ?? mine?.rank ?? 0,
+      rank:
+        finalPlacement(espnId, row.year) ??
+        (mine && gamesPlayed(mine) > 0 ? mine.rank : 0),
       teamCount: standings.length,
       wins: mine?.wins ?? 0,
       losses: mine?.losses ?? 0,
@@ -2650,11 +2691,15 @@ async function getFranchiseRosterImpl(
   const teamIds = teamRows.map((t) => t.id);
   const idList = teamIds.join(",");
 
+  type RosterMatchupRow = Pick<
+    Matchup,
+    "id" | "year" | "week" | "home_team_id" | "away_team_id"
+  >;
   const { data: msRaw } = await supabase
     .from("matchups")
     .select("id, year, week, home_team_id, away_team_id")
     .or(`home_team_id.in.(${idList}),away_team_id.in.(${idList})`);
-  const matchups = (msRaw as Matchup[]) ?? [];
+  const matchups = (msRaw as RosterMatchupRow[] | null) ?? [];
   if (matchups.length === 0) return { byYear: [], topScorers: [] };
 
   const idSet = new Set(teamIds);
@@ -2795,7 +2840,11 @@ export type UpcomingMatch = {
   week: number;
   isHome: boolean;
   opponent: Team | null;
+  /** The week is over and this is a settled result. */
   played: boolean;
+  /** Scoring right now: real points on the board, but the week isn't done, so
+   *  this is shown live and left out of the record. */
+  live: boolean;
   teamScore: number;
   oppScore: number;
   teamProjected: number | null;
@@ -2847,8 +2896,13 @@ async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
     away_score: number | null;
     home_projected: number | null;
     away_projected: number | null;
+    final: boolean;
   };
-  const rows = (mRes.data ?? []) as MRow[];
+  const liveFrom = firstUnfinishedWeek(active);
+  const rows = ((mRes.data ?? []) as Omit<MRow, "final">[]).map((m) => ({
+    ...m,
+    final: m.week < liveFrom,
+  }));
 
   const st = buildStandings(teams, rows as unknown as Matchup[]);
   const mine = st.find((s) => s.team.id === team.id) ?? null;
@@ -2861,12 +2915,14 @@ async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
     const oppId = isHome ? m.away_team_id : m.home_team_id;
     const hs = Number(m.home_score ?? 0);
     const as = Number(m.away_score ?? 0);
+    const scoring = hs !== 0 || as !== 0;
     return {
       matchupId: m.id,
       week: m.week,
       isHome,
       opponent: teamById.get(oppId) ?? null,
-      played: hs !== 0 || as !== 0,
+      played: m.final && scoring,
+      live: !m.final && scoring,
       teamScore: isHome ? hs : as,
       oppScore: isHome ? as : hs,
       teamProjected:
@@ -2884,6 +2940,7 @@ async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
     .filter((m) => m.home_team_id === team.id || m.away_team_id === team.id)
     .map(toUM);
   const upcoming = myMatchups.filter((m) => !m.played).slice(0, 3);
+  // (a live week sorts into `upcoming` — it has no settled result yet)
   const played = myMatchups.filter((m) => m.played);
   const lastResult = played.length ? played[played.length - 1] : null;
 
@@ -2891,7 +2948,7 @@ async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
     year,
     team,
     record,
-    rank: mine?.rank ?? null,
+    rank: mine && gamesPlayed(mine) > 0 ? mine.rank : null,
     teamCount: teams.length,
     upcoming,
     lastResult,

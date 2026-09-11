@@ -150,6 +150,12 @@ export default async function YearStatsPage({
       ? await getYearPerformance(year)
       : null;
 
+  // Nothing has finished yet: every team is 0-0 with no points, so the fraud
+  // table would be ten identical rows. Say so instead.
+  const noCompletedGames =
+    stats.fraud.length > 0 &&
+    stats.fraud.every((f) => f.wins + f.losses + f.ties === 0);
+
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
       active
@@ -202,49 +208,56 @@ export default async function YearStatsPage({
             scored and an easy schedule (low points against) means a higher
             score. Regular season only.
           </p>
-          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-4 py-3 font-medium">#</th>
-                  <th className="px-4 py-3 font-medium">Team</th>
-                  <th className="px-4 py-3 text-right font-medium">Record</th>
-                  <th className="px-4 py-3 text-right font-medium">PF</th>
-                  <th className="px-4 py-3 text-right font-medium">PA</th>
-                  <th className="px-4 py-3 text-right font-medium">
-                    Fraud Score
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.fraud.map((f, i) => (
-                  <tr
-                    key={f.team.id}
-                    className={`border-b border-border/60 last:border-0 ${
-                      myEspnId === f.team.espn_id ? "bg-accent/10" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
-                    <td className="px-4 py-3 font-medium">
-                      <TeamCell team={f.team} highlightEspnId={myEspnId} />
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      {f.record}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      {f.pointsFor.toFixed(1)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted">
-                      {f.pointsAgainst.toFixed(1)}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold tabular-nums">
-                      {f.fraudScore.toFixed(1)}
-                    </td>
+          {noCompletedGames ? (
+            <p className="text-sm text-muted">
+              No completed weeks yet this season — records start once a week
+              finishes.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+              <table className="w-full min-w-[36rem] text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="px-4 py-3 font-medium">#</th>
+                    <th className="px-4 py-3 font-medium">Team</th>
+                    <th className="px-4 py-3 text-right font-medium">Record</th>
+                    <th className="px-4 py-3 text-right font-medium">PF</th>
+                    <th className="px-4 py-3 text-right font-medium">PA</th>
+                    <th className="px-4 py-3 text-right font-medium">
+                      Fraud Score
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {stats.fraud.map((f, i) => (
+                    <tr
+                      key={f.team.id}
+                      className={`border-b border-border/60 last:border-0 ${
+                        myEspnId === f.team.espn_id ? "bg-accent/10" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <TeamCell team={f.team} highlightEspnId={myEspnId} />
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {f.record}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {f.pointsFor.toFixed(1)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted">
+                        {f.pointsAgainst.toFixed(1)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold tabular-nums">
+                        {f.fraudScore.toFixed(1)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 

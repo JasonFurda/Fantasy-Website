@@ -34,10 +34,16 @@ function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
         </div>
       </div>
       <div className="shrink-0 text-right">
-        {m.played ? (
+        {m.played || m.live ? (
           <div className="tabular-nums text-sm font-semibold">
             {m.teamScore.toFixed(1)}
             <span className="text-muted"> – {m.oppScore.toFixed(1)}</span>
+            {/* Still scoring, so it's shown but doesn't count in the record. */}
+            {m.live && (
+              <span className="ml-1.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-accent">
+                live
+              </span>
+            )}
           </div>
         ) : m.teamProjected != null && m.teamProjected > 0 ? (
           <div className="text-xs tabular-nums text-muted">
