@@ -101,6 +101,7 @@ export default async function PlayerComparisonsPage({
             <Link
               key={y}
               href={`/player-comparisons?year=${y}&pos=${posDef.key}`}
+              prefetch={false}
               className={tabCls(y === year)}
             >
               {y}
@@ -114,6 +115,7 @@ export default async function PlayerComparisonsPage({
           <Link
             key={p.key}
             href={`/player-comparisons?year=${year}&pos=${p.key}`}
+            prefetch={false}
             className={tabCls(!isDraft && p.key === posDef.key)}
           >
             {p.label}
@@ -121,6 +123,7 @@ export default async function PlayerComparisonsPage({
         ))}
         <Link
           href={`/player-comparisons?year=${year}&pos=draft`}
+          prefetch={false}
           className={tabCls(isDraft)}
         >
           Draft Value
@@ -173,6 +176,7 @@ export default async function PlayerComparisonsPage({
                     <td className="px-3 py-2 font-medium whitespace-nowrap">
                       <Link
                         href={`/player-comparisons?year=${year}&pos=draft&player=${encodeURIComponent(r.name)}`}
+                        prefetch={false}
                         scroll={false}
                         className="hover:text-accent hover:underline"
                       >

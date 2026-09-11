@@ -105,6 +105,7 @@ function GameTable({
               <td className="px-4 py-3 text-right">
                 <Link
                   href={`/matchups?year=${g.year}&week=${g.week}&m=${g.matchupId}`}
+                  prefetch={false}
                   className="text-xs text-muted hover:text-foreground"
                 >
                   View →
@@ -165,6 +166,7 @@ export default async function YearStatsPage({
             <Link
               key={y}
               href={`/year-stats?year=${y}&tab=${tab}`}
+              prefetch={false}
               className={tabCls(!isAllTime && y === year)}
             >
               {y}
@@ -172,6 +174,7 @@ export default async function YearStatsPage({
           ))}
           <Link
             href={`/year-stats?year=all&tab=${tab}`}
+            prefetch={false}
             className={tabCls(isAllTime)}
           >
             All-time
@@ -184,6 +187,7 @@ export default async function YearStatsPage({
           <Link
             key={t.key}
             href={`/year-stats?year=${isAllTime ? "all" : year}&tab=${t.key}`}
+            prefetch={false}
             className={tabCls(t.key === tab)}
           >
             {t.label}

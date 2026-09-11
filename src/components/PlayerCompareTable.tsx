@@ -193,8 +193,14 @@ export default function PlayerCompareTable({
             >
               <td className="px-3 py-2 text-muted tabular-nums">{i + 1}</td>
               <td className="px-3 py-2 font-medium whitespace-nowrap">
+                {/* prefetch={false} matters here: /player-comparisons is
+                    dynamic, so Next would server-render the whole page once per
+                    row scrolled into view — hundreds of renders per visit, which
+                    is what burned through the Vercel CPU allowance. Keep it off
+                    for every query-string link into a dynamic data page. */}
                 <Link
                   href={`/player-comparisons?year=${year}&pos=${posKey}&player=${encodeURIComponent(r.name)}`}
+                  prefetch={false}
                   scroll={false}
                   className="hover:text-accent hover:underline"
                 >

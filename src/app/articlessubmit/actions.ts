@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createArticle } from "@/lib/articles";
 import { TITLE_MAX, AUTHOR_MAX, BODY_MAX } from "@/lib/article-format";
 
@@ -35,6 +36,11 @@ export async function submitArticle(
 
   try {
     const slug = await createArticle({ title, author, body });
+    // /articles and the homepage feed are statically cached, so push the new
+    // post out now instead of waiting for the ISR window to lapse.
+    revalidatePath("/articles");
+    revalidatePath(`/articles/${slug}`);
+    revalidatePath("/");
     return { ok: true, message: "Published.", slug };
   } catch (e) {
     return {

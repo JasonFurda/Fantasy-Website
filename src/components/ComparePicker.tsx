@@ -53,6 +53,7 @@ export default function ComparePicker({
               <li key={p.name}>
                 <Link
                   href={hrefFor(p.name)}
+                  prefetch={false}
                   scroll={false}
                   onClick={() => setOpen(false)}
                   className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-surface-2"

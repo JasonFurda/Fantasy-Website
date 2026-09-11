@@ -60,6 +60,7 @@ export default function WeekOptimalRoster({
                   {playerHref ? (
                     <Link
                       href={playerHref(p.playerName)}
+                      prefetch={false}
                       scroll={false}
                       className="hover:text-accent hover:underline"
                     >

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getArticleBySlug } from "@/lib/articles";
+import { getArticleBySlug, getArticles } from "@/lib/articles";
 import {
   articleDate,
   excerpt,
@@ -9,7 +9,17 @@ import {
   readMinutes,
 } from "@/lib/article-format";
 
-export const dynamic = "force-dynamic";
+// Static + ISR: Vercel's CDN serves this page without invoking a function.
+// Publishing an article calls revalidatePath(), so new posts still appear
+// immediately rather than waiting out the hour.
+export const revalidate = 3600;
+
+/** Prerender the articles that exist at build time; anything published later
+ *  renders on demand, then gets cached (and revalidatePath'd on publish). */
+export async function generateStaticParams() {
+  const articles = await getArticles();
+  return articles.map((a) => ({ slug: a.slug }));
+}
 
 export async function generateMetadata({
   params,

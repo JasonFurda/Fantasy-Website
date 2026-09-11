@@ -36,6 +36,7 @@ function PlayerLink({ name, year }: { name: string; year: number }) {
   return (
     <Link
       href={`/player-comparisons?year=${year}&pos=draft&player=${encodeURIComponent(name)}`}
+      prefetch={false}
       className="hover:text-accent hover:underline"
     >
       {name}
@@ -127,6 +128,7 @@ export default async function DraftRecapPage({
             <Link
               key={y}
               href={`/draft-recap?year=${y}`}
+              prefetch={false}
               className={tabCls(y === year)}
             >
               {y}
@@ -145,6 +147,7 @@ export default async function DraftRecapPage({
             Value = (total points)² × √(draft position) — the same number the{" "}
             <Link
               href={`/player-comparisons?year=${year}&pos=draft`}
+              prefetch={false}
               className="text-accent hover:underline"
             >
               Draft Value

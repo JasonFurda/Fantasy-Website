@@ -161,6 +161,7 @@ function PlayerPanel({
             <Link
               key={s.year}
               href={yearHref(s.year)}
+              prefetch={false}
               scroll={false}
               className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
                 s.year === d.year
@@ -215,6 +216,7 @@ export default function PlayerCompareModal({
     <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6">
       <Link
         href={closeHref}
+        prefetch={false}
         scroll={false}
         aria-label="Close"
         className="absolute inset-0 bg-black/60"
@@ -226,6 +228,7 @@ export default function PlayerCompareModal({
           </h2>
           <Link
             href={closeHref}
+            prefetch={false}
             scroll={false}
             aria-label="Close"
             className="rounded-md px-2 py-1 text-muted hover:bg-surface-2 hover:text-foreground"

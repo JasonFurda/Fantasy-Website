@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import { getArticles } from "@/lib/articles";
 import { articleDate, excerpt, readMinutes } from "@/lib/article-format";
 
-export const dynamic = "force-dynamic";
+// Static + ISR: Vercel's CDN serves this page without invoking a function.
+// Publishing an article calls revalidatePath(), so new posts still appear
+// immediately rather than waiting out the hour.
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: "Articles · Chamoms Fantasy",

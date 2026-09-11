@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useMyTeamEspnId } from "@/lib/my-team-client";
 
 export type WheelTeam = {
   espnId: number;
@@ -20,18 +21,15 @@ export type WheelTeam = {
 const IDLE_SPEED = 0.08; // deg per frame before any selection
 const RADIUS = 185; // px — controls how tightly the names stack
 
-export default function TeamWheel({
-  teams,
-  highlightEspnId,
-}: {
-  teams: WheelTeam[];
-  highlightEspnId?: number | null;
-}) {
+export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
   const n = teams.length;
   const step = n > 0 ? 360 / n : 0;
 
-  // The wheel always opens idle-spinning, even if the visitor has picked a
-  // homepage team — highlightEspnId only flags "your team" once it's selected.
+  // Read in the browser rather than passed down from the server, so /teams can
+  // stay statically rendered. The wheel always opens idle-spinning even if the
+  // visitor has picked a homepage team — this only flags "your team" once it's
+  // selected.
+  const highlightEspnId = useMyTeamEspnId();
   const [rotation, setRotation] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [spinning, setSpinning] = useState(false);

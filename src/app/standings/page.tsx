@@ -76,12 +76,17 @@ export default async function StandingsPage({
             <Link
               key={y}
               href={`/standings?year=${y}`}
+              prefetch={false}
               className={tabClass(!isAllTime && y === selectedYear)}
             >
               {y}
             </Link>
           ))}
-          <Link href="/standings?year=all" className={tabClass(isAllTime)}>
+          <Link
+            href="/standings?year=all"
+            prefetch={false}
+            className={tabClass(isAllTime)}
+          >
             All-time
           </Link>
         </nav>

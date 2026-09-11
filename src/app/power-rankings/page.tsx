@@ -93,7 +93,12 @@ export default async function PowerRankingsPage({
         <h1 className="text-2xl font-bold tracking-tight">Power Rankings</h1>
         <nav className="flex gap-1 rounded-lg border border-border bg-surface p-1">
           {years.map((y) => (
-            <Link key={y} href={yearQ(y)} className={tabCls(y === year)}>
+            <Link
+              key={y}
+              href={yearQ(y)}
+              prefetch={false}
+              className={tabCls(y === year)}
+            >
               {y}
             </Link>
           ))}
@@ -104,12 +109,14 @@ export default async function PowerRankingsPage({
       <div className="mb-6 inline-flex gap-1 rounded-lg border border-border bg-surface p-1">
         <Link
           href={`/power-rankings?year=${year}`}
+          prefetch={false}
           className={tabCls(view === "power")}
         >
           Overall
         </Link>
         <Link
           href={`/power-rankings?year=${year}&view=positions&pos=${posDef.key}`}
+          prefetch={false}
           className={tabCls(view === "positions")}
         >
           Positional Strength
@@ -250,6 +257,7 @@ async function PositionRankings({
           <Link
             key={g.key}
             href={`/power-rankings?year=${year}&view=positions&pos=${g.key}`}
+            prefetch={false}
             className={tabCls(g.key === (group?.key ?? posKey))}
           >
             {g.label}

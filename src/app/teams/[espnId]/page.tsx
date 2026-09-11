@@ -5,12 +5,22 @@ import {
   getFranchise,
   getFranchiseRoster,
   getFranchiseHeadToHead,
+  getFranchiseSummaries,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
 import { championshipsFor } from "@/lib/league-config";
 import RosterByYear from "@/components/RosterByYear";
 
-export const dynamic = "force-dynamic";
+// Static + ISR: franchise data only changes when the daily ESPN sync runs, so
+// Vercel's CDN serves this page without invoking a function at all.
+export const revalidate = 3600;
+
+/** Prerender every franchise at build time so these pages are served from the
+ *  CDN. An espn_id that shows up later still renders on demand and is cached. */
+export async function generateStaticParams() {
+  const franchises = await getFranchiseSummaries();
+  return franchises.map((f) => ({ espnId: String(f.espnId) }));
+}
 
 function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];

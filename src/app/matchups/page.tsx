@@ -142,12 +142,14 @@ export default async function MatchupsPage({
         <div className="mt-5 inline-flex gap-1 rounded-lg border border-border bg-surface p-1">
           <Link
             href={`/matchups?year=${year}&week=${week}`}
+            prefetch={false}
             className={tab(view === "matchups")}
           >
             Matchups
           </Link>
           <Link
             href={`/matchups?year=${year}&week=${week}&view=optimal`}
+            prefetch={false}
             className={tab(view === "optimal")}
           >
             Optimal Roster
@@ -164,6 +166,7 @@ export default async function MatchupsPage({
               <Link
                 key={y}
                 href={`/matchups?year=${y}${viewQ}`}
+                prefetch={false}
                 className={tab(y === year)}
               >
                 {y}
@@ -182,6 +185,7 @@ export default async function MatchupsPage({
               <Link
                 key={w}
                 href={`/matchups?year=${year}&week=${w}${viewQ}`}
+                prefetch={false}
                 className={tab(w === week)}
               >
                 {w}
@@ -206,6 +210,7 @@ export default async function MatchupsPage({
                   <Link
                     key={m.id}
                     href={`/matchups?year=${year}&week=${week}&m=${m.id}`}
+                    prefetch={false}
                     className={`rounded-xl border p-3 transition-colors ${
                       active
                         ? "border-accent bg-surface-2"

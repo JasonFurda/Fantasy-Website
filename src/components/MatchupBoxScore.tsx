@@ -39,6 +39,7 @@ function PlayerName({
   const name = href ? (
     <Link
       href={href}
+      prefetch={false}
       scroll={false}
       className="hover:text-accent hover:underline"
     >
