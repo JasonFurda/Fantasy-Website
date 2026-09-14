@@ -270,7 +270,9 @@ async function PositionRankings({
           <p className="mb-4 text-sm text-muted">
             Teams ranked by their best {group.count} {group.label}
             {group.count > 1 ? "s" : ""} —{" "}
-            {data.preseason ? "by projected points" : "by total points scored"}.
+            {data.preseason
+              ? "by projected points."
+              : "by total points scored. Anyone the team rostered counts, bench weeks included."}
           </p>
 
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">

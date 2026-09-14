@@ -30,3 +30,17 @@ jobs:
           ESPN_LEAGUE_ID: ${{ secrets.ESPN_LEAGUE_ID }}
           ESPN_S2: ${{ secrets.ESPN_S2 }}
           ESPN_SWID: ${{ secrets.ESPN_SWID }}
+
+      # The site caches every Supabase read for an hour, and each read expires
+      # on its own clock — so without this, pages disagree about the score for
+      # up to an hour after a sync. One POST drops the whole cache at once.
+      - name: Clear the site's read cache
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$REVALIDATE_SECRET" ]; then
+            echo "SITE_URL / REVALIDATE_SECRET not set - skipping cache clear."
+            exit 0
+          fi
+          curl -fsS -X POST -H "Authorization: Bearer $REVALIDATE_SECRET" "${SITE_URL%/}/api/revalidate"

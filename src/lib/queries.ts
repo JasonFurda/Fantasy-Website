@@ -2082,10 +2082,13 @@ export const POSITION_STRENGTH_DEFS = [
  * Ranks every team by positional depth: for each position, sum each team's best
  * N players at that spot (N per POSITION_STRENGTH_DEFS). Uses total points once
  * games are played; before then (preseason) uses projected points.
+ *
+ * Eligibility is "did this team ever roster the player" — bench and IR weeks
+ * count the same as starts, so a stashed breakout still shows up as depth.
  */
 export const getPositionStrength = cached(
   getPositionStrengthImpl,
-  "getPositionStrength-v2",
+  "getPositionStrength-v3",
 );
 async function getPositionStrengthImpl(
   year: number,
@@ -2108,7 +2111,6 @@ async function getPositionStrengthImpl(
     position: string | null;
     points: number | null;
     projected: number | null;
-    is_bench: boolean | null;
   };
   const rows: SlotQ[] = [];
   const CHUNK = 20;
@@ -2119,7 +2121,7 @@ async function getPositionStrengthImpl(
       supabase
         .from("player_slots")
         .select(
-          "matchup_id, team_side, player_name, position, points, projected, is_bench",
+          "matchup_id, team_side, player_name, position, points, projected",
         )
         .in("matchup_id", chunk),
     ),
@@ -2174,12 +2176,13 @@ async function getPositionStrengthImpl(
   }
 
   // currentRoster: tid -> name -> {pos, projected}  (latest-week lineup)
-  // startedFor:    tid -> name -> pos  (players who STARTED ≥1 for the team)
+  // rosteredFor:   tid -> name -> pos  (every player the team rostered at any
+  //                point this season — bench and IR weeks count as rostered)
   const currentRoster = new Map<
     number,
     Map<string, { pos: string; projected: number }>
   >();
-  const startedFor = new Map<number, Map<string, string>>();
+  const rosteredFor = new Map<number, Map<string, string>>();
   for (const r of rows) {
     const sides = sideOf.get(r.matchup_id);
     if (!sides) continue;
@@ -2195,44 +2198,35 @@ async function getPositionStrengthImpl(
         projected: Number(r.projected ?? 0),
       });
     }
-    if (!r.is_bench) {
-      let sm = startedFor.get(tid);
-      if (!sm) {
-        sm = new Map();
-        startedFor.set(tid, sm);
-      }
-      if (!sm.has(r.player_name)) sm.set(r.player_name, r.position ?? "");
+    let sm = rosteredFor.get(tid);
+    if (!sm) {
+      sm = new Map();
+      rosteredFor.set(tid, sm);
     }
+    // Keep the first non-empty position seen for the player.
+    if (!sm.get(r.player_name)) sm.set(r.player_name, r.position ?? "");
   }
 
   const teamIds = new Set<number>([
     ...currentRoster.keys(),
-    ...startedFor.keys(),
+    ...rosteredFor.keys(),
   ]);
-  // For skill positions in a played season, a player counts for a team only if
-  // they actually started for it at least once (not just current-roster
-  // depth). QB/K/D-ST and the preseason use the current roster.
-  const SKILL = new Set(["WR", "RB", "TE"]);
 
   const groups: PositionGroup[] = POSITION_STRENGTH_DEFS.map((def) => {
-    const useStarted = !preseason && SKILL.has(def.pos);
     const posRows: PositionStrengthRow[] = [];
     for (const tid of teamIds) {
       const team = teamById.get(tid);
       if (!team) continue;
-      let candidates: { name: string; value: number }[];
-      if (useStarted) {
-        candidates = [...(startedFor.get(tid) ?? new Map()).entries()]
-          .filter(([, pos]) => pos === def.pos)
-          .map(([name]) => ({ name, value: fullYear(name) }));
-      } else {
-        candidates = [...(currentRoster.get(tid) ?? new Map()).entries()]
-          .filter(([, v]) => v.pos === def.pos)
-          .map(([name, v]) => ({
-            name,
-            value: preseason ? v.projected : fullYear(name),
-          }));
-      }
+      // Played season: everyone the team rostered is eligible — starters and
+      // bench alike — and their season points count either way. The preseason
+      // has no points yet, so it ranks the current roster on projections.
+      const candidates: { name: string; value: number }[] = preseason
+        ? [...(currentRoster.get(tid)?.entries() ?? [])]
+            .filter(([, v]) => v.pos === def.pos)
+            .map(([name, v]) => ({ name, value: v.projected }))
+        : [...(rosteredFor.get(tid)?.entries() ?? [])]
+            .filter(([, pos]) => pos === def.pos)
+            .map(([name]) => ({ name, value: fullYear(name) }));
       const players = candidates
         .sort((a, b) => b.value - a.value)
         .slice(0, def.count);
