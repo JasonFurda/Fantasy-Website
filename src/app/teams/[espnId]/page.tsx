@@ -7,8 +7,7 @@ import {
   getFranchiseHeadToHead,
   getFranchiseSummaries,
 } from "@/lib/queries";
-import { teamColor, teamArt } from "@/lib/teams-config";
-import { PORTRAIT_EDGE_FADE } from "@/components/TeamArt";
+import { teamColor, teamArt, teamArtFocus } from "@/lib/teams-config";
 import { championshipsFor } from "@/lib/league-config";
 import RosterByYear from "@/components/RosterByYear";
 
@@ -82,31 +81,17 @@ export default async function TeamPage({
       {/* Hero */}
       <header className="relative h-[70vh] min-h-[420px] w-full overflow-hidden">
         {art ? (
-          // Team art is portrait. Phones: a top-anchored crop fills the hero.
-          // Wider screens: a blurred copy fills it and the full piece stands
-          // uncropped on the right, opposite the team name.
-          <>
-            <Image
-              src={art}
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-top md:scale-110 md:opacity-40 md:blur-2xl"
-            />
-            <div
-              className="absolute inset-y-0 hidden aspect-[9/16] md:block"
-              style={{
-                right: "max(1.5rem, calc((100vw - 64rem) / 2))",
-                maskImage: PORTRAIT_EDGE_FADE,
-                WebkitMaskImage: PORTRAIT_EDGE_FADE,
-                maskComposite: "intersect",
-                WebkitMaskComposite: "source-in",
-              }}
-            >
-              <Image src={art} alt="" fill priority sizes="600px" className="object-cover object-top" />
-            </div>
-          </>
+          // Full-bleed across the screen. Portrait art gets cropped hard on
+          // wide screens, so each team's `artFocus` picks which band shows.
+          <Image
+            src={art}
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover"
+            style={{ objectPosition: teamArtFocus(espnId) }}
+          />
         ) : (
           <div
             className="h-full w-full"

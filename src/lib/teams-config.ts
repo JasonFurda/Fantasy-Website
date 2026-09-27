@@ -11,6 +11,10 @@
 export type TeamMeta = {
   color: string; // hex; the franchise's signature color
   art?: string; // path under /public to the team's art (placeholder used if absent)
+  /** CSS object-position for the full-width team-page banner, which only has
+   *  room for a horizontal band of a portrait piece. "50% 0%" = top, "50% 50%"
+   *  = middle. Aim it at the face. Defaults to "50% 25%". */
+  artFocus?: string;
 };
 
 // Real team art is PORTRAIT (~9:16) and lives in /public/team-art — kept apart
@@ -26,7 +30,7 @@ export const teamMeta: Record<number, TeamMeta> = {
   7: { color: "#ffb7c5", art: "/art/me-v-sauce.png" }, // sauc3 — Sauce — sakura pink
   10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — gold
   11: { color: "#14b8a6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — teal
-  12: { color: "#228b22", art: "/team-art/maltbys-mans.webp" }, // DraymondGreen…  — Maltby's Mans — forest green
+  12: { color: "#228b22", art: "/team-art/maltbys-mans.webp", artFocus: "50% 12%" }, // DraymondGreen…  — Maltby's Mans — forest green
   13: { color: "#c0c0c0" }, // ESPNfan7205…  — Chathamite — silver
 };
 
@@ -48,4 +52,8 @@ export function teamColor(espnId: number): string {
 
 export function teamArt(espnId: number): string | null {
   return teamMeta[espnId]?.art ?? null;
+}
+
+export function teamArtFocus(espnId: number): string {
+  return teamMeta[espnId]?.artFocus ?? "50% 25%";
 }
