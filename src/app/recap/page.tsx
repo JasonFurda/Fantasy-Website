@@ -35,13 +35,16 @@ function TeamName({
     <Link
       href={`/teams/${team.espn_id}`}
       prefetch={false}
-      className={`flex min-w-0 items-center gap-2 hover:underline ${className}`}
+      className={`flex min-w-0 items-start gap-2 hover:underline ${className}`}
     >
       <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        className="mt-[0.4em] h-2.5 w-2.5 shrink-0 rounded-full"
         style={{ backgroundColor: teamColor(team.espn_id) }}
       />
-      <span className={`truncate ${mine ? "text-accent" : ""}`}>{team.name.trim()}</span>
+      {/* Wrap long names instead of truncating — they're the point of the page. */}
+      <span className={`min-w-0 break-words ${mine ? "text-accent" : ""}`}>
+        {team.name.trim()}
+      </span>
     </Link>
   );
 }
@@ -93,7 +96,7 @@ function AwardCard({
       <ul className={`mt-2 ${tie ? "space-y-3" : ""}`}>
         {winners.map((w) => (
           <li key={w.team.id}>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <TeamName
                 team={w.team}
                 mine={myEspnId === w.team.espn_id}
@@ -102,7 +105,7 @@ function AwardCard({
               <Link
                 href={`/matchups?year=${year}&week=${week}&m=${w.matchupId}`}
                 prefetch={false}
-                className="shrink-0 text-xs font-medium text-accent hover:underline"
+                className="shrink-0 pt-1.5 text-xs font-medium text-accent hover:underline"
               >
                 Matchup →
               </Link>
@@ -121,7 +124,7 @@ function AwardCard({
           </div>
           <ol className="space-y-1">
             {award.runnersUp.map((r) => (
-              <li key={r.team.id} className="flex items-center justify-between gap-3 text-sm">
+              <li key={r.team.id} className="flex items-start justify-between gap-3 text-sm">
                 <TeamName team={r.team} mine={myEspnId === r.team.espn_id} />
                 <span className="shrink-0 tabular-nums text-muted">
                   {describeAward(award.key, r).stat}
@@ -275,7 +278,7 @@ export default async function RecapPage({
                   key={e.team.id}
                   className={`border-b border-border/60 last:border-0 ${mine ? "bg-accent/10" : ""}`}
                 >
-                  <td className="px-4 py-3 font-medium">
+                  <td className="whitespace-nowrap px-4 py-3 font-medium">
                     <TeamName team={e.team} mine={mine} />
                   </td>
                   <td className="px-4 py-3 text-right font-bold tabular-nums">

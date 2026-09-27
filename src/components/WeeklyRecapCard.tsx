@@ -86,20 +86,25 @@ export default function WeeklyRecapCard({
 
       <ul className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
         {recap.awards.map((a) => (
-          <li key={a.key} className="flex items-start gap-2 text-sm">
-            <span className="w-40 shrink-0 pt-0.5 text-xs uppercase tracking-wide text-muted">
+          // Phones stack the label over the names; wider screens put them side
+          // by side. Names wrap rather than truncate so they're always readable.
+          <li
+            key={a.key}
+            className="flex min-w-0 flex-col gap-0.5 text-sm sm:flex-row sm:items-start sm:gap-2"
+          >
+            <span className="text-xs uppercase tracking-wide text-muted sm:w-40 sm:shrink-0 sm:pt-0.5">
               {a.label}
               {a.winners.length > 1 && " (tie)"}
             </span>
             <span className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5">
               {a.winners.map((w) => (
-                <span key={w.team.id} className="flex min-w-0 items-center gap-2">
+                <span key={w.team.id} className="flex min-w-0 items-start gap-2">
                   <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    className="mt-[0.4em] h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: teamColor(w.team.espn_id) }}
                   />
                   <span
-                    className={`truncate font-medium ${
+                    className={`min-w-0 break-words font-medium ${
                       highlightEspnId === w.team.espn_id ? "text-accent" : ""
                     }`}
                   >
