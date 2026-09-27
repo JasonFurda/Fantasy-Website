@@ -868,6 +868,7 @@ export type WeeklyRecapAward = {
   label: string;
   entry: RecapTeamWeek;
   others: number; // other teams tied on the same value (e.g. several at 100%)
+  runnersUp: RecapTeamWeek[]; // the next two in line
 };
 
 export type WeeklyRecap = {
@@ -875,6 +876,8 @@ export type WeeklyRecap = {
   week: number;
   isPlayoff: boolean;
   awards: WeeklyRecapAward[];
+  entries: RecapTeamWeek[]; // every team that played, highest score first
+  finishedWeeks: number[]; // this season's recappable weeks, ascending
 };
 
 /** Superlatives for the most recently FINISHED week (the live week never
@@ -882,7 +885,7 @@ export type WeeklyRecap = {
  *  one hasn't finished a week yet. Efficiency uses the same optimal-lineup
  *  math as the Mismanagement tab; projections are the pre-game ones (see
  *  getProjectedDiff for why that only holds for finished weeks). */
-export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap");
+export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap-v3");
 async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
   const seasons = await getSeasons(); // newest first
   for (const season of seasons) {
@@ -892,7 +895,13 @@ async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
   return null;
 }
 
-async function weeklyRecapFor(year: number): Promise<WeeklyRecap | null> {
+/** The recap for one specific week; null if that week hasn't finished. */
+export const getWeeklyRecapFor = cached(weeklyRecapFor, "getWeeklyRecapFor-v2");
+
+async function weeklyRecapFor(
+  year: number,
+  requestedWeek?: number,
+): Promise<WeeklyRecap | null> {
   const [seasons, teams, res] = await Promise.all([
     getSeasons(),
     getTeams(year),
@@ -912,7 +921,9 @@ async function weeklyRecapFor(year: number): Promise<WeeklyRecap | null> {
     .map((m) => ({ ...m, final: m.week < liveFrom }))
     .filter(isPlayed);
   if (played.length === 0) return null;
-  const week = Math.max(...played.map((m) => m.week));
+  const finishedWeeks = [...new Set(played.map((m) => m.week))].sort((a, b) => a - b);
+  const week = requestedWeek ?? finishedWeeks[finishedWeeks.length - 1];
+  if (!finishedWeeks.includes(week)) return null;
   const weekGames = played.filter((m) => m.week === week);
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
 
@@ -986,7 +997,7 @@ async function weeklyRecapFor(year: number): Promise<WeeklyRecap | null> {
     );
     const top = value(sorted[0]);
     const others = sorted.filter((e) => Math.abs(value(e) - top) < 0.05).length - 1;
-    return { key, label, entry: sorted[0], others };
+    return { key, label, entry: sorted[0], others, runnersUp: sorted.slice(1, 3) };
   };
   const withProj = entries.filter((e) => e.projected > 0);
   const awards = [
@@ -998,7 +1009,14 @@ async function weeklyRecapFor(year: number): Promise<WeeklyRecap | null> {
     pick("under", "Under achiever", withProj, (e) => e.projected - e.score),
   ].filter((a): a is WeeklyRecapAward => a != null);
 
-  return { year, week, isPlayoff: isPlayoffWeek(year, week), awards };
+  return {
+    year,
+    week,
+    isPlayoff: isPlayoffWeek(year, week),
+    awards,
+    entries: [...entries].sort((a, b) => b.score - a.score),
+    finishedWeeks,
+  };
 }
 
 export type PlayerCompRow = {

@@ -2,12 +2,19 @@ import Link from "next/link";
 import type { WeeklyRecap, WeeklyRecapAward } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 
+export function recapHref(r: { year: number; week: number }): string {
+  return `/recap?year=${r.year}&week=${r.week}`;
+}
+
 /** Headline number + a one-line explanation for each award. */
-function describe(a: WeeklyRecapAward): { stat: string; tone: "good" | "bad"; detail: string } {
+export function describeAward(a: WeeklyRecapAward): {
+  stat: string;
+  tone: "good" | "bad";
+  detail: string;
+} {
   const e = a.entry;
   const opp = e.opponent?.name.trim() ?? "their opponent";
   const vs = `${e.score.toFixed(1)} – ${e.oppScore.toFixed(1)} vs ${opp}`;
-  const left = e.pointsLeft;
   const diff = e.score - e.projected;
   switch (a.key) {
     case "efficient":
@@ -15,15 +22,15 @@ function describe(a: WeeklyRecapAward): { stat: string; tone: "good" | "bad"; de
         stat: `${e.pctOptimal.toFixed(1)}%`,
         tone: "good",
         detail:
-          left < 0.05
+          e.pointsLeft < 0.05
             ? "Perfect lineup — nothing left on the bench"
-            : `of optimal · ${left.toFixed(1)} pts left on the bench`,
+            : `of optimal · ${e.pointsLeft.toFixed(1)} pts left on the bench`,
       };
     case "inefficient":
       return {
         stat: `${e.pctOptimal.toFixed(1)}%`,
         tone: "bad",
-        detail: `of optimal · ${left.toFixed(1)} pts left on the bench`,
+        detail: `of optimal · ${e.pointsLeft.toFixed(1)} pts left on the bench`,
       };
     case "fraudWin":
       return { stat: e.score.toFixed(1), tone: "bad", detail: `Won ${vs}` };
@@ -38,8 +45,8 @@ function describe(a: WeeklyRecapAward): { stat: string; tone: "good" | "bad"; de
   }
 }
 
-/** "Last week" superlatives for the homepage. Renders nothing without a
- *  finished week to recap. */
+/** Homepage teaser: who won each award last week, clicking through to the
+ *  full recap. Renders nothing without a finished week. */
 export default function WeeklyRecapCard({
   recap,
   highlightEspnId,
@@ -50,69 +57,49 @@ export default function WeeklyRecapCard({
   if (!recap || recap.awards.length === 0) return null;
 
   return (
-    <section className="mt-10">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-          Weekly recap · {recap.year} week {recap.week}
-          {recap.isPlayoff && " (playoffs)"}
-        </h2>
-        <Link
-          href={`/matchups?year=${recap.year}&week=${recap.week}`}
-          prefetch={false}
-          className="text-xs text-accent hover:underline"
-        >
-          All matchups →
-        </Link>
+    <Link
+      href={recapHref(recap)}
+      prefetch={false}
+      className="group mt-10 block rounded-2xl border border-border bg-surface p-5 transition-colors hover:border-accent hover:bg-surface-2"
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold uppercase tracking-wide text-muted">
+            Weekly recap
+          </div>
+          <h2 className="text-xl font-bold tracking-tight">
+            {recap.year} Week {recap.week}
+            {recap.isPlayoff && (
+              <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-wide text-accent">
+                playoffs
+              </span>
+            )}
+          </h2>
+        </div>
+        <span className="text-sm font-semibold text-accent group-hover:underline">
+          Read the full recap →
+        </span>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+      <ul className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
         {recap.awards.map((a) => {
-          const { stat, tone, detail } = describe(a);
-          const color = teamColor(a.entry.team.espn_id);
           const mine = highlightEspnId === a.entry.team.espn_id;
           return (
-            <Link
-              key={a.key}
-              href={`/matchups?year=${recap.year}&week=${recap.week}&m=${a.entry.matchupId}`}
-              prefetch={false}
-              className={`flex flex-col rounded-xl border bg-surface p-4 transition-colors hover:bg-surface-2 ${
-                mine ? "border-accent" : "border-border hover:border-accent"
-              }`}
-              style={{ borderTopColor: color, borderTopWidth: 3 }}
-            >
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <li key={a.key} className="flex items-center gap-2 text-sm">
+              <span className="w-40 shrink-0 text-xs uppercase tracking-wide text-muted">
                 {a.label}
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
-                <span className="truncate font-semibold">
-                  {a.entry.team.name.trim()}
-                </span>
-                {mine && (
-                  <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-background">
-                    You
-                  </span>
-                )}
-              </div>
-              <div
-                className={`mt-1 text-2xl font-black tabular-nums ${
-                  tone === "good" ? "text-accent" : "text-red-400"
-                }`}
-              >
-                {stat}
-              </div>
-              <div className="mt-auto pt-1 text-xs leading-snug text-muted">
-                {detail}
-                {a.others > 0 &&
-                  ` · tied with ${a.others} other${a.others > 1 ? "s" : ""}`}
-              </div>
-            </Link>
+              </span>
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: teamColor(a.entry.team.espn_id) }}
+              />
+              <span className={`truncate font-medium ${mine ? "text-accent" : ""}`}>
+                {a.entry.team.name.trim()}
+              </span>
+            </li>
           );
         })}
-      </div>
-    </section>
+      </ul>
+    </Link>
   );
 }
