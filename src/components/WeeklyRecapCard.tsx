@@ -1,22 +1,25 @@
 import Link from "next/link";
-import type { WeeklyRecap, WeeklyRecapAward } from "@/lib/queries";
+import type { WeeklyRecap, RecapTeamWeek } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 
 export function recapHref(r: { year: number; week: number }): string {
   return `/recap?year=${r.year}&week=${r.week}`;
 }
 
-/** Headline number + a one-line explanation for each award. */
-export function describeAward(a: WeeklyRecapAward): {
+/** Headline number + a one-line explanation of one team's week, as measured
+ *  by the award `key`. */
+export function describeAward(
+  key: string,
+  e: RecapTeamWeek,
+): {
   stat: string;
   tone: "good" | "bad";
   detail: string;
 } {
-  const e = a.entry;
   const opp = e.opponent?.name.trim() ?? "their opponent";
   const vs = `${e.score.toFixed(1)} – ${e.oppScore.toFixed(1)} vs ${opp}`;
   const diff = e.score - e.projected;
-  switch (a.key) {
+  switch (key) {
     case "efficient":
       return {
         stat: `${e.pctOptimal.toFixed(1)}%`,
@@ -82,23 +85,31 @@ export default function WeeklyRecapCard({
       </div>
 
       <ul className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-        {recap.awards.map((a) => {
-          const mine = highlightEspnId === a.entry.team.espn_id;
-          return (
-            <li key={a.key} className="flex items-center gap-2 text-sm">
-              <span className="w-40 shrink-0 text-xs uppercase tracking-wide text-muted">
-                {a.label}
-              </span>
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: teamColor(a.entry.team.espn_id) }}
-              />
-              <span className={`truncate font-medium ${mine ? "text-accent" : ""}`}>
-                {a.entry.team.name.trim()}
-              </span>
-            </li>
-          );
-        })}
+        {recap.awards.map((a) => (
+          <li key={a.key} className="flex items-start gap-2 text-sm">
+            <span className="w-40 shrink-0 pt-0.5 text-xs uppercase tracking-wide text-muted">
+              {a.label}
+              {a.winners.length > 1 && " (tie)"}
+            </span>
+            <span className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5">
+              {a.winners.map((w) => (
+                <span key={w.team.id} className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: teamColor(w.team.espn_id) }}
+                  />
+                  <span
+                    className={`truncate font-medium ${
+                      highlightEspnId === w.team.espn_id ? "text-accent" : ""
+                    }`}
+                  >
+                    {w.team.name.trim()}
+                  </span>
+                </span>
+              ))}
+            </span>
+          </li>
+        ))}
       </ul>
     </Link>
   );

@@ -57,40 +57,62 @@ function AwardCard({
   week: number;
   myEspnId: number | null;
 }) {
-  const { stat, tone, detail } = describeAward(award);
-  const e = award.entry;
-  const color = teamColor(e.team.espn_id);
+  const { winners } = award;
+  const tie = winners.length > 1;
+  // Winners share the same value (to the 0.1 shown), so one headline number.
+  const { stat, tone } = describeAward(award.key, winners[0]);
+  const colors = winners.map((w) => teamColor(w.team.espn_id));
+  const strip =
+    colors.length === 1 ? colors[0] : `linear-gradient(to right, ${colors.join(", ")})`;
   return (
     <section
-      className="flex flex-col rounded-2xl border border-border bg-surface p-6"
+      className="relative flex flex-col overflow-hidden rounded-2xl border border-border p-6"
       style={{
-        borderTopColor: color,
-        borderTopWidth: 4,
-        background: `radial-gradient(circle at 100% 0%, ${color}1f, transparent 55%), var(--surface)`,
+        background: `radial-gradient(circle at 100% 0%, ${colors[0]}1f, transparent 55%), var(--surface)`,
       }}
     >
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+      <div className="absolute inset-x-0 top-0 h-1" style={{ background: strip }} />
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
         {award.label}
+        {tie && (
+          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-foreground">
+            {winners.length}-way tie
+          </span>
+        )}
       </div>
       <p className="mt-0.5 text-xs text-muted">{BLURBS[award.key]}</p>
 
-      <TeamName
-        team={e.team}
-        mine={myEspnId === e.team.espn_id}
-        className="mt-4 text-2xl font-black tracking-tight"
-      />
       <div
-        className={`mt-1 text-4xl font-black tabular-nums ${
+        className={`mt-4 text-4xl font-black tabular-nums ${
           tone === "good" ? "text-accent" : "text-red-400"
         }`}
       >
         {stat}
       </div>
-      <p className="mt-1 text-sm text-muted">
-        {detail}
-        {award.others > 0 &&
-          ` · tied with ${award.others} other${award.others > 1 ? "s" : ""}`}
-      </p>
+
+      <ul className={`mt-2 ${tie ? "space-y-3" : ""}`}>
+        {winners.map((w) => (
+          <li key={w.team.id}>
+            <div className="flex items-center justify-between gap-3">
+              <TeamName
+                team={w.team}
+                mine={myEspnId === w.team.espn_id}
+                className={`font-black tracking-tight ${tie ? "text-xl" : "text-2xl"}`}
+              />
+              <Link
+                href={`/matchups?year=${year}&week=${week}&m=${w.matchupId}`}
+                prefetch={false}
+                className="shrink-0 text-xs font-medium text-accent hover:underline"
+              >
+                Matchup →
+              </Link>
+            </div>
+            <p className="mt-0.5 text-sm text-muted">
+              {describeAward(award.key, w).detail}
+            </p>
+          </li>
+        ))}
+      </ul>
 
       {award.runnersUp.length > 0 && (
         <div className="mt-5 border-t border-border/60 pt-3">
@@ -102,21 +124,13 @@ function AwardCard({
               <li key={r.team.id} className="flex items-center justify-between gap-3 text-sm">
                 <TeamName team={r.team} mine={myEspnId === r.team.espn_id} />
                 <span className="shrink-0 tabular-nums text-muted">
-                  {describeAward({ ...award, entry: r }).stat}
+                  {describeAward(award.key, r).stat}
                 </span>
               </li>
             ))}
           </ol>
         </div>
       )}
-
-      <Link
-        href={`/matchups?year=${year}&week=${week}&m=${e.matchupId}`}
-        prefetch={false}
-        className="mt-auto pt-4 text-xs font-medium text-accent hover:underline"
-      >
-        View the matchup →
-      </Link>
     </section>
   );
 }

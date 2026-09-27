@@ -866,9 +866,8 @@ export type RecapTeamWeek = {
 export type WeeklyRecapAward = {
   key: string;
   label: string;
-  entry: RecapTeamWeek;
-  others: number; // other teams tied on the same value (e.g. several at 100%)
-  runnersUp: RecapTeamWeek[]; // the next two in line
+  winners: RecapTeamWeek[]; // everyone tied for the top value (often several at 100%)
+  runnersUp: RecapTeamWeek[]; // the next two after the winners
 };
 
 export type WeeklyRecap = {
@@ -885,7 +884,7 @@ export type WeeklyRecap = {
  *  one hasn't finished a week yet. Efficiency uses the same optimal-lineup
  *  math as the Mismanagement tab; projections are the pre-game ones (see
  *  getProjectedDiff for why that only holds for finished weeks). */
-export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap-v3");
+export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap-v4");
 async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
   const seasons = await getSeasons(); // newest first
   for (const season of seasons) {
@@ -896,7 +895,7 @@ async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
 }
 
 /** The recap for one specific week; null if that week hasn't finished. */
-export const getWeeklyRecapFor = cached(weeklyRecapFor, "getWeeklyRecapFor-v2");
+export const getWeeklyRecapFor = cached(weeklyRecapFor, "getWeeklyRecapFor-v3");
 
 async function weeklyRecapFor(
   year: number,
@@ -984,7 +983,9 @@ async function weeklyRecapFor(
     }
   }
 
-  // Pick the entry with the best `value` (higher = better); tiebreak on score.
+  // Everyone sharing the best `value` (higher = better) wins. Values are
+  // compared at the 0.1 precision they're displayed at, so two teams that
+  // look tied on screen are tied. Score only orders teams within a tie.
   const pick = (
     key: string,
     label: string,
@@ -992,12 +993,17 @@ async function weeklyRecapFor(
     value: (e: RecapTeamWeek) => number,
   ): WeeklyRecapAward | null => {
     if (pool.length === 0) return null;
+    const shown = (e: RecapTeamWeek) => Math.round(value(e) * 10);
     const sorted = [...pool].sort(
-      (a, b) => value(b) - value(a) || b.score - a.score,
+      (a, b) => shown(b) - shown(a) || b.score - a.score,
     );
-    const top = value(sorted[0]);
-    const others = sorted.filter((e) => Math.abs(value(e) - top) < 0.05).length - 1;
-    return { key, label, entry: sorted[0], others, runnersUp: sorted.slice(1, 3) };
+    const winners = sorted.filter((e) => shown(e) === shown(sorted[0]));
+    return {
+      key,
+      label,
+      winners,
+      runnersUp: sorted.slice(winners.length, winners.length + 2),
+    };
   };
   const withProj = entries.filter((e) => e.projected > 0);
   const awards = [
