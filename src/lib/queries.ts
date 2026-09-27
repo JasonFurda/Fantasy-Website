@@ -2221,12 +2221,14 @@ export const POSITION_STRENGTH_DEFS = [
  * N players at that spot (N per POSITION_STRENGTH_DEFS). Uses total points once
  * games are played; before then (preseason) uses projected points.
  *
- * Eligibility is "did this team ever roster the player" — bench and IR weeks
- * count the same as starts, so a stashed breakout still shows up as depth.
+ * Eligibility is "is the player on this team's roster right now" (its latest
+ * lineup, bench and IR included), so a traded or dropped player only counts for
+ * the team that has him now. A player's value is his full-season total, points
+ * scored for a previous team included.
  */
 export const getPositionStrength = cached(
   getPositionStrengthImpl,
-  "getPositionStrength-v3",
+  "getPositionStrength-v4",
 );
 async function getPositionStrengthImpl(
   year: number,
@@ -2313,58 +2315,44 @@ async function getPositionStrengthImpl(
     if (wk > (latestWeek.get(tid) ?? 0)) latestWeek.set(tid, wk);
   }
 
-  // currentRoster: tid -> name -> {pos, projected}  (latest-week lineup)
-  // rosteredFor:   tid -> name -> pos  (every player the team rostered at any
-  //                point this season — bench and IR weeks count as rostered)
+  // currentRoster: tid -> name -> {pos, projected}  (latest-week lineup — the
+  // live week's slots are refreshed by every sync, so trades show up there)
   const currentRoster = new Map<
     number,
     Map<string, { pos: string; projected: number }>
   >();
-  const rosteredFor = new Map<number, Map<string, string>>();
   for (const r of rows) {
     const sides = sideOf.get(r.matchup_id);
     if (!sides) continue;
     const tid = r.team_side === "home" ? sides.home : sides.away;
-    if ((weekOf.get(r.matchup_id) ?? 0) === latestWeek.get(tid)) {
-      let pm = currentRoster.get(tid);
-      if (!pm) {
-        pm = new Map();
-        currentRoster.set(tid, pm);
-      }
-      pm.set(r.player_name, {
-        pos: r.position ?? "",
-        projected: Number(r.projected ?? 0),
-      });
+    if ((weekOf.get(r.matchup_id) ?? 0) !== latestWeek.get(tid)) continue;
+    let pm = currentRoster.get(tid);
+    if (!pm) {
+      pm = new Map();
+      currentRoster.set(tid, pm);
     }
-    let sm = rosteredFor.get(tid);
-    if (!sm) {
-      sm = new Map();
-      rosteredFor.set(tid, sm);
-    }
-    // Keep the first non-empty position seen for the player.
-    if (!sm.get(r.player_name)) sm.set(r.player_name, r.position ?? "");
+    pm.set(r.player_name, {
+      pos: r.position ?? "",
+      projected: Number(r.projected ?? 0),
+    });
   }
-
-  const teamIds = new Set<number>([
-    ...currentRoster.keys(),
-    ...rosteredFor.keys(),
-  ]);
 
   const groups: PositionGroup[] = POSITION_STRENGTH_DEFS.map((def) => {
     const posRows: PositionStrengthRow[] = [];
-    for (const tid of teamIds) {
+    for (const [tid, roster] of currentRoster) {
       const team = teamById.get(tid);
       if (!team) continue;
-      // Played season: everyone the team rostered is eligible — starters and
-      // bench alike — and their season points count either way. The preseason
-      // has no points yet, so it ranks the current roster on projections.
-      const candidates: { name: string; value: number }[] = preseason
-        ? [...(currentRoster.get(tid)?.entries() ?? [])]
-            .filter(([, v]) => v.pos === def.pos)
-            .map(([name, v]) => ({ name, value: v.projected }))
-        : [...(rosteredFor.get(tid)?.entries() ?? [])]
-            .filter(([, pos]) => pos === def.pos)
-            .map(([name]) => ({ name, value: fullYear(name) }));
+      // Only the current roster is eligible — starters and bench alike. Once
+      // games are played they're valued by season points; the preseason has no
+      // points yet, so it uses projections.
+      const candidates: { name: string; value: number }[] = [
+        ...roster.entries(),
+      ]
+        .filter(([, v]) => v.pos === def.pos)
+        .map(([name, v]) => ({
+          name,
+          value: preseason ? v.projected : fullYear(name),
+        }));
       const players = candidates
         .sort((a, b) => b.value - a.value)
         .slice(0, def.count);

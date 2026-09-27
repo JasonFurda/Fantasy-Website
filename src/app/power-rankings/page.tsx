@@ -272,7 +272,7 @@ async function PositionRankings({
             {group.count > 1 ? "s" : ""} —{" "}
             {data.preseason
               ? "by projected points."
-              : "by total points scored. Anyone the team rostered counts, bench weeks included."}
+              : "by total points scored this season. Only players on the team's current roster count, bench included."}
           </p>
 
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
