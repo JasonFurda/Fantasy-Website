@@ -4,7 +4,11 @@ import {
   getYearStats,
   getAllTimeStats,
   getYearPerformance,
+  getProjectedDiff,
+  getAllTimeProjectedDiff,
   type GameRow,
+  type ProjectedDiff,
+  type ProjDiffWeek,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { getMyTeamEspnId } from "@/lib/my-team-server";
@@ -18,6 +22,7 @@ const TABS = [
   { key: "sub100", label: "Sub-100 Club" },
   { key: "mismanage", label: "Mismanagement" },
   { key: "performance", label: "Performance" },
+  { key: "projdiff", label: "Projected Differential" },
 ] as const;
 
 function TeamCell({
@@ -148,6 +153,12 @@ export default async function YearStatsPage({
   const performance =
     tab === "performance" && !isAllTime
       ? await getYearPerformance(year)
+      : null;
+  const projDiff =
+    tab === "projdiff"
+      ? isAllTime
+        ? await getAllTimeProjectedDiff()
+        : await getProjectedDiff(year)
       : null;
 
   // Nothing has finished yet: every team is 0-0 with no points, so the fraud
@@ -364,6 +375,201 @@ export default async function YearStatsPage({
           )}
         </>
       )}
+
+      {tab === "projdiff" && projDiff && (
+        <>
+          <p className="mb-4 max-w-2xl text-sm text-muted">
+            Each team&apos;s actual score against ESPN&apos;s projection for its
+            starting lineup going into the week. Positive means they beat the
+            projection. Finished weeks only, playoffs included. Ranked by average
+            differential per week.
+          </p>
+          {projDiff.rows.length === 0 ? (
+            <p className="text-sm text-muted">
+              No finished weeks yet — this fills in once a week wraps up.
+            </p>
+          ) : (
+            <ProjDiffView
+              data={projDiff}
+              showYear={isAllTime}
+              highlightEspnId={myEspnId}
+            />
+          )}
+        </>
+      )}
     </main>
+  );
+}
+
+function signed(n: number, digits = 1): string {
+  const v = n.toFixed(digits);
+  return n > 0 ? `+${v}` : v;
+}
+
+function diffCls(n: number): string {
+  return n > 0 ? "text-accent" : n < 0 ? "text-red-400" : "text-muted";
+}
+
+/** Cell tint: green above projection, red below, stronger the bigger the miss. */
+function diffBg(n: number): string {
+  const pct = Math.round(Math.min(Math.abs(n) / 40, 1) * 45);
+  const c = n >= 0 ? "var(--accent)" : "#f87171";
+  return `color-mix(in srgb, ${c} ${pct}%, transparent)`;
+}
+
+function WeekRef({ w, showYear }: { w: ProjDiffWeek | null; showYear: boolean }) {
+  if (!w) return <span className="text-muted">—</span>;
+  return (
+    <Link
+      href={`/matchups?year=${w.year}&week=${w.week}&m=${w.matchupId}`}
+      prefetch={false}
+      className="hover:underline"
+    >
+      <span className={`font-semibold ${diffCls(w.diff)}`}>{signed(w.diff)}</span>{" "}
+      <span className="text-xs text-muted">
+        {showYear ? `${w.year} · wk ${w.week}` : `wk ${w.week}`}
+      </span>
+    </Link>
+  );
+}
+
+function ProjDiffView({
+  data,
+  showYear,
+  highlightEspnId,
+}: {
+  data: ProjectedDiff;
+  showYear: boolean;
+  highlightEspnId?: number | null;
+}) {
+  const isPlayoff = (wk: number) =>
+    data.playoffStartWeek != null && wk >= data.playoffStartWeek;
+  return (
+    <div className="space-y-8">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="w-full min-w-[52rem] text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+              <th className="px-4 py-3 font-medium">#</th>
+              <th className="px-4 py-3 font-medium">Team</th>
+              <th className="px-4 py-3 text-right font-medium">Avg/wk</th>
+              <th className="px-4 py-3 text-right font-medium">Total</th>
+              <th className="px-4 py-3 text-right font-medium">Actual</th>
+              <th className="px-4 py-3 text-right font-medium">Projected</th>
+              <th className="px-4 py-3 text-right font-medium">Beat proj</th>
+              <th className="px-4 py-3 font-medium">Best week</th>
+              <th className="px-4 py-3 font-medium">Worst week</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((r, i) => (
+              <tr
+                key={r.team.espn_id}
+                className={`border-b border-border/60 last:border-0 ${
+                  highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
+                }`}
+              >
+                <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
+                <td className="px-4 py-3 font-medium">
+                  <TeamCell team={r.team} highlightEspnId={highlightEspnId} />
+                </td>
+                <td
+                  className={`px-4 py-3 text-right font-bold tabular-nums ${diffCls(r.avgDiff)}`}
+                >
+                  {signed(r.avgDiff)}
+                </td>
+                <td className={`px-4 py-3 text-right tabular-nums ${diffCls(r.diff)}`}>
+                  {signed(r.diff)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {r.actual.toFixed(1)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-muted">
+                  {r.projected.toFixed(1)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-muted">
+                  {r.beat}/{r.games}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3">
+                  <WeekRef w={r.best} showYear={showYear} />
+                </td>
+                <td className="whitespace-nowrap px-4 py-3">
+                  <WeekRef w={r.worst} showYear={showYear} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {data.weeks.length > 0 && (
+        <div>
+          <h2 className="mb-1 text-lg font-semibold tracking-tight">Week by week</h2>
+          <p className="mb-3 text-sm text-muted">
+            Actual minus projected. Hover a cell for the scores; click to open
+            the matchup. Playoff weeks are shaded.
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted">
+                  <th className="sticky left-0 z-10 bg-surface px-4 py-3 text-left font-medium">
+                    Team
+                  </th>
+                  {data.weeks.map((wk) => (
+                    <th
+                      key={wk}
+                      className={`px-2 py-3 text-center font-medium ${
+                        isPlayoff(wk) ? "bg-surface-2" : ""
+                      }`}
+                    >
+                      {wk}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r) => {
+                  const byWeek = new Map(r.weeks.map((w) => [w.week, w]));
+                  return (
+                    <tr
+                      key={r.team.espn_id}
+                      className="border-b border-border/60 last:border-0"
+                    >
+                      <td className="sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-2 font-medium">
+                        <TeamCell team={r.team} highlightEspnId={highlightEspnId} />
+                      </td>
+                      {data.weeks.map((wk) => {
+                        const w = byWeek.get(wk);
+                        return (
+                          <td
+                            key={wk}
+                            className={`p-1 text-center ${isPlayoff(wk) ? "bg-surface-2" : ""}`}
+                          >
+                            {w ? (
+                              <Link
+                                href={`/matchups?year=${w.year}&week=${w.week}&m=${w.matchupId}`}
+                                prefetch={false}
+                                title={`Week ${w.week}: ${w.actual.toFixed(1)} actual vs ${w.projected.toFixed(1)} projected`}
+                                className="block rounded-md px-2 py-1.5 text-xs font-semibold tabular-nums hover:ring-1 hover:ring-border"
+                                style={{ backgroundColor: diffBg(w.diff) }}
+                              >
+                                {signed(w.diff, 0)}
+                              </Link>
+                            ) : (
+                              <span className="text-xs text-muted">—</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

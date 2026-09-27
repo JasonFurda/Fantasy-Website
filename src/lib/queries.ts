@@ -711,6 +711,144 @@ async function getYearPerformanceImpl(
   };
 }
 
+export type ProjDiffWeek = {
+  year: number;
+  week: number;
+  matchupId: number;
+  actual: number;
+  projected: number;
+  diff: number; // actual - projected
+  isPlayoff: boolean;
+};
+
+export type ProjDiffRow = {
+  team: Team;
+  games: number;
+  actual: number;
+  projected: number;
+  diff: number;
+  avgDiff: number;
+  beat: number; // weeks scoring above projection
+  best: ProjDiffWeek | null;
+  worst: ProjDiffWeek | null;
+  weeks: ProjDiffWeek[]; // week-ordered; empty for all-time
+};
+
+export type ProjectedDiff = {
+  weeks: number[]; // sorted unique finished weeks; empty for all-time
+  playoffStartWeek: number | null;
+  rows: ProjDiffRow[]; // biggest over-performers first
+};
+
+function summarizeProjDiff(team: Team, weeks: ProjDiffWeek[]): ProjDiffRow {
+  const actual = weeks.reduce((a, w) => a + w.actual, 0);
+  const projected = weeks.reduce((a, w) => a + w.projected, 0);
+  const diff = actual - projected;
+  const byDiff = [...weeks].sort((a, b) => b.diff - a.diff);
+  return {
+    team,
+    games: weeks.length,
+    actual,
+    projected,
+    diff,
+    avgDiff: weeks.length ? diff / weeks.length : 0,
+    beat: weeks.filter((w) => w.diff > 0).length,
+    best: byDiff[0] ?? null,
+    worst: byDiff[byDiff.length - 1] ?? null,
+    weeks,
+  };
+}
+
+/** Each team's actual score vs. its projection, week by week.
+ *
+ *  Only FINISHED weeks count, and that matters more here than anywhere else:
+ *  for the week being played, ESPN's team projection is `totalProjectedPointsLive`,
+ *  which swaps in real points as games end and converges on the final score. For
+ *  finished weeks the sync stores the sum of the starters' pre-game projections
+ *  instead (verified equal in the DB), which is the number we want. */
+export const getProjectedDiff = cached(getProjectedDiffImpl, "getProjectedDiff");
+async function getProjectedDiffImpl(year: number): Promise<ProjectedDiff> {
+  const [seasons, teams, res] = await Promise.all([
+    getSeasons(),
+    getTeams(year),
+    supabase
+      .from("matchups")
+      .select(
+        "id, year, week, home_team_id, away_team_id, home_score, away_score, home_projected, away_projected",
+      )
+      .eq("year", year)
+      .order("week", { ascending: true }),
+  ]);
+  const liveFrom = firstUnfinishedWeek(seasons.find((s) => s.year === year));
+  type MRow = Omit<Matchup, "final"> & {
+    home_projected: number | null;
+    away_projected: number | null;
+  };
+  const rows = ((res.data ?? []) as MRow[]).map((m) => ({
+    ...m,
+    final: m.week < liveFrom,
+  }));
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+
+  const byTeam = new Map<number, ProjDiffWeek[]>();
+  const weeks = new Set<number>();
+  const push = (tid: number, m: MRow, actual: number, projected: number) => {
+    if (projected <= 0) return; // no projection recorded
+    const arr = byTeam.get(tid) ?? [];
+    arr.push({
+      year,
+      week: m.week,
+      matchupId: m.id,
+      actual,
+      projected,
+      diff: actual - projected,
+      isPlayoff: isPlayoffWeek(year, m.week),
+    });
+    byTeam.set(tid, arr);
+    weeks.add(m.week);
+  };
+  for (const m of rows) {
+    if (!isPlayed(m)) continue;
+    push(m.home_team_id, m, Number(m.home_score ?? 0), Number(m.home_projected ?? 0));
+    push(m.away_team_id, m, Number(m.away_score ?? 0), Number(m.away_projected ?? 0));
+  }
+
+  const out = [...byTeam.entries()]
+    .filter(([tid]) => teamById.has(tid))
+    .map(([tid, ws]) =>
+      summarizeProjDiff(teamById.get(tid)!, ws.sort((a, b) => a.week - b.week)),
+    )
+    .sort((a, b) => b.avgDiff - a.avgDiff);
+
+  return {
+    weeks: [...weeks].sort((a, b) => a - b),
+    playoffStartWeek: playoffStartWeek(year),
+    rows: out,
+  };
+}
+
+/** Projected differential summed per franchise (espn_id) across every season. */
+export const getAllTimeProjectedDiff = cached(
+  getAllTimeProjectedDiffImpl,
+  "getAllTimeProjectedDiff",
+);
+async function getAllTimeProjectedDiffImpl(): Promise<ProjectedDiff> {
+  const seasons = await getSeasons(); // newest first
+  const per = await Promise.all(seasons.map((s) => getProjectedDiff(s.year)));
+  const byFranchise = new Map<number, { team: Team; weeks: ProjDiffWeek[] }>();
+  for (const p of per) {
+    for (const r of p.rows) {
+      const a = byFranchise.get(r.team.espn_id);
+      if (a) a.weeks.push(...r.weeks);
+      else byFranchise.set(r.team.espn_id, { team: r.team, weeks: [...r.weeks] }); // first seen = latest name
+    }
+  }
+  const rows = [...byFranchise.values()]
+    .map(({ team, weeks }) => ({ ...summarizeProjDiff(team, weeks), weeks: [] }))
+    .sort((a, b) => b.avgDiff - a.avgDiff);
+  return { weeks: [], playoffStartWeek: null, rows };
+}
+
 export type PlayerCompRow = {
   name: string;
   fantasyTeam: { name: string; espnId: number } | null;
