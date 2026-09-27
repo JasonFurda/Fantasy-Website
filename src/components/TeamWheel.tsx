@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMyTeamEspnId } from "@/lib/my-team-client";
+import { PORTRAIT_EDGE_FADE as EDGE_FADE } from "@/components/TeamArt";
 
 export type WheelTeam = {
   espnId: number;
@@ -116,15 +117,36 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
       <div className="absolute inset-0">
         {selectedTeam ? (
           selectedTeam.art ? (
-            <Image
-              key={selectedTeam.espnId}
-              src={selectedTeam.art}
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="animate-[fadeIn_0.6s_ease] object-cover"
-            />
+            // Team art is portrait: a blurred copy fills the screen as ambience,
+            // and the full piece stands uncropped just left of the stats box.
+            <div key={selectedTeam.espnId} className="absolute inset-0 animate-[fadeIn_0.6s_ease]">
+              <Image
+                src={selectedTeam.art}
+                alt=""
+                fill
+                sizes="50vw"
+                className="scale-110 object-cover opacity-40 blur-2xl"
+              />
+              <div
+                className="absolute inset-y-0 aspect-[9/16]"
+                style={{
+                  right: "calc(4vw + min(380px, 42vw) - 2rem)",
+                  maskImage: EDGE_FADE,
+                  WebkitMaskImage: EDGE_FADE,
+                  maskComposite: "intersect",
+                  WebkitMaskComposite: "source-in",
+                }}
+              >
+                <Image
+                  src={selectedTeam.art}
+                  alt=""
+                  fill
+                  priority
+                  sizes="(max-width: 768px) 60vw, 600px"
+                  className="object-cover object-top"
+                />
+              </div>
+            </div>
           ) : (
             <div
               key={selectedTeam.espnId}

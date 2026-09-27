@@ -1,8 +1,17 @@
 import Image from "next/image";
 
 /**
+ * Mask for a standalone portrait piece laid over a blurred copy of itself:
+ * fades the side edges and the bottom so the frame melts into the backdrop.
+ * Pair with `maskComposite: "intersect"` (WebKit: "source-in").
+ */
+export const PORTRAIT_EDGE_FADE =
+  "linear-gradient(to bottom, black 70%, transparent), linear-gradient(to right, transparent, black 14%, black 86%, transparent)";
+
+/**
  * Team art frame. Renders real art if `src` is provided, otherwise a
- * team-colored placeholder. Art is wired per-franchise in teams-config.ts.
+ * team-colored placeholder. Art is wired per-franchise in teams-config.ts and
+ * is portrait (~9:16), so the frame is too.
  */
 export default function TeamArt({
   src,
@@ -19,7 +28,7 @@ export default function TeamArt({
 
   return (
     <div
-      className={`relative aspect-video w-full overflow-hidden rounded-2xl border ${className}`}
+      className={`relative aspect-[9/16] w-full overflow-hidden rounded-2xl border ${className}`}
       style={{ borderColor: `${color}66` }}
     >
       {src ? (
@@ -28,7 +37,7 @@ export default function TeamArt({
           alt={`${name} art`}
           fill
           sizes="(max-width: 768px) 100vw, 420px"
-          className="object-cover"
+          className="object-cover object-top"
         />
       ) : (
         <div

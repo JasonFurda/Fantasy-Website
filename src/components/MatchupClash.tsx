@@ -33,7 +33,7 @@ export default function MatchupClash({
       }}
     >
       {art ? (
-        <Image src={art} alt="" fill sizes="50vw" className="object-cover" priority />
+        <Image src={art} alt="" fill sizes="50vw" className="object-cover object-[center_20%]" priority />
       ) : (
         <div
           className="h-full w-full"

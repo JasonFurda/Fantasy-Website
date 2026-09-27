@@ -13,9 +13,10 @@ export type TeamMeta = {
   art?: string; // path under /public to the team's art (placeholder used if absent)
 };
 
-// NOTE: `art` values below are PLACEHOLDER assignments from the existing
-// /public/art folder, guessed by owner nickname, just to preview the look.
-// Swap them for each team's real art when you have it.
+// Real team art is PORTRAIT (~9:16) and lives in /public/team-art — kept apart
+// from /public/art, which holds the homepage gallery's matchup pieces.
+// Entries still pointing at /art/... are PLACEHOLDERS guessed by owner nickname;
+// swap each for its real portrait piece as it arrives.
 export const teamMeta: Record<number, TeamMeta> = {
   1: { color: "#f97316", art: "/art/mich-vs-viola-playoffs.jpg" }, // Festive7 — orange
   3: { color: "#7c4a21", art: "/art/me-vs-duck-playoffs.jpg" }, // jasonsexybod — brown
@@ -25,7 +26,7 @@ export const teamMeta: Record<number, TeamMeta> = {
   7: { color: "#ffb7c5", art: "/art/me-v-sauce.png" }, // sauc3 — Sauce — sakura pink
   10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — gold
   11: { color: "#14b8a6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — teal
-  12: { color: "#228b22" }, // DraymondGreen…  — Maltby's Mans — forest green
+  12: { color: "#228b22", art: "/team-art/maltbys-mans.webp" }, // DraymondGreen…  — Maltby's Mans — forest green
   13: { color: "#c0c0c0" }, // ESPNfan7205…  — Chathamite — silver
 };
 
