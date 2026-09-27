@@ -3,6 +3,7 @@ import type {
   TeamHome,
   UpcomingMatch,
   DivisionStandings,
+  WeeklyRecap,
 } from "@/lib/queries";
 import type { Article } from "@/lib/articles";
 import { teamColor } from "@/lib/teams-config";
@@ -11,6 +12,7 @@ import ChangeTeamButton from "@/components/ChangeTeamButton";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import DivisionStandingsPanel from "@/components/DivisionStandingsPanel";
 import ArticlesCard from "@/components/ArticlesCard";
+import WeeklyRecapCard from "@/components/WeeklyRecapCard";
 
 function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
   const oppEspn = m.opponent?.espn_id ?? 0;
@@ -61,10 +63,12 @@ export default function TeamHomePanel({
   home,
   divisions,
   articles,
+  weekly,
 }: {
   home: TeamHome;
   divisions: DivisionStandings[];
   articles: Article[];
+  weekly: WeeklyRecap | null;
 }) {
   const color = teamColor(home.team.espn_id);
   const { recap } = homepageConfig;
@@ -139,6 +143,8 @@ export default function TeamHomePanel({
           />
         </div>
       </div>
+
+      <WeeklyRecapCard recap={weekly} highlightEspnId={home.team.espn_id} />
 
       {/* Standings by division */}
       <DivisionStandingsPanel

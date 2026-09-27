@@ -849,6 +849,158 @@ async function getAllTimeProjectedDiffImpl(): Promise<ProjectedDiff> {
   return { weeks: [], playoffStartWeek: null, rows };
 }
 
+export type RecapTeamWeek = {
+  team: Team;
+  opponent: Team | null;
+  matchupId: number;
+  score: number;
+  oppScore: number;
+  won: boolean;
+  tied: boolean;
+  projected: number; // 0 = none recorded
+  optimal: number; // best possible lineup from the same roster
+  pctOptimal: number; // 0-100
+  pointsLeft: number; // optimal - actual starters
+};
+
+export type WeeklyRecapAward = {
+  key: string;
+  label: string;
+  entry: RecapTeamWeek;
+  others: number; // other teams tied on the same value (e.g. several at 100%)
+};
+
+export type WeeklyRecap = {
+  year: number;
+  week: number;
+  isPlayoff: boolean;
+  awards: WeeklyRecapAward[];
+};
+
+/** Superlatives for the most recently FINISHED week (the live week never
+ *  counts — see isPlayed). Falls back to an earlier season when the current
+ *  one hasn't finished a week yet. Efficiency uses the same optimal-lineup
+ *  math as the Mismanagement tab; projections are the pre-game ones (see
+ *  getProjectedDiff for why that only holds for finished weeks). */
+export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap");
+async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
+  const seasons = await getSeasons(); // newest first
+  for (const season of seasons) {
+    const recap = await weeklyRecapFor(season.year);
+    if (recap) return recap;
+  }
+  return null;
+}
+
+async function weeklyRecapFor(year: number): Promise<WeeklyRecap | null> {
+  const [seasons, teams, res] = await Promise.all([
+    getSeasons(),
+    getTeams(year),
+    supabase
+      .from("matchups")
+      .select(
+        "id, year, week, home_team_id, away_team_id, home_score, away_score, home_projected, away_projected",
+      )
+      .eq("year", year),
+  ]);
+  const liveFrom = firstUnfinishedWeek(seasons.find((s) => s.year === year));
+  type MRow = Omit<Matchup, "final"> & {
+    home_projected: number | null;
+    away_projected: number | null;
+  };
+  const played = ((res.data ?? []) as MRow[])
+    .map((m) => ({ ...m, final: m.week < liveFrom }))
+    .filter(isPlayed);
+  if (played.length === 0) return null;
+  const week = Math.max(...played.map((m) => m.week));
+  const weekGames = played.filter((m) => m.week === week);
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+
+  type SlotRow = {
+    matchup_id: number;
+    team_side: "home" | "away";
+    points: number | null;
+    slot: string;
+    is_bench: boolean | null;
+    eligible_slots: string[] | null;
+  };
+  const { data: slotData } = await supabase
+    .from("player_slots")
+    .select("matchup_id, team_side, points, slot, is_bench, eligible_slots")
+    .in(
+      "matchup_id",
+      weekGames.map((m) => m.id),
+    );
+  const lineups = new Map<string, OptPlayer[]>(); // `${matchupId}-${side}`
+  for (const r of (slotData ?? []) as SlotRow[]) {
+    const k = `${r.matchup_id}-${r.team_side}`;
+    const arr = lineups.get(k) ?? [];
+    arr.push({
+      points: Number(r.points ?? 0),
+      eligible: Array.isArray(r.eligible_slots) ? r.eligible_slots : [],
+      slot: r.slot,
+      isBench: !!r.is_bench,
+    });
+    lineups.set(k, arr);
+  }
+
+  const entries: RecapTeamWeek[] = [];
+  for (const m of weekGames) {
+    for (const side of ["home", "away"] as const) {
+      const team = teamById.get(side === "home" ? m.home_team_id : m.away_team_id);
+      if (!team) continue;
+      const opp = teamById.get(side === "home" ? m.away_team_id : m.home_team_id) ?? null;
+      const score = Number((side === "home" ? m.home_score : m.away_score) ?? 0);
+      const oppScore = Number((side === "home" ? m.away_score : m.home_score) ?? 0);
+      const players = lineups.get(`${m.id}-${side}`) ?? [];
+      const starters = players
+        .filter((p) => !p.isBench)
+        .reduce((a, p) => a + p.points, 0);
+      const optimal = optimalPoints(players);
+      entries.push({
+        team,
+        opponent: opp,
+        matchupId: m.id,
+        score,
+        oppScore,
+        won: score > oppScore,
+        tied: score === oppScore,
+        projected: Number((side === "home" ? m.home_projected : m.away_projected) ?? 0),
+        optimal,
+        pctOptimal: optimal > 0 ? (starters / optimal) * 100 : 100,
+        pointsLeft: Math.max(0, optimal - starters),
+      });
+    }
+  }
+
+  // Pick the entry with the best `value` (higher = better); tiebreak on score.
+  const pick = (
+    key: string,
+    label: string,
+    pool: RecapTeamWeek[],
+    value: (e: RecapTeamWeek) => number,
+  ): WeeklyRecapAward | null => {
+    if (pool.length === 0) return null;
+    const sorted = [...pool].sort(
+      (a, b) => value(b) - value(a) || b.score - a.score,
+    );
+    const top = value(sorted[0]);
+    const others = sorted.filter((e) => Math.abs(value(e) - top) < 0.05).length - 1;
+    return { key, label, entry: sorted[0], others };
+  };
+  const withProj = entries.filter((e) => e.projected > 0);
+  const awards = [
+    pick("efficient", "Most efficient", entries, (e) => e.pctOptimal),
+    pick("inefficient", "Least efficient", entries, (e) => -e.pctOptimal),
+    pick("fraudWin", "Most fraudulent win", entries.filter((e) => e.won), (e) => -e.score),
+    pick("goodLoss", "Least fraudulent loss", entries.filter((e) => !e.won && !e.tied), (e) => e.score),
+    pick("over", "Over achiever", withProj, (e) => e.score - e.projected),
+    pick("under", "Under achiever", withProj, (e) => e.projected - e.score),
+  ].filter((a): a is WeeklyRecapAward => a != null);
+
+  return { year, week, isPlayoff: isPlayoffWeek(year, week), awards };
+}
+
 export type PlayerCompRow = {
   name: string;
   fantasyTeam: { name: string; espnId: number } | null;

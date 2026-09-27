@@ -8,6 +8,8 @@ import {
   getCurrentFranchises,
   getTeamHome,
   getDivisionStandings,
+  getWeeklyRecap,
+  type WeeklyRecap,
 } from "@/lib/queries";
 import { getArticles, type Article } from "@/lib/articles";
 import { teamColor } from "@/lib/teams-config";
@@ -20,6 +22,7 @@ import ArticlesCard from "@/components/ArticlesCard";
 import TeamPickerModal from "@/components/TeamPickerModal";
 import TeamHomePanel from "@/components/TeamHomePanel";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
+import WeeklyRecapCard from "@/components/WeeklyRecapCard";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +37,13 @@ async function currentSeasonDivisions() {
   return year == null ? [] : getDivisionStandings(year);
 }
 
-async function RecapHome({ articles }: { articles: Article[] }) {
+async function RecapHome({
+  articles,
+  weekly,
+}: {
+  articles: Article[];
+  weekly: WeeklyRecap | null;
+}) {
   const { recap } = homepageConfig;
   const divisions = await currentSeasonDivisions();
   return (
@@ -57,12 +66,19 @@ async function RecapHome({ articles }: { articles: Article[] }) {
         </div>
       </div>
 
+      <WeeklyRecapCard recap={weekly} />
       <DivisionStandingsPanel divisions={divisions} />
     </main>
   );
 }
 
-async function DivisionsHome({ articles }: { articles: Article[] }) {
+async function DivisionsHome({
+  articles,
+  weekly,
+}: {
+  articles: Article[];
+  weekly: WeeklyRecap | null;
+}) {
   const { divisions } = homepageConfig;
   const [teams, matchups] = await Promise.all([
     getTeams(divisions.seasonYear),
@@ -98,6 +114,8 @@ async function DivisionsHome({ articles }: { articles: Article[] }) {
         })}
       </div>
 
+      <WeeklyRecapCard recap={weekly} />
+
       <div className="mt-10">
         <ArticlesCard articles={articles} />
       </div>
@@ -121,7 +139,10 @@ export default async function Home() {
       ? Number(raw)
       : null;
 
-  const articles = await getArticles(HOME_ARTICLE_COUNT);
+  const [articles, weekly] = await Promise.all([
+    getArticles(HOME_ARTICLE_COUNT),
+    getWeeklyRecap(),
+  ]);
 
   // A team is selected → personalized homepage.
   if (chosen != null) {
@@ -133,6 +154,7 @@ export default async function Home() {
           home={home}
           divisions={divisions}
           articles={articles}
+          weekly={weekly}
         />
       );
     }
@@ -140,9 +162,9 @@ export default async function Home() {
 
   const defaultHome =
     homepageConfig.mode === "divisions" ? (
-      <DivisionsHome articles={articles} />
+      <DivisionsHome articles={articles} weekly={weekly} />
     ) : (
-      <RecapHome articles={articles} />
+      <RecapHome articles={articles} weekly={weekly} />
     );
 
   // Explicitly browsing without a team → default homepage + a way to pick one.
