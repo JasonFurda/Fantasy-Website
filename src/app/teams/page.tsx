@@ -1,5 +1,5 @@
 import { getFranchiseSummaries } from "@/lib/queries";
-import { teamColor, teamArt } from "@/lib/teams-config";
+import { teamColor, teamArt, teamArtFocus } from "@/lib/teams-config";
 import TeamWheel, { type WheelTeam } from "@/components/TeamWheel";
 import TeamList from "@/components/TeamList";
 
@@ -18,6 +18,7 @@ export default async function TeamsPage() {
     owner: f.owner,
     color: teamColor(f.espnId),
     art: teamArt(f.espnId),
+    artFocus: teamArtFocus(f.espnId),
     record: f.latest?.record ?? null,
     rank: f.latest?.rank ?? null,
     teamCount: f.latest?.teamCount ?? null,

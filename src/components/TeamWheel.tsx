@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMyTeamEspnId } from "@/lib/my-team-client";
-import { PORTRAIT_EDGE_FADE as EDGE_FADE } from "@/components/TeamArt";
 
 export type WheelTeam = {
   espnId: number;
@@ -12,6 +11,7 @@ export type WheelTeam = {
   owner: string;
   color: string;
   art: string | null;
+  artFocus: string; // CSS object-position for the full-width background
   record: string | null;
   rank: number | null;
   teamCount: number | null;
@@ -117,36 +117,18 @@ export default function TeamWheel({ teams }: { teams: WheelTeam[] }) {
       <div className="absolute inset-0">
         {selectedTeam ? (
           selectedTeam.art ? (
-            // Team art is portrait: a blurred copy fills the screen as ambience,
-            // and the full piece stands uncropped just left of the stats box.
-            <div key={selectedTeam.espnId} className="absolute inset-0 animate-[fadeIn_0.6s_ease]">
-              <Image
-                src={selectedTeam.art}
-                alt=""
-                fill
-                sizes="50vw"
-                className="scale-110 object-cover opacity-40 blur-2xl"
-              />
-              <div
-                className="absolute inset-y-0 aspect-[9/16]"
-                style={{
-                  right: "calc(4vw + min(380px, 42vw) - 2rem)",
-                  maskImage: EDGE_FADE,
-                  WebkitMaskImage: EDGE_FADE,
-                  maskComposite: "intersect",
-                  WebkitMaskComposite: "source-in",
-                }}
-              >
-                <Image
-                  src={selectedTeam.art}
-                  alt=""
-                  fill
-                  priority
-                  sizes="(max-width: 768px) 60vw, 600px"
-                  className="object-cover object-top"
-                />
-              </div>
-            </div>
+            // Full-bleed, like the team page banner; `artFocus` picks which
+            // band of the portrait piece stays in frame.
+            <Image
+              key={selectedTeam.espnId}
+              src={selectedTeam.art}
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="animate-[fadeIn_0.6s_ease] object-cover"
+              style={{ objectPosition: selectedTeam.artFocus }}
+            />
           ) : (
             <div
               key={selectedTeam.espnId}
