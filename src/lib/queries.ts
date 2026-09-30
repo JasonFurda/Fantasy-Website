@@ -884,7 +884,7 @@ export type WeeklyRecap = {
  *  one hasn't finished a week yet. Efficiency uses the same optimal-lineup
  *  math as the Mismanagement tab; projections are the pre-game ones (see
  *  getProjectedDiff for why that only holds for finished weeks). */
-export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap-v4");
+export const getWeeklyRecap = cached(getWeeklyRecapImpl, "getWeeklyRecap-v5");
 async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
   const seasons = await getSeasons(); // newest first
   for (const season of seasons) {
@@ -895,7 +895,7 @@ async function getWeeklyRecapImpl(): Promise<WeeklyRecap | null> {
 }
 
 /** The recap for one specific week; null if that week hasn't finished. */
-export const getWeeklyRecapFor = cached(weeklyRecapFor, "getWeeklyRecapFor-v3");
+export const getWeeklyRecapFor = cached(weeklyRecapFor, "getWeeklyRecapFor-v4");
 
 async function weeklyRecapFor(
   year: number,
@@ -1013,6 +1013,7 @@ async function weeklyRecapFor(
     pick("goodLoss", "Least fraudulent loss", entries.filter((e) => !e.won && !e.tied), (e) => e.score),
     pick("over", "Over achiever", withProj, (e) => e.score - e.projected),
     pick("under", "Under achiever", withProj, (e) => e.projected - e.score),
+    pick("bum", "Bum of the week", entries, (e) => -e.score),
   ].filter((a): a is WeeklyRecapAward => a != null);
 
   return {

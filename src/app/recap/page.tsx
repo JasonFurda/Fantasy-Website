@@ -4,11 +4,13 @@ import {
   getWeeklyRecap,
   getWeeklyRecapFor,
   type RecapTeamWeek,
+  type WeeklyRecap,
   type WeeklyRecapAward,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
 import { getMyTeamEspnId } from "@/lib/my-team-server";
 import { describeAward, recapHref } from "@/components/WeeklyRecapCard";
+import RecapScreenshotView from "@/components/RecapScreenshotView";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,78 @@ const BLURBS: Record<string, string> = {
   goodLoss: "Highest score that still lost.",
   over: "Beat their pre-game projection by the most.",
   under: "Fell furthest short of their pre-game projection.",
+  bum: "Lace up those cleats buddy.",
 };
+
+/** One-screen summary of every award, for the phone screenshot view. */
+function ScreenshotRecap({
+  recap,
+  myEspnId,
+}: {
+  recap: WeeklyRecap;
+  myEspnId: number | null;
+}) {
+  return (
+    <div className="flex min-h-full flex-col px-3 py-3">
+      <div className="pr-8">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Weekly recap
+        </div>
+        <div className="text-lg font-black leading-tight tracking-tight">
+          {recap.year} Week {recap.week}
+          {recap.isPlayoff && (
+            <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide text-accent">
+              playoffs
+            </span>
+          )}
+        </div>
+      </div>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {recap.awards.map((a) => {
+          const { stat, tone } = describeAward(a.key, a.winners[0]);
+          return (
+            <li
+              key={a.key}
+              className="relative overflow-hidden rounded-lg border border-border bg-surface py-1.5 pl-3 pr-2"
+            >
+              <div
+                className="absolute inset-y-0 left-0 w-1"
+                style={{ backgroundColor: teamColor(a.winners[0].team.espn_id) }}
+              />
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  {a.label}
+                  {a.winners.length > 1 && " (tie)"}
+                </span>
+                <span
+                  className={`shrink-0 text-sm font-black tabular-nums ${
+                    tone === "good" ? "text-accent" : "text-red-400"
+                  }`}
+                >
+                  {stat}
+                </span>
+              </div>
+              {a.winners.map((w) => (
+                <div key={w.team.id}>
+                  <div
+                    className={`break-words text-sm font-bold leading-snug ${
+                      myEspnId === w.team.espn_id ? "text-accent" : ""
+                    }`}
+                  >
+                    {w.team.name.trim()}
+                  </div>
+                  <div className="text-[11px] leading-snug text-muted">
+                    {a.key === "bum" ? BLURBS.bum : describeAward(a.key, w).detail}
+                  </div>
+                </div>
+              ))}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function TeamName({
   team,
@@ -240,6 +313,10 @@ export default async function RecapPage({
           ))}
         </div>
       </nav>
+
+      <RecapScreenshotView>
+        <ScreenshotRecap recap={recap} myEspnId={myEspnId} />
+      </RecapScreenshotView>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2">
         {recap.awards.map((a) => (

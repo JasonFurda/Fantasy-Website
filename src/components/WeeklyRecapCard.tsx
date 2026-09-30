@@ -39,6 +39,12 @@ export function describeAward(
       return { stat: e.score.toFixed(1), tone: "bad", detail: `Won ${vs}` };
     case "goodLoss":
       return { stat: e.score.toFixed(1), tone: "good", detail: `Lost ${vs}` };
+    case "bum":
+      return {
+        stat: e.score.toFixed(1),
+        tone: "bad",
+        detail: `${e.won ? "Won" : e.tied ? "Tied" : "Lost"} ${vs}`,
+      };
     default: // over / under
       return {
         stat: `${diff > 0 ? "+" : ""}${diff.toFixed(1)}`,
