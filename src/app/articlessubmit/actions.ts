@@ -1,8 +1,48 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createArticle } from "@/lib/articles";
-import { TITLE_MAX, AUTHOR_MAX, BODY_MAX } from "@/lib/article-format";
+import { createArticle, uploadArticleImageFile } from "@/lib/articles";
+import {
+  TITLE_MAX,
+  AUTHOR_MAX,
+  BODY_MAX,
+  IMAGES_MAX,
+  IMAGE_MAX_BYTES,
+  imageCount,
+} from "@/lib/article-format";
+
+export type ImageUploadState =
+  | { ok: true; file: string }
+  | { ok: false; message: string };
+
+/** Store one inline image for an article being written and return its file
+ *  name, which the form drops into the body as an image marker. As open as
+ *  submitArticle, so the bytes are checked here: the form always sends a
+ *  downscaled JPEG, and anything that isn't one is refused. */
+export async function uploadArticleImage(
+  formData: FormData,
+): Promise<ImageUploadState> {
+  const image = formData.get("image");
+  if (!(image instanceof File) || image.size === 0)
+    return { ok: false, message: "No image received." };
+  if (image.size > IMAGE_MAX_BYTES)
+    return { ok: false, message: "That image is too large." };
+
+  const bytes = new Uint8Array(await image.arrayBuffer());
+  // JPEG magic number — don't trust the declared content type.
+  if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff)
+    return { ok: false, message: "That file isn't a usable image." };
+
+  try {
+    return { ok: true, file: await uploadArticleImageFile(bytes) };
+  } catch (e) {
+    return {
+      ok: false,
+      message:
+        e instanceof Error ? `Upload failed: ${e.message}` : "Upload failed.",
+    };
+  }
+}
 
 export type ArticleSubmitState = {
   ok: boolean;
@@ -33,6 +73,9 @@ export async function submitArticle(
       ok: false,
       message: `That's longer than the ${BODY_MAX.toLocaleString()}-character limit.`,
     };
+
+  if (imageCount(body) > IMAGES_MAX)
+    return { ok: false, message: `Too many images (max ${IMAGES_MAX}).` };
 
   try {
     const slug = await createArticle({ title, author, body });

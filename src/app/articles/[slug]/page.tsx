@@ -2,12 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getArticleBySlug, getArticles } from "@/lib/articles";
-import {
-  articleDate,
-  excerpt,
-  paragraphs,
-  readMinutes,
-} from "@/lib/article-format";
+import ArticleBody from "@/components/ArticleBody";
+import { articleDate, excerpt, readMinutes } from "@/lib/article-format";
 
 // Static + ISR: Vercel's CDN serves this page without invoking a function.
 // Publishing an article calls revalidatePath(), so new posts still appear
@@ -64,12 +60,11 @@ export default async function ArticlePage({
         {edited && ` · edited ${articleDate(article.updatedAt)}`}
       </div>
 
-      <article className="mt-7 space-y-4 text-[15px] leading-relaxed">
-        {paragraphs(article.body).map((p, i) => (
-          <p key={i} className="whitespace-pre-line">
-            {p}
-          </p>
-        ))}
+      <article className="mt-7">
+        <ArticleBody
+          body={article.body}
+          className="space-y-4 text-[15px] leading-relaxed"
+        />
       </article>
     </main>
   );

@@ -1,6 +1,7 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { IMAGE_BUCKET } from "@/lib/article-format";
 
 export type Article = {
   id: number;
@@ -57,6 +58,18 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
     .eq("published", true)
     .maybeSingle();
   return data ? rowToArticle(data as ArticleRow) : null;
+}
+
+/** Store an article image (already validated as a JPEG) under a generated
+ *  name and return that name. Service-role write. */
+export async function uploadArticleImageFile(bytes: Uint8Array): Promise<string> {
+  const file = `${crypto.randomUUID()}.jpg`;
+  const { error } = await supabaseAdmin()
+    .storage.from(IMAGE_BUCKET)
+    // Names are never reused, so the file can be cached for good.
+    .upload(file, bytes, { contentType: "image/jpeg", cacheControl: "31536000" });
+  if (error) throw new Error(error.message);
+  return file;
 }
 
 function slugify(title: string): string {
