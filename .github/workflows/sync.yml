@@ -5,11 +5,44 @@ name: Sync active season to Supabase
 # season starts; preseason runs are quick no-ops (no games yet).
 on:
   schedule:
-    - cron: "0 12 * * *" # Daily at 12:00 UTC
+    # Daily at 6:00am Eastern. Cron is UTC-only and has no notion of daylight
+    # saving, so both candidate hours are scheduled and the gate job below
+    # lets through only the one that is 6am in New York right now.
+    - cron: "0 10 * * *" # 6:00am EDT (summer)
+    - cron: "0 11 * * *" # 6:00am EST (winter)
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 jobs:
+  # Picks by which cron fired rather than by the clock, since GitHub can start
+  # scheduled runs late.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          FIRED: ${{ github.event.schedule }}
+        run: |
+          if [ "$EVENT" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$(TZ=America/New_York date +%z)" = "-0400" ]; then
+            want="0 10 * * *"
+          else
+            want="0 11 * * *"
+          fi
+          if [ "$FIRED" = "$want" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   sync:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
