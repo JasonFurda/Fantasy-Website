@@ -64,13 +64,13 @@ export function fantasyWeekOf(weekStart: string): number {
 
 /** Label for a stored week_start by fantasy week. Rankings go in after their
  *  week's games, so they read "Post Week 3". The last one before the season is
- *  "Week 0" and anything earlier is "Preseason". `short` gives "Post 3" /
- *  "Wk 0" / "Pre" for chart axes. */
+ *  "Week 0" and anything earlier is "Preseason". `short` gives "Wk 3" /
+ *  "Pre" for chart axes. */
 export function fantasyWeekLabel(weekStart: string, short = false): string {
   const week = fantasyWeekOf(weekStart);
   if (week < 0) return short ? "Pre" : "Preseason";
-  if (week === 0) return short ? "Wk 0" : "Week 0";
-  return short ? `Post ${week}` : `Post Week ${week}`;
+  if (short) return `Wk ${week}`;
+  return week === 0 ? "Week 0" : `Post Week ${week}`;
 }
 
 /** The submission window that `now` falls in. */
