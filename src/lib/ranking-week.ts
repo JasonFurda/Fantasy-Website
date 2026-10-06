@@ -16,7 +16,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export type RankingWeek = {
   /** Thursday that starts the window, YYYY-MM-DD (Eastern). Unique per window. */
   weekStart: string;
-  /** Human label for the window, e.g. "Week 1 · Thu Sep 10 – Wed Sep 16". */
+  /** Human label for the window, e.g. "Post Week 1 · Thu Sep 10 – Wed Sep 16". */
   label: string;
   /** Date the current window closes (the Wednesday), e.g. "Wed, Sep 10". */
   closesLabel: string;
@@ -62,12 +62,15 @@ export function fantasyWeekOf(weekStart: string): number {
   return Math.round((thu - weekOneThursday(y).getTime()) / (7 * DAY_MS)) + 1;
 }
 
-/** Label for a stored week_start by fantasy week, e.g. "Week 3" (or
- *  "Preseason" before week 1). `short` gives "Wk 3" / "Pre" for chart axes. */
+/** Label for a stored week_start by fantasy week. Rankings go in after their
+ *  week's games, so they read "Post Week 3". The last one before the season is
+ *  "Week 0" and anything earlier is "Preseason". `short` gives "Post 3" /
+ *  "Wk 0" / "Pre" for chart axes. */
 export function fantasyWeekLabel(weekStart: string, short = false): string {
   const week = fantasyWeekOf(weekStart);
-  if (week < 1) return short ? "Pre" : "Preseason";
-  return `${short ? "Wk" : "Week"} ${week}`;
+  if (week < 0) return short ? "Pre" : "Preseason";
+  if (week === 0) return short ? "Wk 0" : "Week 0";
+  return short ? `Post ${week}` : `Post Week ${week}`;
 }
 
 /** The submission window that `now` falls in. */

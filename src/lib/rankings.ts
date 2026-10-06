@@ -110,7 +110,7 @@ export async function getAllSubmissions(
 
 export type ManualRankings = {
   weekStart: string;
-  label: string; // fantasy week, e.g. "Week 3"
+  label: string; // fantasy week, e.g. "Post Week 3"
   rows: PowerRow[]; // rank 1 first, with change vs the previous submitted week
 };
 
