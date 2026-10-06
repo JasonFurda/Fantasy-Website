@@ -199,10 +199,7 @@ async function OverallRankings({
       <>
         <p className="mb-4 text-sm text-muted">
           Weekly power rankings —{" "}
-          <span className="text-foreground">{manual.label}</span>.{" "}
-          <span className="text-muted">
-            “Last week” shows movement since the previous week.
-          </span>
+          <span className="text-foreground">{manual.label}</span>.
         </p>
 
         <RankingsTable rows={manual.rows} highlightEspnId={highlightEspnId} />

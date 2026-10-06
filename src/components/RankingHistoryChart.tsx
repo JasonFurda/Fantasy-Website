@@ -244,8 +244,7 @@ export default function RankingHistoryChart({ data }: { data: RankingHistory }) 
       </div>
 
       <p className="mt-3 text-xs text-muted">
-        Lower is better — rank 1 sits at the top. Click a team to toggle it,
-        hover a name to highlight its line.
+        Click a team to toggle it, hover a name to highlight its line.
       </p>
     </div>
   );
