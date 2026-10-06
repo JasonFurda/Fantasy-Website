@@ -230,8 +230,10 @@ def build_free_agent_weeks(league, payload, max_week=None):
     later (the end-of-season `free_agents` snapshot misses those). A player's
     rostered weeks are skipped; they're already in player_slots with a team.
     """
-    weeks = payload.get("weeks") or {}
-    week_nums = sorted(int(w) for w in weeks.keys())
+    # Week keys are ints on a live payload but strings once it has round-tripped
+    # through data-{year}.json, so normalise before looking weeks up.
+    weeks = {int(w): games for w, games in (payload.get("weeks") or {}).items()}
+    week_nums = sorted(weeks.keys())
     if max_week is not None:
         week_nums = [w for w in week_nums if w <= max_week]
 
@@ -239,7 +241,7 @@ def build_free_agent_weeks(league, payload, max_week=None):
     all_rostered = set()
     for w in week_nums:
         names = set()
-        for m in (weeks.get(str(w)) or []):
+        for m in (weeks.get(w) or []):
             for side in ("away", "home"):
                 for pl in (m.get(side, {}).get("lineup") or []):
                     nm = pl.get("name")
