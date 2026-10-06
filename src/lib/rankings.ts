@@ -7,7 +7,7 @@ import {
   type Team,
   type PowerRow,
 } from "@/lib/queries";
-import { weekStartLabel } from "@/lib/ranking-week";
+import { fantasyWeekLabel } from "@/lib/ranking-week";
 
 export type RankingSubmission = {
   year: number;
@@ -110,7 +110,7 @@ export async function getAllSubmissions(
 
 export type ManualRankings = {
   weekStart: string;
-  label: string; // e.g. "Aug 27"
+  label: string; // fantasy week, e.g. "Week 3"
   rows: PowerRow[]; // rank 1 first, with change vs the previous submitted week
 };
 
@@ -139,11 +139,11 @@ export async function getManualPowerRankings(
     rows.push({ rank, team, change: pr == null ? null : pr - rank });
   });
 
-  return { weekStart: latest.weekStart, label: weekStartLabel(latest.weekStart), rows };
+  return { weekStart: latest.weekStart, label: fantasyWeekLabel(latest.weekStart), rows };
 }
 
 export type RankingHistory = {
-  weeks: { weekStart: string; label: string }[];
+  weeks: { weekStart: string; label: string; shortLabel: string }[];
   series: { team: Team; ranks: (number | null)[] }[]; // ranks aligned to weeks
 };
 
@@ -155,7 +155,8 @@ export async function getManualRankingHistory(
   const teams = await getTeams(year);
   const weeks = subs.map((s) => ({
     weekStart: s.weekStart,
-    label: weekStartLabel(s.weekStart),
+    label: fantasyWeekLabel(s.weekStart),
+    shortLabel: fantasyWeekLabel(s.weekStart, true),
   }));
   const series = teams
     .map((team) => ({

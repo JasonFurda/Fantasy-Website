@@ -16,7 +16,7 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export type RankingWeek = {
   /** Thursday that starts the window, YYYY-MM-DD (Eastern). Unique per window. */
   weekStart: string;
-  /** Human label for the window, e.g. "Thu Sep 4 – Wed Sep 10". */
+  /** Human label for the window, e.g. "Week 1 · Thu Sep 10 – Wed Sep 16". */
   label: string;
   /** Date the current window closes (the Wednesday), e.g. "Wed, Sep 10". */
   closesLabel: string;
@@ -43,12 +43,31 @@ function niceDate(d: Date): string {
   return `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
-/** Short label for a stored week_start (a Thursday, YYYY-MM-DD Eastern),
- *  e.g. "Aug 27". The string is already an Eastern calendar date, so no
- *  timezone conversion is needed. */
-export function weekStartLabel(weekStart: string): string {
-  const [, m, d] = weekStart.split("-").map(Number);
-  return `${MONTHS[(m ?? 1) - 1]} ${d}`;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The Thursday that kicks off fantasy week 1: the Thursday after Labor Day
+ *  (the first Monday of September), as a UTC-midnight stand-in. */
+function weekOneThursday(year: number): Date {
+  const sep1 = new Date(Date.UTC(year, 8, 1));
+  const laborDay = 1 + ((1 - sep1.getUTCDay() + 7) % 7); // Mon = 1
+  return new Date(Date.UTC(year, 8, laborDay + 3));
+}
+
+/** The fantasy week a stored week_start (a Thursday, YYYY-MM-DD Eastern) lines
+ *  up with. Each window opens on the Thursday its fantasy week kicks off, so
+ *  this is just whole weeks since week 1. Zero or negative means preseason. */
+export function fantasyWeekOf(weekStart: string): number {
+  const [y, m, d] = weekStart.split("-").map(Number);
+  const thu = Date.UTC(y, m - 1, d);
+  return Math.round((thu - weekOneThursday(y).getTime()) / (7 * DAY_MS)) + 1;
+}
+
+/** Label for a stored week_start by fantasy week, e.g. "Week 3" (or
+ *  "Preseason" before week 1). `short` gives "Wk 3" / "Pre" for chart axes. */
+export function fantasyWeekLabel(weekStart: string, short = false): string {
+  const week = fantasyWeekOf(weekStart);
+  if (week < 1) return short ? "Pre" : "Preseason";
+  return `${short ? "Wk" : "Week"} ${week}`;
 }
 
 /** The submission window that `now` falls in. */
@@ -66,7 +85,7 @@ export function currentRankingWeek(now: Date = new Date()): RankingWeek {
 
   return {
     weekStart: ymd(thu),
-    label: `${niceDate(thu)} – ${niceDate(wed)}`,
+    label: `${fantasyWeekLabel(ymd(thu))} · ${niceDate(thu)} – ${niceDate(wed)}`,
     closesLabel: niceDate(wed),
   };
 }

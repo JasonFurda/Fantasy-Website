@@ -140,7 +140,7 @@ export default function RankingHistoryChart({ data }: { data: RankingHistory }) 
             </g>
           ))}
 
-          {/* X labels (week dates) */}
+          {/* X labels (fantasy weeks) */}
           {weeks.map((wk, i) => (
             <text
               key={wk.weekStart}
@@ -150,7 +150,7 @@ export default function RankingHistoryChart({ data }: { data: RankingHistory }) 
               fill="var(--muted)"
               fontSize={11}
             >
-              {wk.label}
+              {wk.shortLabel}
             </text>
           ))}
 
@@ -218,7 +218,7 @@ export default function RankingHistoryChart({ data }: { data: RankingHistory }) 
             }}
           >
             <div className="mb-1.5 font-semibold">
-              Week of {weeks[hoverIdx]?.label}
+              {weeks[hoverIdx]?.label}
             </div>
             <div className="space-y-1">
               {tipRows.map(({ s, rank }) => (

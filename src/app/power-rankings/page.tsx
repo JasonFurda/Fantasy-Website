@@ -198,7 +198,7 @@ async function OverallRankings({
     return (
       <>
         <p className="mb-4 text-sm text-muted">
-          Weekly power rankings — week of{" "}
+          Weekly power rankings —{" "}
           <span className="text-foreground">{manual.label}</span>.{" "}
           <span className="text-muted">
             “Last week” shows movement since the previous week.
