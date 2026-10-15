@@ -5,11 +5,12 @@ name: Sync active season to Supabase
 # season starts; preseason runs are quick no-ops (no games yet).
 on:
   schedule:
-    # Daily at 6:00am Eastern. Cron is UTC-only and has no notion of daylight
-    # saving, so both candidate hours are scheduled and the gate job below
-    # lets through only the one that is 6am in New York right now.
-    - cron: "0 10 * * *" # 6:00am EDT (summer)
-    - cron: "0 11 * * *" # 6:00am EST (winter)
+    # Daily at 6:12am Eastern (off the hour, when GitHub's queue is busiest).
+    # Cron is UTC-only and has no notion of daylight saving, so both candidate
+    # hours are scheduled and the gate job below lets through only the one
+    # that is 6:12am in New York right now.
+    - cron: "12 10 * * *" # 6:12am EDT (summer)
+    - cron: "12 11 * * *" # 6:12am EST (winter)
   workflow_dispatch: {} # allow manual runs from the Actions tab
 
 jobs:
@@ -30,9 +31,9 @@ jobs:
             exit 0
           fi
           if [ "$(TZ=America/New_York date +%z)" = "-0400" ]; then
-            want="0 10 * * *"
+            want="12 10 * * *"
           else
-            want="0 11 * * *"
+            want="12 11 * * *"
           fi
           if [ "$FIRED" = "$want" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
