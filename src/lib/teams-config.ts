@@ -22,7 +22,7 @@ export type TeamMeta = {
 // Entries still pointing at /art/... are PLACEHOLDERS guessed by owner nickname;
 // swap each for its real portrait piece as it arrives.
 export const teamMeta: Record<number, TeamMeta> = {
-  1: { color: "#f97316", art: "/art/mich-vs-viola-playoffs.jpg" }, // Festive7 — orange
+  1: { color: "#f97316", art: "/team-art/magic-in-the-hampton.webp", artFocus: "50% 28%" }, // Festive7 — Magic in the Hampton — orange
   3: { color: "#7c4a21", art: "/art/me-vs-duck-playoffs.jpg" }, // jasonsexybod — brown
   4: { color: "#dc2626", art: "/art/me-v-brum.png" }, // drasktic — red
   5: { color: "#9333ea", art: "/art/jason-vs-west-2.jpg" }, // ESPNfan2807758783 — Bell Milers — purple
