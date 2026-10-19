@@ -3442,3 +3442,69 @@ async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
     lastResult,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Trades: synced daily from ESPN's activity feed (current season only).
+// ---------------------------------------------------------------------------
+
+export type TradeSide = {
+  team: { name: string; espnId: number };
+  /** Players this team received. */
+  receives: { name: string; position: string | null; proTeam: string | null }[];
+};
+
+export type Trade = {
+  id: string;
+  tradedAt: string;
+  sides: TradeSide[];
+};
+
+/** A season's trades, newest first, each split into what every team received. */
+export const getTrades = cached(getTradesImpl, "getTrades");
+async function getTradesImpl(year: number): Promise<Trade[]> {
+  const [{ data }, teams] = await Promise.all([
+    supabase
+      .from("trade_players")
+      .select(
+        "trade_id, traded_at, player_name, position, pro_team, to_espn_id",
+      )
+      .eq("year", year)
+      .order("traded_at", { ascending: false }),
+    getTeams(year),
+  ]);
+  const nameByEspn = new Map(teams.map((t) => [t.espn_id, t.name.trim()]));
+
+  const byTrade = new Map<string, Trade>();
+  for (const r of (data ?? []) as {
+    trade_id: string;
+    traded_at: string;
+    player_name: string;
+    position: string | null;
+    pro_team: string | null;
+    to_espn_id: number;
+  }[]) {
+    let trade = byTrade.get(r.trade_id);
+    if (!trade) {
+      trade = { id: r.trade_id, tradedAt: r.traded_at, sides: [] };
+      byTrade.set(r.trade_id, trade);
+    }
+    let side = trade.sides.find((s) => s.team.espnId === r.to_espn_id);
+    if (!side) {
+      side = {
+        team: {
+          espnId: r.to_espn_id,
+          name: nameByEspn.get(r.to_espn_id) ?? `Team ${r.to_espn_id}`,
+        },
+        receives: [],
+      };
+      trade.sides.push(side);
+    }
+    side.receives.push({
+      name: r.player_name,
+      position: r.position,
+      proTeam: r.pro_team,
+    });
+  }
+  // Map keeps insertion order, and rows arrive newest first.
+  return [...byTrade.values()];
+}

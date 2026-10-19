@@ -353,6 +353,36 @@ def sync_schedule(
         ).execute()
 
 
+def sync_trades(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
+    """Replace a year's trades. ESPN's feed is the full season every time, so
+    a vetoed or reversed trade simply drops out on the next sync."""
+    seen: set[tuple[str, int]] = set()
+    rows = []
+    for t in rows_in:
+        key = (str(t["tradeId"]), int(t["playerId"]))
+        if key in seen or not t.get("date"):
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "year": year,
+                "trade_id": key[0],
+                "traded_at": datetime.fromtimestamp(
+                    int(t["date"]) / 1000, tz=timezone.utc
+                ).isoformat(),
+                "player_id": key[1],
+                "player_name": str(t["playerName"]).strip(),
+                "position": t.get("position") or None,
+                "pro_team": t.get("proTeam") or None,
+                "from_espn_id": int(t["fromTeam"]),
+                "to_espn_id": int(t["toTeam"]),
+            }
+        )
+    client.table("trade_players").delete().eq("year", year).execute()
+    if rows:
+        client.table("trade_players").insert(rows).execute()
+
+
 def sync_free_agent_weeks(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
     """Replace per-week free-agent stat lines for a year."""
     client.table("free_agent_week").delete().eq("year", year).execute()

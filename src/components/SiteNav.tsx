@@ -14,6 +14,7 @@ const NAV = [
   { href: "/year-stats", label: "Year Stats" },
   { href: "/player-comparisons", label: "Players" },
   { href: "/draft-recap", label: "Draft Recap" },
+  { href: "/trades", label: "Trades" },
   { href: "/defense-stats", label: "Defense Stats" },
 ];
 

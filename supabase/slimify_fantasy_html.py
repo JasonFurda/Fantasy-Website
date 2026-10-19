@@ -363,6 +363,75 @@ def build_free_agents(league):
             })
     return out
 
+TRADE_MSG_TYPE = 244  # ESPN activity message type for "TRADED"
+
+
+def build_trades(league):
+    """Every accepted trade this season, one row per player moved.
+
+    Reads ESPN's raw activity feed rather than league.recent_activity(): the
+    library's Activity keeps only the giving team, and each raw message also
+    carries the receiving team (`to`). ESPN only serves this feed for the
+    current season — past years return "league does not exist".
+    """
+    # Position / NFL team from current rosters; player_info() is a network
+    # call, so it's only the fallback for players since dropped.
+    by_id = {}
+    for team in league.teams:
+        for p in team.roster:
+            by_id[p.playerId] = p
+
+    out = []
+    offset, page = 0, 25
+    while True:
+        filters = {"topics": {
+            "filterType": {"value": ["ACTIVITY_TRANSACTIONS"]},
+            "limit": page,
+            "limitPerMessageSet": {"value": 25},
+            "offset": offset,
+            "sortMessageDate": {"sortPriority": 1, "sortAsc": False},
+            "sortFor": {"sortPriority": 2, "sortAsc": False},
+            "filterIncludeMessageTypeIds": {"value": [TRADE_MSG_TYPE]},
+        }}
+        data = league.espn_request.league_get(
+            extend="/communication/",
+            params={"view": "kona_league_communication"},
+            headers={"x-fantasy-filter": json.dumps(filters)},
+        )
+        topics = data.get("topics") or []
+        for topic in topics:
+            for msg in topic.get("messages") or []:
+                if msg.get("messageTypeId") != TRADE_MSG_TYPE:
+                    continue
+                pid = msg.get("targetId")
+                src, dst = msg.get("from"), msg.get("to")
+                if not isinstance(pid, int) or src is None or dst is None:
+                    continue
+                p = by_id.get(pid)
+                if p is None:
+                    try:
+                        p = league.player_info(playerId=pid)
+                    except Exception:
+                        p = None
+                name = getattr(p, "name", None) or league.player_map.get(pid)
+                if not name:
+                    continue
+                out.append({
+                    "tradeId": topic["id"],
+                    "date": int(topic.get("date") or msg.get("date") or 0),
+                    "playerId": pid,
+                    "playerName": name,
+                    "position": getattr(p, "position", "") or "",
+                    "proTeam": getattr(p, "proTeam", "") or "",
+                    "fromTeam": int(src),
+                    "toTeam": int(dst),
+                })
+        if len(topics) < page:
+            break
+        offset += page
+    return out
+
+
 def get_fantasy_art_images():
     """Get list of images from the fantasy-art folder"""
     fantasy_art_path = os.path.join(os.path.dirname(__file__), "fantasy-art")
