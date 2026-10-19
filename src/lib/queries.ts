@@ -1818,6 +1818,154 @@ async function getDefenseRatingsImpl(year: number): Promise<DefenseRatings> {
   };
 }
 
+/** Positions on the Defense Stats page, in display order. */
+export const DEF_STATS_POSITIONS = ["QB", "RB", "WR", "TE", "K"];
+
+export type DefenseStatCell = {
+  /** Every fantasy point scored at this position against the defense. */
+  total: number;
+  /** total / games. */
+  perGame: number;
+  /** 1 = gives up the most per game. */
+  rank: number;
+};
+
+export type DefenseStats = {
+  year: number;
+  /** Finished weeks counted. */
+  weeks: number;
+  positions: string[];
+  defenses: {
+    defense: string;
+    games: number;
+    cells: Record<string, DefenseStatCell>;
+  }[];
+  /** Per-game average across all defenses, by position. */
+  leagueAvg: Record<string, number>;
+};
+
+/** Total fantasy points each NFL defense gives up per game to each position —
+ *  the standard "points allowed" view, as opposed to getDefenseRatings' per
+ *  player-game average.
+ *
+ *  Counts rostered players (player_slots) AND waiver-wire players
+ *  (free_agent_week), so a position's whole output is captured, not just the
+ *  good players. free_agent_week has no opponent column, so the NFL schedule is
+ *  rebuilt from player_slots: any rostered player on a team that week reveals
+ *  its opponent, and every game is added in both directions. Free agents whose
+ *  team can't be matched (released players with no NFL team) are dropped —
+ *  about 1.5% of points on 2025. Only finished weeks count. */
+export const getDefenseStats = cached(getDefenseStatsImpl, "getDefenseStats");
+async function getDefenseStatsImpl(year: number): Promise<DefenseStats> {
+  const matchups = await getMatchups(year);
+  const idsByWeek = new Map<number, number[]>();
+  for (const m of matchups) {
+    if (!isPlayed(m)) continue;
+    const arr = idsByWeek.get(m.week) ?? [];
+    arr.push(m.id);
+    idsByWeek.set(m.week, arr);
+  }
+  const weeks = [...idsByWeek.keys()].sort((a, b) => a - b);
+  const empty: DefenseStats = {
+    year,
+    weeks: 0,
+    positions: DEF_STATS_POSITIONS,
+    defenses: [],
+    leagueAvg: {},
+  };
+  if (weeks.length === 0) return empty;
+
+  type SlotRaw = {
+    position: string | null;
+    pro_team: string | null;
+    opponent: string | null;
+    points: number | null;
+  };
+  type FaRaw = {
+    position: string | null;
+    pro_team: string | null;
+    points: number | null;
+  };
+  // One request per week per table keeps each response well under the
+  // 1000-row API cap (a week is ~200 slot rows and ~300 free-agent rows).
+  const perWeek = await Promise.all(
+    weeks.map(async (week) => {
+      const [slots, fa] = await Promise.all([
+        supabase
+          .from("player_slots")
+          .select("position, pro_team, opponent, points")
+          .in("matchup_id", idsByWeek.get(week)!),
+        supabase
+          .from("free_agent_week")
+          .select("position, pro_team, points")
+          .eq("year", year)
+          .eq("week", week),
+      ]);
+      return {
+        week,
+        slots: (slots.data ?? []) as SlotRaw[],
+        fa: (fa.data ?? []) as FaRaw[],
+      };
+    }),
+  );
+
+  const sums = new Map<string, number>(); // defense|position -> points
+  const gamesByDef = new Map<string, number>();
+
+  for (const { slots, fa } of perWeek) {
+    // This week's schedule: NFL team -> opponent, from both sides of each game.
+    const opp = new Map<string, string>();
+    for (const r of slots) {
+      if (!r.pro_team || !r.opponent || r.opponent === BYE) continue;
+      opp.set(r.pro_team, r.opponent);
+      opp.set(r.opponent, r.pro_team);
+    }
+    for (const def of new Set(opp.values()))
+      gamesByDef.set(def, (gamesByDef.get(def) ?? 0) + 1);
+
+    const add = (pos: string | null, def: string | undefined, pts: number) => {
+      if (!pos || !def || !DEF_STATS_POSITIONS.includes(pos)) return;
+      const key = def + "|" + pos;
+      sums.set(key, (sums.get(key) ?? 0) + pts);
+    };
+    for (const r of slots) {
+      if (r.opponent === BYE) continue;
+      add(r.position, r.opponent ?? undefined, Number(r.points ?? 0));
+    }
+    for (const r of fa) {
+      add(r.position, r.pro_team ? opp.get(r.pro_team) : undefined, Number(r.points ?? 0));
+    }
+  }
+  if (gamesByDef.size === 0) return empty;
+
+  const defenses = [...gamesByDef.entries()].map(([defense, games]) => {
+    const cells: Record<string, DefenseStatCell> = {};
+    for (const pos of DEF_STATS_POSITIONS) {
+      const total = sums.get(defense + "|" + pos) ?? 0;
+      cells[pos] = { total, perGame: total / games, rank: 0 };
+    }
+    return { defense, games, cells };
+  });
+
+  const leagueAvg: Record<string, number> = {};
+  for (const pos of DEF_STATS_POSITIONS) {
+    const sorted = [...defenses].sort(
+      (a, b) => b.cells[pos].perGame - a.cells[pos].perGame,
+    );
+    sorted.forEach((d, i) => (d.cells[pos].rank = i + 1));
+    leagueAvg[pos] =
+      defenses.reduce((s, d) => s + d.cells[pos].perGame, 0) / defenses.length;
+  }
+
+  return {
+    year,
+    weeks: weeks.length,
+    positions: DEF_STATS_POSITIONS,
+    defenses: defenses.sort((a, b) => a.defense.localeCompare(b.defense)),
+    leagueAvg,
+  };
+}
+
 export type OutlookPlayer = {
   slot: string;
   isBench: boolean;
