@@ -15,6 +15,7 @@ const NAV = [
   { href: "/player-comparisons", label: "Players" },
   { href: "/draft-recap", label: "Draft Recap" },
   { href: "/defense-stats", label: "Defense Stats" },
+  { href: "/outlook", label: "Outlook" },
 ];
 
 export default function SiteNav() {
