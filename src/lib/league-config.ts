@@ -8,6 +8,7 @@
 export const PLAYOFF_START_WEEK: Record<number, number> = {
   2024: 15, // weeks 1-14 regular season, 15-16 playoffs
   2025: 15,
+  2026: 15, // weeks 1-14 regular season, 15-17 playoffs (6 teams)
 };
 
 export const DEFAULT_PLAYOFF_START_WEEK = 15;
@@ -59,7 +60,8 @@ export function championshipsFor(espnId: number): number {
 /**
  * Final placement per year (playoff results), keyed by year → espn_id → finish.
  * These are the real end-of-year standings, derived from the playoff bracket
- * (weeks 15-16: top-4 championship bracket, seeds 5-8 consolation bracket).
+ * (2024-25 — weeks 15-16: top-4 championship bracket, seeds 5-8 consolation
+ * bracket; 2026 — weeks 15-17 with 6 playoff teams).
  * EDIT/add each season once the playoffs finish. When a year is absent (e.g. a
  * season still in progress), the site falls back to regular-season rank.
  */

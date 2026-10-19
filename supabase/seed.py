@@ -347,10 +347,33 @@ def sync_schedule(
                 "away_projected": 0,
             }
         )
-    if rows:
-        client.table("matchups").upsert(
-            rows, on_conflict="year,week,away_team_id,home_team_id"
-        ).execute()
+    if not rows:
+        return
+    client.table("matchups").upsert(
+        rows, on_conflict="year,week,away_team_id,home_team_id"
+    ).execute()
+
+    # Drop future skeleton rows ESPN no longer has (e.g. the schedule was
+    # regenerated after a change to the season length), so no week ends up
+    # with stale extra games. Only unplayed (0-0) future rows are removed.
+    keep = {(r["week"], r["home_team_id"], r["away_team_id"]) for r in rows}
+    existing = (
+        client.table("matchups")
+        .select("id, week, home_team_id, away_team_id, home_score, away_score")
+        .eq("year", year)
+        .gt("week", min_week)
+        .execute()
+    )
+    stale = [
+        r["id"]
+        for r in (existing.data or [])
+        if (r["week"], r["home_team_id"], r["away_team_id"]) not in keep
+        and float(r["home_score"] or 0) == 0
+        and float(r["away_score"] or 0) == 0
+    ]
+    if stale:
+        client.table("matchups").delete().in_("id", stale).execute()
+        print(f"  Removed {len(stale)} stale future matchup row(s).")
 
 
 def sync_trades(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
