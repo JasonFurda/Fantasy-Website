@@ -11,6 +11,7 @@ import {
 } from "@/lib/league-config";
 import { teamColor } from "@/lib/teams-config";
 import { volatility } from "@/lib/volatility";
+import { firstWeekAfter } from "@/lib/ranking-week";
 
 // The database only changes once a day (GitHub Actions sync runs daily), so read
 // results are cached and reused across requests — this is what makes navigation
@@ -3447,64 +3448,233 @@ async function getTeamHomeImpl(espnId: number): Promise<TeamHome | null> {
 // Trades: synced daily from ESPN's activity feed (current season only).
 // ---------------------------------------------------------------------------
 
+export type TradePlayer = {
+  name: string;
+  position: string | null;
+  proTeam: string | null;
+  /** Finished weeks since the trade that the receiving team rostered him. */
+  weeks: number;
+  /** Points he scored for the receiving team in its starting lineup. */
+  startedPts: number;
+  /** Points he scored for the receiving team, bench included. */
+  totalPts: number;
+};
+
 export type TradeSide = {
   team: { name: string; espnId: number };
   /** Players this team received. */
-  receives: { name: string; position: string | null; proTeam: string | null }[];
+  receives: TradePlayer[];
+  /** Starter points this side got from the players it received. */
+  gainedPts: number;
+  /** Starter points the players it sent away scored for their new teams. */
+  gavePts: number;
+  /** gainedPts − gavePts: how much the trade has helped (+) or hurt (−). */
+  net: number;
 };
 
 export type Trade = {
   id: string;
   tradedAt: string;
+  /** First fantasy week the trade could affect. */
+  firstWeek: number;
+  /** Finished weeks played since the trade; 0 means it's too early to judge. */
+  weeksSince: number;
   sides: TradeSide[];
 };
 
-/** A season's trades, newest first, each split into what every team received. */
-export const getTrades = cached(getTradesImpl, "getTrades");
-async function getTradesImpl(year: number): Promise<Trade[]> {
-  const [{ data }, teams] = await Promise.all([
+export type TradeScore = {
+  team: { name: string; espnId: number };
+  trades: number;
+  gainedPts: number;
+  gavePts: number;
+  net: number;
+};
+
+export type TradesData = {
+  trades: Trade[];
+  /** Every team that traded, by net trade points, best first. */
+  scoreboard: TradeScore[];
+};
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** A season's trades, newest first, each split into what every team received
+ *  and scored on how much it has helped or hurt each side so far.
+ *
+ *  A player counts for the team that received him only in finished weeks from
+ *  the trade on, only while that team actually rostered him (box-score data, so
+ *  a later drop or re-trade ends his run), and only until his next trade. The
+ *  headline measure is starting-lineup points — production the team actually
+ *  used — with bench-included totals alongside. A side's net is the starter
+ *  points it got minus the starter points the players it gave up scored for
+ *  their new teams, so in a two-team trade one side's gain is the other's loss. */
+export const getTrades = cached(getTradesImpl, "getTrades-v2");
+async function getTradesImpl(year: number): Promise<TradesData> {
+  const [{ data }, teams, matchups] = await Promise.all([
     supabase
       .from("trade_players")
       .select(
-        "trade_id, traded_at, player_name, position, pro_team, to_espn_id",
+        "trade_id, traded_at, player_name, position, pro_team, from_espn_id, to_espn_id",
       )
       .eq("year", year)
       .order("traded_at", { ascending: false }),
     getTeams(year),
+    getMatchups(year),
   ]);
-  const nameByEspn = new Map(teams.map((t) => [t.espn_id, t.name.trim()]));
-
-  const byTrade = new Map<string, Trade>();
-  for (const r of (data ?? []) as {
+  type Row = {
     trade_id: string;
     traded_at: string;
     player_name: string;
     position: string | null;
     pro_team: string | null;
+    from_espn_id: number;
     to_espn_id: number;
-  }[]) {
+  };
+  const rows = (data ?? []) as Row[];
+  const nameByEspn = new Map(teams.map((t) => [t.espn_id, t.name.trim()]));
+  const espnByTeamId = new Map(teams.map((t) => [t.id, t.espn_id]));
+  const teamRef = (espnId: number) => ({
+    espnId,
+    name: nameByEspn.get(espnId) ?? `Team ${espnId}`,
+  });
+
+  // Finished weeks only — the live week's points are partial.
+  const finals = matchups.filter((m) => m.final);
+  const lastFinalWeek = finals.reduce((a, m) => Math.max(a, m.week), 0);
+  const matchupById = new Map(finals.map((m) => [m.id, m]));
+
+  // Each traded player's box-score lines in finished weeks, keyed by
+  // player → team (espn_id) → week.
+  const lines = new Map<string, Map<number, Map<number, { pts: number; started: boolean }>>>();
+  const names = [...new Set(rows.map((r) => r.player_name))];
+  if (names.length > 0 && finals.length > 0) {
+    const { data: slots } = await supabase
+      .from("player_slots")
+      .select("matchup_id, team_side, player_name, points, is_bench")
+      .in("player_name", names)
+      .in("matchup_id", finals.map((m) => m.id));
+    for (const s of (slots ?? []) as {
+      matchup_id: number;
+      team_side: "home" | "away";
+      player_name: string;
+      points: number | null;
+      is_bench: boolean | null;
+    }[]) {
+      const m = matchupById.get(s.matchup_id);
+      if (!m) continue;
+      const espnId = espnByTeamId.get(
+        s.team_side === "home" ? m.home_team_id : m.away_team_id,
+      );
+      if (espnId == null) continue;
+      let byTeam = lines.get(s.player_name);
+      if (!byTeam) lines.set(s.player_name, (byTeam = new Map()));
+      let byWeek = byTeam.get(espnId);
+      if (!byWeek) byTeam.set(espnId, (byWeek = new Map()));
+      byWeek.set(m.week, { pts: Number(s.points ?? 0), started: !s.is_bench });
+    }
+  }
+
+  // A player's run with his new team ends at his next trade, if any.
+  const tradeWeeksByPlayer = new Map<string, number[]>();
+  for (const r of rows) {
+    const arr = tradeWeeksByPlayer.get(r.player_name) ?? [];
+    arr.push(firstWeekAfter(r.traded_at, year));
+    tradeWeeksByPlayer.set(r.player_name, arr);
+  }
+
+  const byTrade = new Map<string, Trade>();
+  // Starter points each player produced for his receiver in this trade, so the
+  // giving side's "gave" total can be filled in afterwards.
+  const sentBy = new Map<string, Map<number, number>>(); // trade → from espn → pts
+  for (const r of rows) {
+    const firstWeek = firstWeekAfter(r.traded_at, year);
     let trade = byTrade.get(r.trade_id);
     if (!trade) {
-      trade = { id: r.trade_id, tradedAt: r.traded_at, sides: [] };
+      trade = {
+        id: r.trade_id,
+        tradedAt: r.traded_at,
+        firstWeek,
+        weeksSince: Math.max(0, lastFinalWeek - firstWeek + 1),
+        sides: [],
+      };
       byTrade.set(r.trade_id, trade);
     }
     let side = trade.sides.find((s) => s.team.espnId === r.to_espn_id);
     if (!side) {
       side = {
-        team: {
-          espnId: r.to_espn_id,
-          name: nameByEspn.get(r.to_espn_id) ?? `Team ${r.to_espn_id}`,
-        },
+        team: teamRef(r.to_espn_id),
         receives: [],
+        gainedPts: 0,
+        gavePts: 0,
+        net: 0,
       };
       trade.sides.push(side);
+    }
+
+    const endWeek =
+      (tradeWeeksByPlayer.get(r.player_name) ?? [])
+        .filter((w) => w > firstWeek)
+        .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
+    let weeks = 0;
+    let startedPts = 0;
+    let totalPts = 0;
+    for (const [week, l] of lines.get(r.player_name)?.get(r.to_espn_id) ?? []) {
+      if (week < firstWeek || week >= endWeek) continue;
+      weeks++;
+      totalPts += l.pts;
+      if (l.started) startedPts += l.pts;
     }
     side.receives.push({
       name: r.player_name,
       position: r.position,
       proTeam: r.pro_team,
+      weeks,
+      startedPts: round1(startedPts),
+      totalPts: round1(totalPts),
     });
+    side.gainedPts += startedPts;
+
+    let sent = sentBy.get(r.trade_id);
+    if (!sent) sentBy.set(r.trade_id, (sent = new Map()));
+    sent.set(r.from_espn_id, (sent.get(r.from_espn_id) ?? 0) + startedPts);
   }
+
+  const trades = [...byTrade.values()];
+  const score = new Map<number, TradeScore>();
+  for (const t of trades) {
+    const sent = sentBy.get(t.id);
+    // A team that only gave players away still has a side in the result.
+    for (const espnId of sent?.keys() ?? []) {
+      if (!t.sides.some((s) => s.team.espnId === espnId))
+        t.sides.push({
+          team: teamRef(espnId),
+          receives: [],
+          gainedPts: 0,
+          gavePts: 0,
+          net: 0,
+        });
+    }
+    for (const s of t.sides) {
+      s.gavePts = round1(sent?.get(s.team.espnId) ?? 0);
+      s.gainedPts = round1(s.gainedPts);
+      s.net = round1(s.gainedPts - s.gavePts);
+
+      let sc = score.get(s.team.espnId);
+      if (!sc)
+        score.set(
+          s.team.espnId,
+          (sc = { team: s.team, trades: 0, gainedPts: 0, gavePts: 0, net: 0 }),
+        );
+      sc.trades++;
+      sc.gainedPts = round1(sc.gainedPts + s.gainedPts);
+      sc.gavePts = round1(sc.gavePts + s.gavePts);
+      sc.net = round1(sc.gainedPts - sc.gavePts);
+    }
+  }
+
   // Map keeps insertion order, and rows arrive newest first.
-  return [...byTrade.values()];
+  return {
+    trades,
+    scoreboard: [...score.values()].sort((a, b) => b.net - a.net),
+  };
 }

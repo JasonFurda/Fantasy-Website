@@ -62,6 +62,17 @@ export function fantasyWeekOf(weekStart: string): number {
   return Math.round((thu - weekOneThursday(y).getTime()) / (7 * DAY_MS)) + 1;
 }
 
+/** The first fantasy week a roster move at `iso` can affect. Weeks are bucketed
+ *  Tuesday → Monday (Eastern) so a Tue/Wed move, made after Monday night's game,
+ *  lands on the coming week rather than the one just played. Offseason and
+ *  preseason moves land on week 1. */
+export function firstWeekAfter(iso: string, year: number): number {
+  const { y, m, day } = easternYMD(new Date(iso));
+  const tuesday = weekOneThursday(year).getTime() - 2 * DAY_MS;
+  const days = (Date.UTC(y, m - 1, day) - tuesday) / DAY_MS;
+  return Math.max(1, Math.floor(days / 7) + 1);
+}
+
 /** Label for a stored week_start by fantasy week. Rankings go in after their
  *  week's games, so they read "Post Week 3". The last one before the season is
  *  "Week 0" and anything earlier is "Preseason". `short` gives "Wk 3" /
