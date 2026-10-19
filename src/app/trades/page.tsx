@@ -44,9 +44,9 @@ function TeamDot({ espnId }: { espnId: number }) {
 }
 
 /** Hover text: each start and what it was measured against. */
-function startsDetail(p: TradePlayer): string | undefined {
-  if (p.starts.length === 0) return undefined;
-  return p.starts
+function startsDetail(starts: TradePlayer["starts"]): string | undefined {
+  if (starts.length === 0) return undefined;
+  return starts
     .map(
       (s) =>
         `Wk ${s.week}: ${fmt(s.pts)} vs ${s.vsName ?? "waiver level"} ${fmt(s.vsPts)} (${signed(round1(s.pts - s.vsPts))})`,
@@ -71,6 +71,71 @@ function Verdict({ trade }: { trade: Trade }) {
       <span className="font-semibold text-foreground">{best.team.name}</span>{" "}
       <span className="text-accent">{signed(best.net)}</span>
     </span>
+  );
+}
+
+/** "vs Jayden Daniels, waiver level ×2" — who a player's starts were measured
+ *  against. */
+function VsLine({ vs }: { vs: TradePlayer["vs"] }) {
+  if (vs.length === 0) return null;
+  return (
+    <span className="block text-[11px] text-muted">
+      vs{" "}
+      {vs.map((v, i) => (
+        <span key={v.name ?? "waiver"}>
+          {i > 0 && ", "}
+          <span className={v.name ? "text-foreground/80" : ""}>
+            {v.name ?? "waiver level"}
+          </span>
+          {v.weeks > 1 && ` ×${v.weeks}`}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** The players a side traded away and what losing each cost it: his points
+ *  in the weeks he started for his new team, minus this side's own backup. */
+function GivesUp({ trade, espnId, year }: { trade: Trade; espnId: number; year: number }) {
+  const gone = trade.sides.flatMap((s) =>
+    s.receives.filter((p) => p.fromEspnId === espnId),
+  );
+  if (gone.length === 0) return null;
+  return (
+    <>
+      <div className="mt-3 text-[11px] uppercase tracking-wide text-muted">
+        gives up
+      </div>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {gone.map((p) => (
+          <li
+            key={p.name}
+            className="flex items-baseline gap-2 text-sm"
+            title={startsDetail(p.lostStarts)}
+          >
+            <div className="min-w-0 flex-1">
+              <Link
+                href={`/player-comparisons?year=${year}&player=${encodeURIComponent(p.name)}`}
+                prefetch={false}
+                className="text-muted hover:text-accent hover:underline"
+              >
+                {p.name}
+              </Link>{" "}
+              <span className="whitespace-nowrap text-xs text-muted">{p.position}</span>
+              <VsLine vs={p.lostVs} />
+            </div>
+            <div className="shrink-0 text-right tabular-nums">
+              <span className={`font-semibold ${netCls(-p.lost)}`}>{signed(-p.lost)}</span>
+              <span className="block text-[11px] text-muted">
+                {p.lostStarts.length === 0
+                  ? "never started"
+                  : `${p.lostStarts.length} start${p.lostStarts.length === 1 ? "" : "s"} elsewhere`}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -120,7 +185,7 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
                 <li
                   key={p.name}
                   className="flex items-baseline gap-2 text-sm"
-                  title={startsDetail(p)}
+                  title={startsDetail(p.starts)}
                 >
                   <div className="min-w-0 flex-1">
                     <Link
@@ -133,20 +198,7 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
                     <span className="whitespace-nowrap text-xs text-muted">
                       {[p.position, p.proTeam].filter(Boolean).join(" · ")}
                     </span>
-                    {judged && p.vs.length > 0 && (
-                      <span className="block text-[11px] text-muted">
-                        vs{" "}
-                        {p.vs.map((v, i) => (
-                          <span key={v.name ?? "waiver"}>
-                            {i > 0 && ", "}
-                            <span className={v.name ? "text-foreground/80" : ""}>
-                              {v.name ?? "waiver level"}
-                            </span>
-                            {v.weeks > 1 && ` ×${v.weeks}`}
-                          </span>
-                        ))}
-                      </span>
-                    )}
+                    {judged && <VsLine vs={p.vs} />}
                   </div>
                   {judged && (
                     <div className="shrink-0 text-right tabular-nums">
@@ -167,11 +219,12 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
                 </li>
               ))}
             </ul>
+            {judged && <GivesUp trade={trade} espnId={side.team.espnId} year={year} />}
             {judged && (
               <div className="mt-auto pt-3 text-xs text-muted">
-                Got <span className="tabular-nums text-foreground">{signed(side.gainedPts)}</span>{" "}
-                · gave up{" "}
-                <span className="tabular-nums text-foreground">{signed(side.gavePts)}</span>{" "}
+                Gained <span className="tabular-nums text-foreground">{signed(side.gainedPts)}</span>{" "}
+                · lost{" "}
+                <span className="tabular-nums text-foreground">{signed(-side.gavePts)}</span>{" "}
                 · raw net{" "}
                 <span className="tabular-nums text-foreground">{signed(side.rawNet)}</span>
               </div>
@@ -188,7 +241,8 @@ function Scoreboard({ rows }: { rows: TradeScore[] }) {
     <section className="mb-8">
       <h2 className="mb-1 text-lg font-semibold">Who&apos;s winning their trades</h2>
       <p className="mb-3 text-sm text-muted">
-        Net points over replacement from every trade a team made this season.
+        Points over replacement gained minus lost, from every trade a team made
+        this season.
       </p>
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
@@ -199,8 +253,8 @@ function Scoreboard({ rows }: { rows: TradeScore[] }) {
                 <span className="sm:hidden">#</span>
                 <span className="hidden sm:inline">Trades</span>
               </th>
-              <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Got</th>
-              <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Gave</th>
+              <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Gained</th>
+              <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Lost</th>
               <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Raw</th>
               <th className="py-2 pl-2 pr-3 text-right font-medium sm:px-4">Net</th>
             </tr>
@@ -224,7 +278,7 @@ function Scoreboard({ rows }: { rows: TradeScore[] }) {
                   {signed(r.gainedPts)}
                 </td>
                 <td className="hidden w-20 px-2 py-2 text-right tabular-nums sm:table-cell">
-                  {signed(r.gavePts)}
+                  {signed(-r.gavePts)}
                 </td>
                 <td className="hidden w-20 px-2 py-2 text-right tabular-nums text-muted sm:table-cell">
                   {signed(r.rawNet)}
@@ -319,10 +373,17 @@ export default async function TradesPage({
                 was no such backup, he&apos;s measured against a typical waiver
                 pickup at his position. Bench weeks count zero. Only finished
                 weeks count, and only while the team rostered him. Hover a
-                player for his week-by-week breakdown. A side&apos;s net
-                is the value it got minus the value the players it gave up
-                produced for their new teams; &ldquo;raw&rdquo; is the same
-                net in plain starter points.
+                player for his week-by-week breakdown.
+              </p>
+              <p>
+                The players a team gave up are measured the same way against
+                its <em>own</em>{" "}bench: in each week one of them started for
+                his new team, the old team lost his points minus what its best
+                available backup scored (players it got back in the trade
+                don&apos;t count as backups — they&apos;re its gain). A deep
+                team can lose a good player cheaply, so one side&apos;s gain
+                isn&apos;t automatically the other&apos;s loss. Net = gained −
+                lost; &ldquo;raw&rdquo; is the plain starter-points net.
               </p>
               {replRows.length > 0 && (
                 <p className="text-xs">
