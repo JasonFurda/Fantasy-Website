@@ -11,7 +11,7 @@ import {
 } from "@/lib/league-config";
 import { teamColor } from "@/lib/teams-config";
 import { volatility } from "@/lib/volatility";
-import { firstWeekAfter } from "@/lib/ranking-week";
+import { firstWeekAfter, nextKickoffWeek } from "@/lib/ranking-week";
 
 // The database only changes once a day (GitHub Actions sync runs daily), so read
 // results are cached and reused across requests — this is what makes navigation
@@ -3917,5 +3917,250 @@ async function getTradesImpl(year: number): Promise<TradesData> {
     trades,
     scoreboard: [...score.values()].sort((a, b) => b.net - a.net),
     replacement,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Trade calculator: everything the in-browser evaluator needs, in one payload.
+// The evaluation itself (lineups, byes, win odds) runs client-side in
+// src/lib/trade-calc.ts so trying out trades costs no server renders.
+// ---------------------------------------------------------------------------
+
+export type CalcPlayer = {
+  name: string;
+  position: string;
+  proTeam: string | null;
+  /** Lineup slots he can fill (ESPN eligible_slots, e.g. "RB", "RB/WR/TE"). */
+  eligible: string[];
+  /** Expected points per game for the rest of the season. */
+  value: number;
+  /** Season points per game in games he played, and how many games. */
+  ppg: number | null;
+  games: number;
+  /** ESPN's projection for the current week (null on a bye or when out). */
+  projected: number | null;
+  byeWeek: number | null;
+  injuryStatus: string | null;
+};
+
+export type CalcTeam = {
+  espnId: number;
+  name: string;
+  players: CalcPlayer[];
+};
+
+export type TradeCalcData = {
+  year: number;
+  currentWeek: number;
+  /** Rest-of-season weeks the calculator plays out (regular season only). */
+  weeks: number[];
+  /** Starting lineup slots, e.g. ["QB","RB","RB","WR","WR","TE","RB/WR/TE","D/ST","K"]. */
+  lineup: string[];
+  /** Max players outside IR (starters + bench). */
+  rosterSize: number;
+  teams: CalcTeam[];
+  /** Remaining regular-season games, by franchise espn_id. */
+  schedule: { week: number; home: number; away: number }[];
+  /** Waiver-level points per game by position — the floor for any empty slot. */
+  waiver: Record<string, number>;
+  /** Standard deviation of a single team's weekly score this season. */
+  scoreSd: number;
+};
+
+/** How many games ESPN's current projection is worth when blended with season
+ *  points per game: a player with 3 games played is weighted half his own
+ *  average, half the projection. */
+const PROJECTION_WEIGHT_GAMES = 3;
+
+const LINEUP_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K"];
+
+export const getTradeCalcData = cached(getTradeCalcDataImpl, "getTradeCalcData");
+async function getTradeCalcDataImpl(): Promise<TradeCalcData | null> {
+  const seasons = await getSeasons();
+  const season = seasons.find((s) => s.is_active);
+  if (!season) return null;
+  const year = season.year;
+  const currentWeek = season.current_week;
+
+  const [teams, matchups, byesRes] = await Promise.all([
+    getTeams(year),
+    getMatchups(year),
+    supabase.from("pro_team_byes").select("pro_team, bye_week").eq("year", year),
+  ]);
+  const espnByTeamId = new Map(teams.map((t) => [t.id, t.espn_id]));
+  const byeByPro = new Map(
+    ((byesRes.data ?? []) as { pro_team: string; bye_week: number }[]).map(
+      (b) => [b.pro_team, b.bye_week],
+    ),
+  );
+
+  // Rosters as of now: the current week's box scores.
+  const current = matchups.filter((m) => m.week === currentWeek);
+  if (current.length === 0) return null;
+  const { data: rosterRows } = await supabase
+    .from("player_slots")
+    .select(
+      "matchup_id, team_side, player_name, position, pro_team, slot, eligible_slots, projected, injury_status, is_bye",
+    )
+    .in("matchup_id", current.map((m) => m.id));
+  type RosterRow = {
+    matchup_id: number;
+    team_side: "home" | "away";
+    player_name: string;
+    position: string | null;
+    pro_team: string | null;
+    slot: string;
+    eligible_slots: string[] | null;
+    projected: number | null;
+    injury_status: string | null;
+    is_bye: boolean | null;
+  };
+  const roster = (rosterRows ?? []) as RosterRow[];
+  const matchupById = new Map(matchups.map((m) => [m.id, m]));
+  const espnOf = (matchupId: number, side: "home" | "away") => {
+    const m = matchupById.get(matchupId);
+    if (!m) return undefined;
+    return espnByTeamId.get(side === "home" ? m.home_team_id : m.away_team_id);
+  };
+
+  // Lineup shape and roster size, read off one team's current box score.
+  const firstTeam = roster.filter(
+    (r) => r.matchup_id === current[0].id && r.team_side === "home",
+  );
+  const lineup = firstTeam
+    .filter((r) => r.slot !== "BE" && r.slot !== "IR")
+    .map((r) => r.slot)
+    .sort((a, b) => LINEUP_ORDER.indexOf(a) - LINEUP_ORDER.indexOf(b));
+  const rosterSize = firstTeam.filter((r) => r.slot !== "IR").length;
+
+  // Season points per game in games actually played, from rostered weeks
+  // (player_slots) and waiver weeks (free_agent_week).
+  const finals = matchups.filter((m) => m.final);
+  const lastFinalWeek = finals.reduce((a, m) => Math.max(a, m.week), 0);
+  const names = new Set(roster.map((r) => r.player_name));
+  const finalWeeks = Array.from({ length: lastFinalWeek }, (_, i) => i + 1);
+  const [slotWeeks, faWeeks, waiver] = await Promise.all([
+    Promise.all(
+      finalWeeks.map((w) =>
+        supabase
+          .from("player_slots")
+          .select("player_name, points, is_bye, stats")
+          .in(
+            "matchup_id",
+            finals.filter((m) => m.week === w).map((m) => m.id),
+          ),
+      ),
+    ),
+    Promise.all(
+      finalWeeks.map((w) =>
+        supabase
+          .from("free_agent_week")
+          .select("player_name, points")
+          .eq("year", year)
+          .eq("week", w),
+      ),
+    ),
+    replacementLevels(year, lastFinalWeek),
+  ]);
+  const games = new Map<string, number[]>();
+  const addGame = (name: string, pts: number) => {
+    if (!names.has(name)) return;
+    games.set(name, [...(games.get(name) ?? []), pts]);
+  };
+  for (const { data } of slotWeeks)
+    for (const r of (data ?? []) as {
+      player_name: string;
+      points: number | null;
+      is_bye: boolean | null;
+      stats: Record<string, unknown> | null;
+    }[]) {
+      const pts = Number(r.points ?? 0);
+      if (r.is_bye) continue;
+      // 0 points and an empty stat line: inactive that week, not a real game.
+      if (pts === 0 && Object.keys(r.stats ?? {}).length === 0) continue;
+      addGame(r.player_name, pts);
+    }
+  for (const { data } of faWeeks)
+    for (const r of (data ?? []) as { player_name: string; points: number | null }[])
+      addGame(r.player_name, Number(r.points ?? 0));
+
+  const teamsOut: CalcTeam[] = teams
+    .map((t) => ({ espnId: t.espn_id, name: t.name.trim(), players: [] as CalcPlayer[] }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const teamByEspn = new Map(teamsOut.map((t) => [t.espnId, t]));
+  for (const r of roster) {
+    const espnId = espnOf(r.matchup_id, r.team_side);
+    const team = espnId == null ? undefined : teamByEspn.get(espnId);
+    if (!team || !r.position) continue;
+    const g = games.get(r.player_name) ?? [];
+    const ppg = g.length ? g.reduce((a, b) => a + b, 0) / g.length : null;
+    // A 0 projection on a bye or for an injured player says nothing about the
+    // weeks ahead, so only a real projection takes part in the blend.
+    const proj =
+      r.projected != null && Number(r.projected) > 0 && !r.is_bye
+        ? Number(r.projected)
+        : null;
+    const value =
+      ppg == null
+        ? (proj ?? 0)
+        : proj == null
+          ? ppg
+          : (g.length * ppg + PROJECTION_WEIGHT_GAMES * proj) /
+            (g.length + PROJECTION_WEIGHT_GAMES);
+    team.players.push({
+      name: r.player_name,
+      position: r.position,
+      proTeam: r.pro_team && r.pro_team !== "None" ? r.pro_team : null,
+      eligible: (r.eligible_slots ?? []).filter((s) => lineup.includes(s)),
+      value: round1(value),
+      ppg: ppg == null ? null : round1(ppg),
+      games: g.length,
+      projected: proj == null ? null : round1(proj),
+      byeWeek: (r.pro_team && byeByPro.get(r.pro_team)) || null,
+      // A player parked in the IR slot is out, whatever his listed status.
+      injuryStatus: r.slot === "IR" ? "INJURY_RESERVE" : r.injury_status,
+    });
+  }
+  for (const t of teamsOut)
+    t.players.sort(
+      (a, b) =>
+        LINEUP_ORDER.indexOf(a.position) - LINEUP_ORDER.indexOf(b.position) ||
+        b.value - a.value,
+    );
+
+  // The rest of the regular season, from the first week whose games haven't
+  // started yet.
+  const lastRegWeek = playoffStartWeek(year) - 1;
+  const startWeek = Math.max(nextKickoffWeek(new Date(), year), currentWeek);
+  const weeks: number[] = [];
+  for (let w = startWeek; w <= lastRegWeek; w++) weeks.push(w);
+
+  const schedule = matchups
+    .filter((m) => weeks.includes(m.week))
+    .map((m) => ({
+      week: m.week,
+      home: espnByTeamId.get(m.home_team_id)!,
+      away: espnByTeamId.get(m.away_team_id)!,
+    }));
+
+  const scores = finals.flatMap((m) => [
+    Number(m.home_score ?? 0),
+    Number(m.away_score ?? 0),
+  ]);
+  const mean = scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+  const scoreSd = scores.length
+    ? Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length)
+    : 25;
+
+  return {
+    year,
+    currentWeek,
+    weeks,
+    lineup,
+    rosterSize,
+    teams: teamsOut,
+    schedule,
+    waiver,
+    scoreSd: round1(scoreSd),
   };
 }

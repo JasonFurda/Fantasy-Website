@@ -41,6 +41,7 @@ def main() -> None:
         sync_free_agent_weeks,
         sync_schedule,
         sync_trades,
+        sync_pro_byes,
     )
 
     if not slim.ESPN_S2 or not slim.SWID:
@@ -97,6 +98,12 @@ def main() -> None:
         print(f"  Trades: {len({t['tradeId'] for t in trades})}")
     except Exception as e:
         print(f"  Trades: error {e}")
+    try:
+        byes = slim.build_pro_byes(league)
+        sync_pro_byes(client, year, byes)
+        print(f"  Pro byes: {len(byes)}")
+    except Exception as e:
+        print(f"  Pro byes: error {e}")
     # Skeleton rows for the rest of the schedule (future weeks only).
     sync_schedule(client, year, slim.build_schedule(league), min_week=current_week)
 

@@ -73,6 +73,16 @@ export function firstWeekAfter(iso: string, year: number): number {
   return Math.max(1, Math.floor(days / 7) + 1);
 }
 
+/** The first fantasy week whose games haven't started at `now`: through
+ *  Thursday (kickoff day) that's the coming week; from Friday on that week is
+ *  underway, so it's the one after. */
+export function nextKickoffWeek(now: Date, year: number): number {
+  const { y, m, day } = easternYMD(now);
+  const days =
+    (Date.UTC(y, m - 1, day) - weekOneThursday(year).getTime()) / DAY_MS;
+  return Math.max(1, Math.ceil(days / 7) + 1);
+}
+
 /** Label for a stored week_start by fantasy week. Rankings go in after their
  *  week's games, so they read "Post Week 3". The last one before the season is
  *  "Week 0" and anything earlier is "Preseason". `short` gives "Wk 3" /

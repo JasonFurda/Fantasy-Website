@@ -8,6 +8,7 @@ import {
   type TradeScore,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import TradesTabs from "@/components/TradesTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -273,6 +274,7 @@ export default async function TradesPage({
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-10">
+      <TradesTabs active="history" />
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Trades</h1>

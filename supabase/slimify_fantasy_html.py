@@ -363,6 +363,22 @@ def build_free_agents(league):
             })
     return out
 
+def build_pro_byes(league):
+    """Each NFL team's bye week this season: [{proTeam, byeWeek}].
+
+    Abbreviations match player_slots.pro_team (both come from ESPN). The
+    free-agent pseudo-team ("FA", bye 0) is skipped.
+    """
+    data = league.espn_request.get_pro_schedule()
+    out = []
+    for t in (data or {}).get("settings", {}).get("proTeams", []) or []:
+        abbrev = t.get("abbrev")
+        bye = t.get("byeWeek") or 0
+        if abbrev and bye > 0:
+            out.append({"proTeam": abbrev, "byeWeek": int(bye)})
+    return out
+
+
 TRADE_MSG_TYPE = 244  # ESPN activity message type for "TRADED"
 
 

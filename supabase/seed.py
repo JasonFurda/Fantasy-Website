@@ -376,6 +376,18 @@ def sync_schedule(
         print(f"  Removed {len(stale)} stale future matchup row(s).")
 
 
+def sync_pro_byes(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
+    """Upsert each NFL team's bye week for the season."""
+    rows = [
+        {"year": year, "pro_team": r["proTeam"], "bye_week": int(r["byeWeek"])}
+        for r in rows_in
+    ]
+    if rows:
+        client.table("pro_team_byes").upsert(
+            rows, on_conflict="year,pro_team"
+        ).execute()
+
+
 def sync_trades(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
     """Replace a year's trades. ESPN's feed is the full season every time, so
     a vetoed or reversed trade simply drops out on the next sync."""
