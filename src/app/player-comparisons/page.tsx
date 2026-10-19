@@ -1,12 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   getSeasons,
   getPlayerComparison,
-  getDraftValue,
   getPlayerDetail,
   getAllPlayerNames,
 } from "@/lib/queries";
-import { teamColor } from "@/lib/teams-config";
 import PlayerDetailModal from "@/components/PlayerDetailModal";
 import PlayerCompareModal from "@/components/PlayerCompareModal";
 import PlayerCompareTable from "@/components/PlayerCompareTable";
@@ -48,12 +47,16 @@ export default async function PlayerComparisonsPage({
   const defaultYear = seasons.find((s) => s.current_week > 0)?.year ?? years[0];
   const year =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
-  const isDraft = sp.pos === "draft";
+  // Draft Value moved to the Draft Recap page — keep old links working.
+  if (sp.pos === "draft") {
+    const q = new URLSearchParams({ year: String(year), view: "value" });
+    if (sp.player) q.set("player", sp.player);
+    redirect(`/draft-recap?${q}`);
+  }
   const posDef = POSITIONS.find((p) => p.key === sp.pos) ?? POSITIONS[0];
   const player = sp.player ?? null;
 
-  const rows = isDraft ? [] : await getPlayerComparison(year, posDef.pos);
-  const draftRows = isDraft ? await getDraftValue(year) : [];
+  const rows = await getPlayerComparison(year, posDef.pos);
 
   const detailYear =
     player && sp.pyear && years.includes(Number(sp.pyear))
@@ -71,8 +74,7 @@ export default async function PlayerComparisonsPage({
     player ? getAllPlayerNames() : Promise.resolve([]),
   ]);
 
-  const posQ = isDraft ? "draft" : posDef.key;
-  const base = `/player-comparisons?year=${year}&pos=${posQ}`;
+  const base = `/player-comparisons?year=${year}&pos=${posDef.key}`;
   const closeHref = base;
   const encP = encodeURIComponent(player ?? "");
   const encC = encodeURIComponent(compareName ?? "");
@@ -116,133 +118,21 @@ export default async function PlayerComparisonsPage({
             key={p.key}
             href={`/player-comparisons?year=${year}&pos=${p.key}`}
             prefetch={false}
-            className={tabCls(!isDraft && p.key === posDef.key)}
+            className={tabCls(p.key === posDef.key)}
           >
             {p.label}
           </Link>
         ))}
-        <Link
-          href={`/player-comparisons?year=${year}&pos=draft`}
-          prefetch={false}
-          className={tabCls(isDraft)}
-        >
-          Draft Value
-        </Link>
       </nav>
 
-      {!isDraft && (
-        <>
-          <PlayerCompareTable
-            rows={rows}
-            pos={posDef.pos}
-            year={year}
-            posKey={posDef.key}
-          />
-          {rows.length === 0 && (
-            <p className="mt-4 text-sm text-muted">No players found.</p>
-          )}
-        </>
-      )}
-
-      {isDraft && (
-        <>
-          <p className="mb-4 max-w-2xl text-sm text-muted">
-            TE/RB/WR ranked by draft value = (total points)² × √(draft
-            position). Higher means more production relative to how late they
-            were drafted.
-          </p>
-          <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                  <th className="px-3 py-3 font-medium">#</th>
-                  <th className="px-3 py-3 font-medium">Player</th>
-                  <th className="px-3 py-3 font-medium">Pos</th>
-                  <th className="px-3 py-3 font-medium">Fantasy</th>
-                  <th className="px-3 py-3 font-medium">Original Drafter</th>
-                  <th className="px-3 py-3 text-right font-medium">Draft</th>
-                  <th className="px-3 py-3 text-right font-medium">Round</th>
-                  <th className="px-3 py-3 text-right font-medium">Pts</th>
-                  <th className="px-3 py-3 text-right font-medium">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {draftRows.map((r, i) => (
-                  <tr
-                    key={r.name}
-                    className="border-b border-border/60 last:border-0 hover:bg-surface-2"
-                  >
-                    <td className="px-3 py-2 text-muted tabular-nums">{i + 1}</td>
-                    <td className="px-3 py-2 font-medium whitespace-nowrap">
-                      <Link
-                        href={`/player-comparisons?year=${year}&pos=draft&player=${encodeURIComponent(r.name)}`}
-                        prefetch={false}
-                        scroll={false}
-                        className="hover:text-accent hover:underline"
-                      >
-                        {r.name}
-                      </Link>
-                    </td>
-                    <td className="px-3 py-2 text-muted">{r.position}</td>
-                    <td className="px-3 py-2">
-                      {r.fantasyTeam ? (
-                        <Link
-                          href={`/teams/${r.fantasyTeam.espnId}`}
-                          className="flex items-center gap-1.5 whitespace-nowrap hover:underline"
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: teamColor(r.fantasyTeam.espnId),
-                            }}
-                          />
-                          {r.fantasyTeam.name}
-                        </Link>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {r.originalDrafter ? (
-                        <Link
-                          href={`/teams/${r.originalDrafter.espnId}`}
-                          className="flex items-center gap-1.5 whitespace-nowrap hover:underline"
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: teamColor(
-                                r.originalDrafter.espnId,
-                              ),
-                            }}
-                          />
-                          {r.originalDrafter.name}
-                        </Link>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {r.overall}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-muted">
-                      {r.round}
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums">
-                      {r.totalPts.toFixed(1)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums">
-                      {r.value.toFixed(1)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {draftRows.length === 0 && (
-            <p className="mt-4 text-sm text-muted">No draft data.</p>
-          )}
-        </>
+      <PlayerCompareTable
+        rows={rows}
+        pos={posDef.pos}
+        year={year}
+        posKey={posDef.key}
+      />
+      {rows.length === 0 && (
+        <p className="mt-4 text-sm text-muted">No players found.</p>
       )}
 
       {detail && compareName && detailB ? (

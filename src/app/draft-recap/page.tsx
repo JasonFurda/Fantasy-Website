@@ -1,7 +1,17 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getSeasons, getDraftRecap, type DraftRecapPick } from "@/lib/queries";
+import {
+  getSeasons,
+  getDraftRecap,
+  getDraftValue,
+  getPlayerDetail,
+  getAllPlayerNames,
+  type DraftRecapPick,
+  type DraftValueRow,
+} from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
+import PlayerDetailModal from "@/components/PlayerDetailModal";
+import PlayerCompareModal from "@/components/PlayerCompareModal";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +42,13 @@ function TeamTag({ team }: { team: { name: string; espnId: number } | null }) {
   );
 }
 
-function PlayerLink({ name, year }: { name: string; year: number }) {
+/** Opens the player card over this page; `base` keeps the current year/view. */
+function PlayerLink({ name, base }: { name: string; base: string }) {
   return (
     <Link
-      href={`/player-comparisons?year=${year}&pos=draft&player=${encodeURIComponent(name)}`}
+      href={`${base}&player=${encodeURIComponent(name)}`}
       prefetch={false}
+      scroll={false}
       className="hover:text-accent hover:underline"
     >
       {name}
@@ -46,11 +58,11 @@ function PlayerLink({ name, year }: { name: string; year: number }) {
 
 function PickRow({
   p,
-  year,
+  base,
   scored,
 }: {
   p: DraftRecapPick;
-  year: number;
+  base: string;
   /** Before the season has any points, every total is 0 — show dashes so the
    *  board doesn't read as "everyone scored nothing". */
   scored: boolean;
@@ -59,7 +71,7 @@ function PickRow({
     <tr className="border-b border-border/60 last:border-0 hover:bg-surface-2">
       <td className="px-3 py-2 tabular-nums text-muted">{p.overall}</td>
       <td className="whitespace-nowrap px-3 py-2 font-medium">
-        <PlayerLink name={p.playerName} year={year} />
+        <PlayerLink name={p.playerName} base={base} />
       </td>
       <td className="px-3 py-2 text-muted">{p.position ?? "—"}</td>
       <td className="px-3 py-2 text-muted">{p.nflTeam ?? "—"}</td>
@@ -84,10 +96,86 @@ function PickRow({
   );
 }
 
+function DraftValueTable({
+  rows,
+  base,
+}: {
+  rows: DraftValueRow[];
+  base: string;
+}) {
+  return (
+    <>
+      <p className="mb-4 max-w-2xl text-sm text-muted">
+        TE/RB/WR ranked by draft value = (total points)² × √(draft position).
+        Higher means more production relative to how late they were drafted.
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+              <th className="px-3 py-3 font-medium">#</th>
+              <th className="px-3 py-3 font-medium">Player</th>
+              <th className="px-3 py-3 font-medium">Pos</th>
+              <th className="px-3 py-3 font-medium">Fantasy</th>
+              <th className="px-3 py-3 font-medium">Original Drafter</th>
+              <th className="px-3 py-3 text-right font-medium">Draft</th>
+              <th className="px-3 py-3 text-right font-medium">Round</th>
+              <th className="px-3 py-3 text-right font-medium">Pts</th>
+              <th className="px-3 py-3 text-right font-medium">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr
+                key={r.name}
+                className="border-b border-border/60 last:border-0 hover:bg-surface-2"
+              >
+                <td className="px-3 py-2 tabular-nums text-muted">{i + 1}</td>
+                <td className="whitespace-nowrap px-3 py-2 font-medium">
+                  <PlayerLink name={r.name} base={base} />
+                </td>
+                <td className="px-3 py-2 text-muted">{r.position}</td>
+                <td className="px-3 py-2">
+                  <TeamTag team={r.fantasyTeam} />
+                </td>
+                <td className="px-3 py-2">
+                  <TeamTag team={r.originalDrafter} />
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {r.overall}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums text-muted">
+                  {r.round}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {r.totalPts.toFixed(1)}
+                </td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums">
+                  {r.value.toFixed(1)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 && (
+        <p className="mt-4 text-sm text-muted">No draft data.</p>
+      )}
+    </>
+  );
+}
+
 export default async function DraftRecapPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{
+    year?: string;
+    view?: string;
+    player?: string;
+    pyear?: string;
+    compare?: string;
+    cyear?: string;
+  }>;
 }) {
   const seasons = await getSeasons();
   if (seasons.length === 0) {
@@ -102,7 +190,36 @@ export default async function DraftRecapPage({
   const years = seasons.map((s) => s.year);
   const year =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
-  const recap = await getDraftRecap(year);
+  const isValue = sp.view === "value";
+  const player = sp.player ?? null;
+  const detailYear =
+    player && sp.pyear && years.includes(Number(sp.pyear))
+      ? Number(sp.pyear)
+      : year;
+  const compareName = sp.compare ?? null;
+  const cyear =
+    compareName && sp.cyear && years.includes(Number(sp.cyear))
+      ? Number(sp.cyear)
+      : detailYear;
+
+  const [recap, draftRows, detail, detailB, allPlayers] = await Promise.all([
+    isValue ? null : getDraftRecap(year),
+    isValue ? getDraftValue(year) : [],
+    player ? getPlayerDetail(player, detailYear) : null,
+    compareName ? getPlayerDetail(compareName, cyear) : null,
+    player ? getAllPlayerNames() : Promise.resolve([]),
+  ]);
+
+  const viewQ = isValue ? "&view=value" : "";
+  const base = `/draft-recap?year=${year}${viewQ}`;
+  const encP = encodeURIComponent(player ?? "");
+  const encC = encodeURIComponent(compareName ?? "");
+  const playerYearHref = (y: number) => `${base}&player=${encP}&pyear=${y}`;
+  const compareTemplate = `${base}&player=${encP}&pyear=${detailYear}&compare=__NAME__&cyear=${detailYear}`;
+  const aYearHref = (y: number) =>
+    `${base}&player=${encP}&pyear=${y}&compare=${encC}&cyear=${cyear}`;
+  const bYearHref = (y: number) =>
+    `${base}&player=${encP}&pyear=${detailYear}&compare=${encC}&cyear=${y}`;
 
   const tabCls = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -116,7 +233,7 @@ export default async function DraftRecapPage({
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Draft Recap</h1>
-          {recap.totalPicks > 0 && (
+          {recap && recap.totalPicks > 0 && (
             <p className="mt-1 text-sm text-muted">
               {year} draft · {recap.totalPicks} picks · {recap.rounds.length}{" "}
               rounds · {recap.teamCount} teams
@@ -127,7 +244,7 @@ export default async function DraftRecapPage({
           {years.map((y) => (
             <Link
               key={y}
-              href={`/draft-recap?year=${y}`}
+              href={`/draft-recap?year=${y}${viewQ}`}
               prefetch={false}
               className={tabCls(y === year)}
             >
@@ -137,7 +254,26 @@ export default async function DraftRecapPage({
         </nav>
       </div>
 
-      {recap.totalPicks === 0 ? (
+      <nav className="mb-6 flex w-fit gap-1 rounded-lg border border-border bg-surface p-1">
+        <Link
+          href={`/draft-recap?year=${year}`}
+          prefetch={false}
+          className={tabCls(!isValue)}
+        >
+          Board
+        </Link>
+        <Link
+          href={`/draft-recap?year=${year}&view=value`}
+          prefetch={false}
+          className={tabCls(isValue)}
+        >
+          Draft Value
+        </Link>
+      </nav>
+
+      {isValue ? (
+        <DraftValueTable rows={draftRows} base={base} />
+      ) : !recap || recap.totalPicks === 0 ? (
         <p className="rounded-xl border border-border bg-surface px-5 py-8 text-sm text-muted">
           No draft data for {year}.
         </p>
@@ -146,13 +282,13 @@ export default async function DraftRecapPage({
           <p className="mb-6 max-w-2xl text-sm text-muted">
             Value = (total points)² × √(draft position) — the same number the{" "}
             <Link
-              href={`/player-comparisons?year=${year}&pos=draft`}
+              href={`/draft-recap?year=${year}&view=value`}
               prefetch={false}
               className="text-accent hover:underline"
             >
               Draft Value
             </Link>{" "}
-            table shows. Higher means more production relative to how late the
+            tab shows. Higher means more production relative to how late the
             pick was. It is only defined for TE/RB/WR, so every other pick shows
             a dash.
           </p>
@@ -194,7 +330,7 @@ export default async function DraftRecapPage({
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold">
-                        <PlayerLink name={p.playerName} year={year} />
+                        <PlayerLink name={p.playerName} base={base} />
                       </div>
                       <div className="text-[11px] text-muted">
                         {p.position} · pick {p.overall} ·{" "}
@@ -238,7 +374,7 @@ export default async function DraftRecapPage({
                         <PickRow
                           key={p.overall}
                           p={p}
-                          year={year}
+                          base={base}
                           scored={recap.scored}
                         />
                       ))}
@@ -250,6 +386,23 @@ export default async function DraftRecapPage({
           </div>
         </>
       )}
+
+      {detail && compareName && detailB ? (
+        <PlayerCompareModal
+          a={detail}
+          b={detailB}
+          closeHref={base}
+          aYearHref={aYearHref}
+          bYearHref={bYearHref}
+        />
+      ) : detail ? (
+        <PlayerDetailModal
+          data={detail}
+          closeHref={base}
+          yearHref={playerYearHref}
+          compare={{ players: allPlayers, hrefTemplate: compareTemplate }}
+        />
+      ) : null}
     </main>
   );
 }
