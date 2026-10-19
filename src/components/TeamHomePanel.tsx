@@ -4,7 +4,9 @@ import type {
   UpcomingMatch,
   DivisionStandings,
   WeeklyRecap,
+  TeamOutlook,
 } from "@/lib/queries";
+import { verdict, ordinal } from "@/lib/matchup-grade";
 import type { Article } from "@/lib/articles";
 import { teamColor } from "@/lib/teams-config";
 import { homepageConfig } from "@/lib/homepage-config";
@@ -59,19 +61,79 @@ function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
   );
 }
 
+function OutlookList({ outlook }: { outlook: TeamOutlook }) {
+  const total = outlook.ratings?.defenses.length ?? 0;
+  const stale =
+    outlook.ratings != null && outlook.ratings.year !== outlook.year;
+  return (
+    <div className="rounded-lg border border-border bg-surface">
+      <ul className="divide-y divide-border/60">
+        {outlook.starters.map((p) => {
+          const v = p.rating ? verdict(p.rating, total) : null;
+          return (
+            <li
+              key={`${p.slot}-${p.playerName}`}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm sm:gap-3"
+            >
+              <span className="w-9 shrink-0 text-[10px] uppercase tracking-wide text-muted">
+                {p.slot === "RB/WR/TE" ? "Flex" : p.slot}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {p.playerName}
+              </span>
+              <span className="shrink-0 text-xs text-muted">
+                {p.opponent === "BYE"
+                  ? "Bye"
+                  : p.opponent
+                    ? `vs ${p.opponent}`
+                    : "—"}
+              </span>
+              <span className="w-14 shrink-0 text-right text-xs sm:w-20">
+                {p.rating && v ? (
+                  <span
+                    className={`font-semibold ${p.rating.thin ? "text-muted" : v.cls}`}
+                    title={`${p.rating.defense} allows the ${ordinal(p.rating.rank)}-most fantasy points to ${p.rating.position}`}
+                  >
+                    {v.label}
+                    <span className="ml-1 hidden font-normal text-muted sm:inline">
+                      #{p.rating.rank}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-muted">—</span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {stale && (
+        <p className="border-t border-border/60 px-3 py-1.5 text-[11px] text-muted">
+          Grades use {outlook.ratings!.year} defenses until {outlook.year} has
+          more weeks in.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function TeamHomePanel({
   home,
+  outlook,
   divisions,
   articles,
   weekly,
 }: {
   home: TeamHome;
+  outlook: TeamOutlook | null;
   divisions: DivisionStandings[];
   articles: Article[];
   weekly: WeeklyRecap | null;
 }) {
   const color = teamColor(home.team.espn_id);
   const { recap } = homepageConfig;
+  // Same week the outlook grades: the next unplayed one, else the last result.
+  const match = home.upcoming[0] ?? home.lastResult;
 
   return (
     <main className="mx-auto max-w-[1800px] px-8 py-12">
@@ -110,29 +172,35 @@ export default function TeamHomePanel({
         <ArtSpotlight art={recap.art} rotationMs={recap.artRotationMs} />
 
         <div className="flex flex-col gap-6">
-          {/* Upcoming */}
+          {/* This week's outlook: the matchup, then each starter's NFL
+              matchup graded against how that defense treats the position. */}
           <section>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">
-              Upcoming
-            </h2>
-            <div className="flex flex-col gap-2">
-              {home.upcoming.length > 0 ? (
-                home.upcoming.map((m) => (
-                  <MatchRow key={m.matchupId} m={m} year={home.year} />
-                ))
-              ) : home.lastResult ? (
-                <>
-                  <p className="text-sm text-muted">
-                    No upcoming games — here&apos;s the latest result:
-                  </p>
-                  <MatchRow m={home.lastResult} year={home.year} />
-                </>
-              ) : (
-                <p className="rounded-lg border border-border bg-surface px-3 py-4 text-sm text-muted">
-                  Schedule isn&apos;t out yet.
-                </p>
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                Outlook
+              </h2>
+              {outlook && (
+                <Link
+                  href="/outlook"
+                  prefetch={false}
+                  className="text-xs text-accent hover:underline"
+                >
+                  Full outlook →
+                </Link>
               )}
             </div>
+            {match ? (
+              <div className="flex flex-col gap-2">
+                <MatchRow m={match} year={home.year} />
+                {outlook && outlook.starters.length > 0 && (
+                  <OutlookList outlook={outlook} />
+                )}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-border bg-surface px-3 py-4 text-sm text-muted">
+                Schedule isn&apos;t out yet.
+              </p>
+            )}
           </section>
 
           {/* Articles */}

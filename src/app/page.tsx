@@ -7,6 +7,7 @@ import {
   buildStandings,
   getCurrentFranchises,
   getTeamHome,
+  getTeamOutlook,
   getDivisionStandings,
   getWeeklyRecap,
   type WeeklyRecap,
@@ -148,10 +149,14 @@ export default async function Home() {
   if (chosen != null) {
     const home = await getTeamHome(chosen);
     if (home) {
-      const divisions = await getDivisionStandings(home.year);
+      const [divisions, outlook] = await Promise.all([
+        getDivisionStandings(home.year),
+        getTeamOutlook(chosen),
+      ]);
       return (
         <TeamHomePanel
           home={home}
+          outlook={outlook}
           divisions={divisions}
           articles={articles}
           weekly={weekly}
