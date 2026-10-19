@@ -4,6 +4,7 @@ import {
   getSeasons,
   getTrades,
   type Trade,
+  type TradePlayer,
   type TradeScore,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
@@ -40,6 +41,19 @@ function TeamDot({ espnId }: { espnId: number }) {
     />
   );
 }
+
+/** Hover text: each start and what it was measured against. */
+function startsDetail(p: TradePlayer): string | undefined {
+  if (p.starts.length === 0) return undefined;
+  return p.starts
+    .map(
+      (s) =>
+        `Wk ${s.week}: ${fmt(s.pts)} vs ${s.vsName ?? "waiver level"} ${fmt(s.vsPts)} (${signed(round1(s.pts - s.vsPts))})`,
+    )
+    .join("\n");
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 function weekSpan(t: Trade) {
   const last = t.firstWeek + t.weeksSince - 1;
@@ -102,7 +116,11 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
                 <li className="text-sm text-muted">Nothing</li>
               )}
               {side.receives.map((p) => (
-                <li key={p.name} className="flex items-baseline gap-2 text-sm">
+                <li
+                  key={p.name}
+                  className="flex items-baseline gap-2 text-sm"
+                  title={startsDetail(p)}
+                >
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/player-comparisons?year=${year}&player=${encodeURIComponent(p.name)}`}
@@ -114,6 +132,20 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
                     <span className="whitespace-nowrap text-xs text-muted">
                       {[p.position, p.proTeam].filter(Boolean).join(" · ")}
                     </span>
+                    {judged && p.vs.length > 0 && (
+                      <span className="block text-[11px] text-muted">
+                        vs{" "}
+                        {p.vs.map((v, i) => (
+                          <span key={v.name ?? "waiver"}>
+                            {i > 0 && ", "}
+                            <span className={v.name ? "text-foreground/80" : ""}>
+                              {v.name ?? "waiver level"}
+                            </span>
+                            {v.weeks > 1 && ` ×${v.weeks}`}
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </div>
                   {judged && (
                     <div className="shrink-0 text-right tabular-nums">
@@ -278,17 +310,21 @@ export default async function TradesPage({
               <p>
                 Scores are <span className="text-foreground">points over
                 replacement</span>: for every week a player started for his new
-                team since the trade, his points minus what a waiver-wire
-                pickup at his position averages — the team would have started
-                someone either way. Bench weeks count zero. Only finished weeks
-                count, and only while the team rostered him. A side&apos;s net
+                team since the trade, his points minus what the team would have
+                started instead — its best bench player who could fill that
+                lineup spot that week (skipping anyone on bye, injured or
+                inactive, and anyone who came over in the same trade). If there
+                was no such backup, he&apos;s measured against a typical waiver
+                pickup at his position. Bench weeks count zero. Only finished
+                weeks count, and only while the team rostered him. Hover a
+                player for his week-by-week breakdown. A side&apos;s net
                 is the value it got minus the value the players it gave up
                 produced for their new teams; &ldquo;raw&rdquo; is the same
                 net in plain starter points.
               </p>
               {replRows.length > 0 && (
                 <p className="text-xs">
-                  Replacement level (avg points per game of the top 3 free
+                  Waiver level (avg points per game of the top 3 free
                   agents):{" "}
                   {replRows.map((pos, i) => (
                     <span key={pos} className="whitespace-nowrap">

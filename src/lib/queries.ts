@@ -3458,9 +3458,15 @@ export type TradePlayer = {
   startedPts: number;
   /** Points he scored for the receiving team, bench included. */
   totalPts: number;
-  /** Points over replacement: each started week's points minus his position's
-   *  replacement level. Bench weeks count 0 — he displaced nobody. */
+  /** Points over replacement: each started week's points minus what the
+   *  team's best healthy backup for that lineup slot scored (or, with no such
+   *  backup, his position's waiver replacement level). Bench weeks count 0 —
+   *  he displaced nobody. */
   value: number;
+  /** Who each start was measured against, grouped; name null = waiver level. */
+  vs: { name: string | null; weeks: number }[];
+  /** Week-by-week starts behind `value`. */
+  starts: { week: number; pts: number; vsName: string | null; vsPts: number }[];
 };
 
 export type TradeSide = {
@@ -3570,12 +3576,16 @@ async function replacementLevels(
  *  a later drop or re-trade ends his run), and only until his next trade.
  *
  *  The headline measure is points over replacement: for each week he started,
- *  his points minus his position's replacement level (see replacementLevels),
- *  since the team would otherwise have started someone. A side's net is the
+ *  his points minus what the team would otherwise have started there — its
+ *  highest-scoring bench player eligible for that lineup slot, skipping
+ *  players on bye, injured, on IR or who didn't play, and skipping anyone the
+ *  team got in the same trade (they wouldn't be there without it). Each backup
+ *  can stand in for only one starter a week. With no such backup the
+ *  position's waiver replacement level is used (see replacementLevels). A side's net is the
  *  value it got minus the value the players it gave up produced for their new
  *  teams, so in a two-team trade one side's gain is the other's loss. Raw
  *  starter points are kept alongside for reference. */
-export const getTrades = cached(getTradesImpl, "getTrades-v3");
+export const getTrades = cached(getTradesImpl, "getTrades-v4");
 async function getTradesImpl(year: number): Promise<TradesData> {
   const [{ data }, teams, matchups] = await Promise.all([
     supabase
@@ -3612,14 +3622,15 @@ async function getTradesImpl(year: number): Promise<TradesData> {
 
   // Each traded player's box-score lines in finished weeks, keyed by
   // player → team (espn_id) → week.
-  const lines = new Map<string, Map<number, Map<number, { pts: number; started: boolean }>>>();
+  type Line = { pts: number; started: boolean; slot: string };
+  const lines = new Map<string, Map<number, Map<number, Line>>>();
   const names = [...new Set(rows.map((r) => r.player_name))];
   let replacement: Record<string, number> = {};
   if (names.length > 0 && finals.length > 0) {
     const [{ data: slots }, repl] = await Promise.all([
       supabase
         .from("player_slots")
-        .select("matchup_id, team_side, player_name, points, is_bench")
+        .select("matchup_id, team_side, player_name, points, is_bench, slot")
         .in("player_name", names)
         .in("matchup_id", finals.map((m) => m.id)),
       replacementLevels(year, lastFinalWeek),
@@ -3631,6 +3642,7 @@ async function getTradesImpl(year: number): Promise<TradesData> {
       player_name: string;
       points: number | null;
       is_bench: boolean | null;
+      slot: string;
     }[]) {
       const m = matchupById.get(s.matchup_id);
       if (!m) continue;
@@ -3642,7 +3654,11 @@ async function getTradesImpl(year: number): Promise<TradesData> {
       if (!byTeam) lines.set(s.player_name, (byTeam = new Map()));
       let byWeek = byTeam.get(espnId);
       if (!byWeek) byTeam.set(espnId, (byWeek = new Map()));
-      byWeek.set(m.week, { pts: Number(s.points ?? 0), started: !s.is_bench });
+      byWeek.set(m.week, {
+        pts: Number(s.points ?? 0),
+        started: !s.is_bench,
+        slot: s.slot,
+      });
     }
   }
 
@@ -3652,6 +3668,133 @@ async function getTradesImpl(year: number): Promise<TradesData> {
     const arr = tradeWeeksByPlayer.get(r.player_name) ?? [];
     arr.push(firstWeekAfter(r.traded_at, year));
     tradeWeeksByPlayer.set(r.player_name, arr);
+  }
+
+  // Each trade row's run with its new team: the finished weeks it counts for.
+  const stintWeeks = rows.map((r) => {
+    const firstWeek = firstWeekAfter(r.traded_at, year);
+    const endWeek =
+      (tradeWeeksByPlayer.get(r.player_name) ?? [])
+        .filter((w) => w > firstWeek)
+        .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
+    return [...(lines.get(r.player_name)?.get(r.to_espn_id) ?? [])]
+      .filter(([week]) => week >= firstWeek && week < endWeek)
+      .sort((a, b) => a[0] - b[0]);
+  });
+
+  // Players each team got in each trade — never a backup for each other.
+  const receivedIn = new Map<string, Set<string>>(); // `${trade}:${espn}`
+  for (const r of rows) {
+    const k = `${r.trade_id}:${r.to_espn_id}`;
+    const set = receivedIn.get(k) ?? new Set<string>();
+    set.add(r.player_name);
+    receivedIn.set(k, set);
+  }
+
+  // Every start by a traded player, grouped by team-week so backups can be
+  // shared out (one backup covers one starter).
+  type Start = {
+    week: number;
+    line: Line;
+    position: string | null;
+    exclude: Set<string>;
+    vsName: string | null;
+    vsPts: number;
+  };
+  const startsByRow: Start[][] = rows.map(() => []);
+  const startsByTeamWeek = new Map<string, Start[]>(); // `${espn}:${week}`
+  rows.forEach((r, i) => {
+    for (const [week, line] of stintWeeks[i]) {
+      if (!line.started) continue;
+      const st: Start = {
+        week,
+        line,
+        position: r.position,
+        exclude: receivedIn.get(`${r.trade_id}:${r.to_espn_id}`) ?? new Set(),
+        vsName: null,
+        vsPts: 0,
+      };
+      startsByRow[i].push(st);
+      const k = `${r.to_espn_id}:${week}`;
+      startsByTeamWeek.set(k, [...(startsByTeamWeek.get(k) ?? []), st]);
+    }
+  });
+
+  // Healthy bench players for those team-weeks.
+  type Backup = { name: string; pts: number; eligible: string[] };
+  const benchByTeamWeek = new Map<string, Backup[]>();
+  const neededIds = finals
+    .filter((m) =>
+      [m.home_team_id, m.away_team_id].some((id) =>
+        startsByTeamWeek.has(`${espnByTeamId.get(id)}:${m.week}`),
+      ),
+    )
+    .map((m) => m.id);
+  const CHUNK = 20;
+  const benchResults = await Promise.all(
+    Array.from({ length: Math.ceil(neededIds.length / CHUNK) }, (_, i) =>
+      supabase
+        .from("player_slots")
+        .select(
+          "matchup_id, team_side, player_name, points, slot, is_bye, is_injured, eligible_slots, stats",
+        )
+        .eq("is_bench", true)
+        .in("matchup_id", neededIds.slice(i * CHUNK, (i + 1) * CHUNK)),
+    ),
+  );
+  for (const { data: bench } of benchResults)
+    for (const b of (bench ?? []) as {
+      matchup_id: number;
+      team_side: "home" | "away";
+      player_name: string;
+      points: number | null;
+      slot: string;
+      is_bye: boolean | null;
+      is_injured: boolean | null;
+      eligible_slots: string[] | null;
+      stats: Record<string, unknown> | null;
+    }[]) {
+      const pts = Number(b.points ?? 0);
+      // 0 points and an empty stat line: he was inactive, not just quiet.
+      const didNotPlay = pts === 0 && Object.keys(b.stats ?? {}).length === 0;
+      if (b.slot === "IR" || b.is_bye || b.is_injured || didNotPlay) continue;
+      const m = matchupById.get(b.matchup_id);
+      if (!m) continue;
+      const espnId = espnByTeamId.get(
+        b.team_side === "home" ? m.home_team_id : m.away_team_id,
+      );
+      const k = `${espnId}:${m.week}`;
+      if (!startsByTeamWeek.has(k)) continue;
+      benchByTeamWeek.set(k, [
+        ...(benchByTeamWeek.get(k) ?? []),
+        { name: b.player_name, pts, eligible: b.eligible_slots ?? [] },
+      ]);
+    }
+
+  // Hand each start its best available backup; the most constrained starts
+  // pick first so a flex-eligible backup isn't spent where another would do.
+  for (const [k, starts] of startsByTeamWeek) {
+    const bench = (benchByTeamWeek.get(k) ?? []).sort((a, b) => b.pts - a.pts);
+    const used = new Set<string>();
+    const options = (st: Start) =>
+      bench.filter(
+        (b) =>
+          !used.has(b.name) &&
+          !st.exclude.has(b.name) &&
+          b.eligible.includes(st.line.slot),
+      );
+    for (const st of [...starts].sort(
+      (a, b) => options(a).length - options(b).length,
+    )) {
+      const best = options(st)[0];
+      if (best) {
+        used.add(best.name);
+        st.vsName = best.name;
+        st.vsPts = best.pts;
+      } else {
+        st.vsPts = (st.position && replacement[st.position]) || 0;
+      }
+    }
   }
 
   const byTrade = new Map<string, Trade>();
@@ -3674,7 +3817,7 @@ async function getTradesImpl(year: number): Promise<TradesData> {
     net: 0,
     rawNet: 0,
   });
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const firstWeek = firstWeekAfter(r.traded_at, year);
     let trade = byTrade.get(r.trade_id);
     if (!trade) {
@@ -3695,23 +3838,16 @@ async function getTradesImpl(year: number): Promise<TradesData> {
       trade.sides.push(side);
     }
 
-    const endWeek =
-      (tradeWeeksByPlayer.get(r.player_name) ?? [])
-        .filter((w) => w > firstWeek)
-        .sort((a, b) => a - b)[0] ?? Number.POSITIVE_INFINITY;
-    const repl = (r.position && replacement[r.position]) || 0;
-    let weeks = 0;
-    let startedPts = 0;
-    let totalPts = 0;
-    let value = 0;
-    for (const [week, l] of lines.get(r.player_name)?.get(r.to_espn_id) ?? []) {
-      if (week < firstWeek || week >= endWeek) continue;
-      weeks++;
-      totalPts += l.pts;
-      if (l.started) {
-        startedPts += l.pts;
-        value += l.pts - repl;
-      }
+    const weeks = stintWeeks[i].length;
+    const totalPts = stintWeeks[i].reduce((a, [, l]) => a + l.pts, 0);
+    const starts = startsByRow[i];
+    const startedPts = starts.reduce((a, st) => a + st.line.pts, 0);
+    const value = starts.reduce((a, st) => a + st.line.pts - st.vsPts, 0);
+    const vs: TradePlayer["vs"] = [];
+    for (const st of starts) {
+      const g = vs.find((v) => v.name === st.vsName);
+      if (g) g.weeks++;
+      else vs.push({ name: st.vsName, weeks: 1 });
     }
     side.receives.push({
       name: r.player_name,
@@ -3721,6 +3857,13 @@ async function getTradesImpl(year: number): Promise<TradesData> {
       startedPts: round1(startedPts),
       totalPts: round1(totalPts),
       value: round1(value),
+      vs,
+      starts: starts.map((st) => ({
+        week: st.week,
+        pts: round1(st.line.pts),
+        vsName: st.vsName,
+        vsPts: round1(st.vsPts),
+      })),
     });
     for (const t of [
       tally(gotBy.get(r.trade_id)!, r.to_espn_id),
@@ -3729,7 +3872,7 @@ async function getTradesImpl(year: number): Promise<TradesData> {
       t.value += value;
       t.raw += startedPts;
     }
-  }
+  });
 
   const trades = [...byTrade.values()];
   const score = new Map<number, TradeScore>();
