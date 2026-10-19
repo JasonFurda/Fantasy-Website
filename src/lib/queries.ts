@@ -1644,8 +1644,11 @@ export const DEF_POSITIONS = ["QB", "RB", "WR", "TE", "K", "D/ST"];
 const BYE = "BYE";
 
 /** Below this many player-games the average is too noisy to lean on; the UI
- *  greys it out rather than hiding it. */
-export const DEF_MIN_SAMPLES = 6;
+ *  greys it out rather than hiding it. With free agents counted, QB/K/D/ST get
+ *  about one sample per game (WR ~4), so 5 roughly means "faced five of them";
+ *  a full season clears it everywhere, and it only bites around byes and the
+ *  first weeks a new season is rated on. */
+export const DEF_MIN_SAMPLES = 5;
 
 /** A season needs this many played weeks before its own defense numbers beat
  *  last season's full sample. */
@@ -1705,17 +1708,32 @@ async function getDefenseRatingsYearImpl(): Promise<number | null> {
 
 /** Fantasy points each defense allows per player-game, by position.
  *
- *  Counts every rostered player who actually played (starters and bench alike)
- *  against that defense. Free agents are excluded — free_agent_week has no
- *  opponent column — so this measures production by rostered players, which
- *  skews slightly high. Byes are excluded outright. */
+ *  Counts rostered players (player_slots — starters and bench alike) AND
+ *  waiver-wire players (free_agent_week), so the average reflects the whole
+ *  position, not just the good players. Opponents for free agents come from the
+ *  schedule rebuilt the same way as getDefenseStats. Only finished weeks count;
+ *  byes are excluded outright.
+ *
+ *  "Played" differs by source: rostered rows have game_played, free-agent rows
+ *  don't, so a free agent with exactly 0 points is treated as not having played.
+ *  Those rows are mostly inactives and no-snap backups (about 40% of WR/TE
+ *  free-agent rows vs. ~10% for rostered players who did play); keeping them
+ *  would drown the average in non-games. Negative scores imply a stat, so they
+ *  stay. */
 export const getDefenseRatings = cached(
   getDefenseRatingsImpl,
   "getDefenseRatings",
 );
 async function getDefenseRatingsImpl(year: number): Promise<DefenseRatings> {
   const matchups = await getMatchups(year);
-  const ids = matchups.map((m) => m.id);
+  const idsByWeek = new Map<number, number[]>();
+  for (const m of matchups) {
+    if (!isPlayed(m)) continue;
+    const arr = idsByWeek.get(m.week) ?? [];
+    arr.push(m.id);
+    idsByWeek.set(m.week, arr);
+  }
+  const weeks = [...idsByWeek.keys()].sort((a, b) => a - b);
   const empty: DefenseRatings = {
     year,
     weeks: 0,
@@ -1724,56 +1742,81 @@ async function getDefenseRatingsImpl(year: number): Promise<DefenseRatings> {
     leagueAvg: {},
     table: {},
   };
-  if (ids.length === 0) return empty;
+  if (weeks.length === 0) return empty;
 
-  type Raw = {
+  type SlotRaw = {
     position: string | null;
+    pro_team: string | null;
     opponent: string | null;
     points: number | null;
     game_played: number | null;
   };
-  const CHUNK = 20;
-  const chunks: number[][] = [];
-  for (let i = 0; i < ids.length; i += CHUNK)
-    chunks.push(ids.slice(i, i + CHUNK));
-  const results = await Promise.all(
-    chunks.map((chunk) =>
-      supabase
-        .from("player_slots")
-        .select("position, opponent, points, game_played")
-        .in("matchup_id", chunk),
-    ),
+  type FaRaw = {
+    position: string | null;
+    pro_team: string | null;
+    points: number | null;
+  };
+  // One request per week per table stays under the 1000-row API cap.
+  const perWeek = await Promise.all(
+    weeks.map(async (week) => {
+      const [slots, fa] = await Promise.all([
+        supabase
+          .from("player_slots")
+          .select("position, pro_team, opponent, points, game_played")
+          .in("matchup_id", idsByWeek.get(week)!),
+        supabase
+          .from("free_agent_week")
+          .select("position, pro_team, points")
+          .eq("year", year)
+          .eq("week", week),
+      ]);
+      return {
+        slots: (slots.data ?? []) as SlotRaw[],
+        fa: (fa.data ?? []) as FaRaw[],
+      };
+    }),
   );
 
   const agg = new Map<string, { sum: number; n: number }>();
   const posTotal = new Map<string, { sum: number; n: number }>();
   const defenses = new Set<string>();
 
-  for (const { data } of results) {
-    for (const r of (data ?? []) as Raw[]) {
-      const pos = r.position;
-      const def = r.opponent;
-      if (!pos || !def || def === BYE) continue;
-      if (!(Number(r.game_played) > 0)) continue;
-      if (!DEF_POSITIONS.includes(pos)) continue;
-      const pts = Number(r.points ?? 0);
-      defenses.add(def);
+  const add = (pos: string | null, def: string | undefined, pts: number) => {
+    if (!pos || !def || !DEF_POSITIONS.includes(pos)) return;
+    defenses.add(def);
+    const key = def + "|" + pos;
+    const cell = agg.get(key);
+    if (cell) {
+      cell.sum += pts;
+      cell.n += 1;
+    } else {
+      agg.set(key, { sum: pts, n: 1 });
+    }
+    const pt = posTotal.get(pos);
+    if (pt) {
+      pt.sum += pts;
+      pt.n += 1;
+    } else {
+      posTotal.set(pos, { sum: pts, n: 1 });
+    }
+  };
 
-      const key = def + "|" + pos;
-      const cell = agg.get(key);
-      if (cell) {
-        cell.sum += pts;
-        cell.n += 1;
-      } else {
-        agg.set(key, { sum: pts, n: 1 });
-      }
-      const pt = posTotal.get(pos);
-      if (pt) {
-        pt.sum += pts;
-        pt.n += 1;
-      } else {
-        posTotal.set(pos, { sum: pts, n: 1 });
-      }
+  for (const { slots, fa } of perWeek) {
+    // This week's schedule: NFL team -> opponent, from both sides of each game.
+    const opp = new Map<string, string>();
+    for (const r of slots) {
+      if (!r.pro_team || !r.opponent || r.opponent === BYE) continue;
+      opp.set(r.pro_team, r.opponent);
+      opp.set(r.opponent, r.pro_team);
+    }
+    for (const r of slots) {
+      if (r.opponent === BYE || !(Number(r.game_played) > 0)) continue;
+      add(r.position, r.opponent ?? undefined, Number(r.points ?? 0));
+    }
+    for (const r of fa) {
+      const pts = Number(r.points ?? 0);
+      if (pts === 0) continue; // no game_played column; 0 = didn't play
+      add(r.position, r.pro_team ? opp.get(r.pro_team) : undefined, pts);
     }
   }
   if (agg.size === 0) return empty;
@@ -1810,7 +1853,7 @@ async function getDefenseRatingsImpl(year: number): Promise<DefenseRatings> {
 
   return {
     year,
-    weeks: await playedWeekCount(year),
+    weeks: weeks.length,
     positions: DEF_POSITIONS,
     defenses: [...defenses].sort(),
     leagueAvg,

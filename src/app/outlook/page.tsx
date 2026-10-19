@@ -247,12 +247,12 @@ export default async function OutlookPage() {
         </p>
       ) : (
         <p className="mb-6 max-w-3xl text-sm text-muted">
-          &ldquo;Def allows&rdquo; is the fantasy points that defense gives up
-          per game to the player&apos;s position, from{" "}
+          &ldquo;Def allows&rdquo; is the average fantasy points that defense
+          gives up to each player at that position, from{" "}
           <span className="text-foreground">
             {ratings.year} ({ratings.weeks} weeks)
           </span>
-          . The grade ranks it against the other {ratings.defenses.length}{" "}
+          . The grade ranks it against the other {ratings.defenses.length - 1}{" "}
           defenses — <span className="text-accent">Great</span> means they give
           up a lot to that position.
           {staleRatings && (
@@ -291,7 +291,7 @@ export default async function OutlookPage() {
               Every defense, by position
             </h2>
             <span className="text-xs text-muted">
-              fantasy points allowed per game · {ratings.year}
+              fantasy points allowed per player-game · {ratings.year}
             </span>
           </div>
           <DefenseVsPositionTable ratings={ratings} />
@@ -299,10 +299,10 @@ export default async function OutlookPage() {
       )}
 
       <p className="mt-8 text-xs text-muted">
-        Built from every rostered player who played against that defense,
-        starters and bench alike. Free agents aren&apos;t counted, so these run
-        a little high in absolute terms — the ranking between defenses is the
-        useful part.{" "}
+        Built from every player who played against that defense — starters,
+        bench and free agents alike — averaged per player, so depth players
+        pull the numbers down. The ranking between defenses is the useful
+        part.{" "}
         <Link href="/matchups" className="text-accent hover:underline">
           Full matchups →
         </Link>

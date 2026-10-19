@@ -84,7 +84,7 @@ export default function DefenseVsPositionTable({
                     className="px-3 py-2 text-right tabular-nums"
                     title={
                       cell
-                        ? `${cell.avgAllowed.toFixed(1)} allowed per game · rank ${cell.rank} of ${defenses.length} · ${cell.samples} player-games`
+                        ? `${cell.avgAllowed.toFixed(1)} allowed per player-game · rank ${cell.rank} of ${defenses.length} · ${cell.samples} player-games`
                         : "no games recorded"
                     }
                   >
