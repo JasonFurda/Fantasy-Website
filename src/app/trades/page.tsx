@@ -25,6 +25,8 @@ function formatDate(iso: string) {
   });
 }
 
+const REPL_ORDER = ["QB", "RB", "WR", "TE", "K", "D/ST"];
+
 const fmt = (n: number) => n.toFixed(1);
 const signed = (n: number) => (n > 0 ? `+${fmt(n)}` : fmt(n));
 const netCls = (n: number) =>
@@ -115,11 +117,17 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
                   </div>
                   {judged && (
                     <div className="shrink-0 text-right tabular-nums">
-                      <span className="font-semibold">{fmt(p.startedPts)}</span>
+                      <span className={`font-semibold ${netCls(p.value)}`}>
+                        {signed(p.value)}
+                      </span>
                       <span className="block text-[11px] text-muted">
                         {p.weeks === 0
                           ? "not rostered"
-                          : `${fmt(p.totalPts)} total · ${p.weeks} wk`}
+                          : `${fmt(p.startedPts)} started${
+                              p.totalPts > p.startedPts
+                                ? ` · ${fmt(p.totalPts - p.startedPts)} bench`
+                                : ""
+                            } · ${p.weeks} wk`}
                       </span>
                     </div>
                   )}
@@ -128,9 +136,11 @@ function TradeCard({ trade, year }: { trade: Trade; year: number }) {
             </ul>
             {judged && (
               <div className="mt-auto pt-3 text-xs text-muted">
-                Got <span className="tabular-nums text-foreground">{fmt(side.gainedPts)}</span>{" "}
-                started pts · gave up{" "}
-                <span className="tabular-nums text-foreground">{fmt(side.gavePts)}</span>
+                Got <span className="tabular-nums text-foreground">{signed(side.gainedPts)}</span>{" "}
+                · gave up{" "}
+                <span className="tabular-nums text-foreground">{signed(side.gavePts)}</span>{" "}
+                · raw net{" "}
+                <span className="tabular-nums text-foreground">{signed(side.rawNet)}</span>
               </div>
             )}
           </div>
@@ -145,23 +155,27 @@ function Scoreboard({ rows }: { rows: TradeScore[] }) {
     <section className="mb-8">
       <h2 className="mb-1 text-lg font-semibold">Who&apos;s winning their trades</h2>
       <p className="mb-3 text-sm text-muted">
-        Net starter points from every trade a team made this season.
+        Net points over replacement from every trade a team made this season.
       </p>
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead className="text-left text-xs uppercase tracking-wide text-muted">
             <tr className="border-b border-border/60">
-              <th className="px-4 py-2 font-medium">Team</th>
-              <th className="px-2 py-2 text-right font-medium">Trades</th>
+              <th className="py-2 pl-3 pr-2 font-medium sm:px-4">Team</th>
+              <th className="px-1 py-2 text-right font-medium sm:px-2">
+                <span className="sm:hidden">#</span>
+                <span className="hidden sm:inline">Trades</span>
+              </th>
               <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Got</th>
               <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Gave</th>
-              <th className="px-4 py-2 text-right font-medium">Net</th>
+              <th className="hidden px-2 py-2 text-right font-medium sm:table-cell">Raw</th>
+              <th className="py-2 pl-2 pr-3 text-right font-medium sm:px-4">Net</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.team.espnId} className="border-b border-border/40 last:border-0">
-                <td className="max-w-0 px-4 py-2">
+                <td className="max-w-0 py-2 pl-3 pr-2 sm:px-4">
                   <Link
                     href={`/teams/${r.team.espnId}`}
                     className="flex items-center gap-1.5 font-medium hover:underline"
@@ -170,17 +184,20 @@ function Scoreboard({ rows }: { rows: TradeScore[] }) {
                     <span className="truncate">{r.team.name}</span>
                   </Link>
                 </td>
-                <td className="w-14 px-2 py-2 text-right tabular-nums text-muted">
+                <td className="w-8 px-1 py-2 text-right tabular-nums text-muted sm:w-14 sm:px-2">
                   {r.trades}
                 </td>
                 <td className="hidden w-20 px-2 py-2 text-right tabular-nums sm:table-cell">
-                  {fmt(r.gainedPts)}
+                  {signed(r.gainedPts)}
                 </td>
                 <td className="hidden w-20 px-2 py-2 text-right tabular-nums sm:table-cell">
-                  {fmt(r.gavePts)}
+                  {signed(r.gavePts)}
+                </td>
+                <td className="hidden w-20 px-2 py-2 text-right tabular-nums text-muted sm:table-cell">
+                  {signed(r.rawNet)}
                 </td>
                 <td
-                  className={`w-20 px-4 py-2 text-right font-bold tabular-nums ${netCls(r.net)}`}
+                  className={`w-16 py-2 pl-2 pr-3 text-right font-bold tabular-nums sm:w-20 sm:px-4 ${netCls(r.net)}`}
                 >
                   {signed(r.net)}
                 </td>
@@ -211,7 +228,8 @@ export default async function TradesPage({
   const years = seasons.map((s) => s.year);
   const year =
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : years[0];
-  const { trades, scoreboard } = await getTrades(year);
+  const { trades, scoreboard, replacement } = await getTrades(year);
+  const replRows = REPL_ORDER.filter((pos) => replacement[pos] != null);
   const anyJudged = trades.some((t) => t.weeksSince > 0);
 
   const tabCls = (active: boolean) =>
@@ -256,14 +274,34 @@ export default async function TradesPage({
         <>
           {anyJudged && <Scoreboard rows={scoreboard} />}
           {anyJudged && (
-            <p className="mb-4 text-sm text-muted">
-              Each player shows the points he scored in his new team&apos;s
-              starting lineup since the trade (finished weeks only, and only
-              while that team rostered him), with his bench-included total
-              underneath. A side&apos;s net is the starter points it got minus
-              the starter points the players it gave up scored for their new
-              teams.
-            </p>
+            <div className="mb-4 flex flex-col gap-2 text-sm text-muted">
+              <p>
+                Scores are <span className="text-foreground">points over
+                replacement</span>: for every week a player started for his new
+                team since the trade, his points minus what a waiver-wire
+                pickup at his position averages — the team would have started
+                someone either way. Bench weeks count zero. Only finished weeks
+                count, and only while the team rostered him. A side&apos;s net
+                is the value it got minus the value the players it gave up
+                produced for their new teams; &ldquo;raw&rdquo; is the same
+                net in plain starter points.
+              </p>
+              {replRows.length > 0 && (
+                <p className="text-xs">
+                  Replacement level (avg points per game of the top 3 free
+                  agents):{" "}
+                  {replRows.map((pos, i) => (
+                    <span key={pos} className="whitespace-nowrap">
+                      {i > 0 && " · "}
+                      {pos}{" "}
+                      <span className="tabular-nums text-foreground">
+                        {fmt(replacement[pos])}
+                      </span>
+                    </span>
+                  ))}
+                </p>
+              )}
+            </div>
           )}
           <div className="flex flex-col gap-4">
             {trades.map((t) => (
