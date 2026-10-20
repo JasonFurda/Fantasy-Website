@@ -1,0 +1,25 @@
+{
+  "_comment": "Trades ESPN's feed doesn't have (e.g. done by hand after a glitch). Merged into the ESPN trades on every sync. Keyed by season; fields match slim.build_trades output, date is epoch ms. Rosters: list each player once, fromTeam/toTeam are ESPN team ids.",
+  "2026": [
+    {
+      "tradeId": "manual-2026-bjjj-3birds-daniels-etienne",
+      "date": 1791907200000,
+      "playerId": 4426348,
+      "playerName": "Jayden Daniels",
+      "position": "QB",
+      "proTeam": "WSH",
+      "fromTeam": 5,
+      "toTeam": 10
+    },
+    {
+      "tradeId": "manual-2026-bjjj-3birds-daniels-etienne",
+      "date": 1791907200000,
+      "playerId": 4239996,
+      "playerName": "Travis Etienne Jr.",
+      "position": "RB",
+      "proTeam": "NO",
+      "fromTeam": 10,
+      "toTeam": 5
+    }
+  ]
+}

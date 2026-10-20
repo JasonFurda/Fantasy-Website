@@ -388,12 +388,22 @@ def sync_pro_byes(client: Client, year: int, rows_in: list[dict[str, Any]]) -> N
         ).execute()
 
 
+def _manual_trades(year: int) -> list[dict[str, Any]]:
+    """Trades ESPN's feed is missing (e.g. players moved by hand after a broken
+    trade), kept in supabase/manual_trades.json in the same shape as the feed."""
+    path = Path(__file__).resolve().parent / "manual_trades.json"
+    if not path.exists():
+        return []
+    return list(json.loads(path.read_text()).get(str(year), []))
+
+
 def sync_trades(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
     """Replace a year's trades. ESPN's feed is the full season every time, so
-    a vetoed or reversed trade simply drops out on the next sync."""
+    a vetoed or reversed trade simply drops out on the next sync. Manual trades
+    from manual_trades.json are added on top."""
     seen: set[tuple[str, int]] = set()
     rows = []
-    for t in rows_in:
+    for t in [*rows_in, *_manual_trades(year)]:
         key = (str(t["tradeId"]), int(t["playerId"]))
         if key in seen or not t.get("date"):
             continue
