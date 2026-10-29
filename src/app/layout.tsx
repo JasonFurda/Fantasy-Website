@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import SiteNav from "@/components/SiteNav";
-import { MY_TEAM_CSS, MY_TEAM_HEAD_SCRIPT } from "@/lib/my-team-highlight";
+import { MY_TEAM_HEAD_SCRIPT } from "@/lib/my-team-highlight";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +34,6 @@ export default function RootLayout({
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: MY_TEAM_HEAD_SCRIPT }} />
-        <style dangerouslySetInnerHTML={{ __html: MY_TEAM_CSS }} />
       </head>
       <body className="min-h-full flex flex-col">
         <header className="sticky top-0 z-30 border-b border-border bg-surface/80 backdrop-blur">

@@ -12,12 +12,12 @@ import { MY_TEAM_COOKIE } from "@/lib/my-team";
  *      which renders `data-mine="<style>" data-mine-team="<espnId>"` (a
  *      space-separated list when an element belongs to two teams, e.g. a
  *      matchup card).
- *   2. An inline script in <head> (MY_TEAM_HEAD_SCRIPT) copies the cookie onto
- *      <html data-my-team="..."> before first paint — no flash.
- *   3. MY_TEAM_CSS only styles elements whose data-mine-team matches it.
+ *   2. An inline script in <head> (MY_TEAM_HEAD_SCRIPT) reads the cookie
+ *      before first paint — no flash — and writes a small <style> that
+ *      highlights only elements whose data-mine-team includes that team.
  *
- * Changing team just updates the <html> attribute (setMyTeamAttr), so every
- * highlight follows instantly without a re-render.
+ * Changing team just rewrites that <style> (setMyTeamAttr), so every highlight
+ * follows instantly without a re-render.
  */
 
 export type MineStyle =
@@ -46,24 +46,18 @@ const STYLE_RULES: Record<MineStyle, string> = {
     "border-color:color-mix(in oklab,var(--color-accent) 40%,transparent);background-color:color-mix(in oklab,var(--color-accent) 5%,transparent)",
 };
 
-// Attribute selectors can't compare two attributes, so emit one rule per
-// franchise id. ESPN ids in this league are small; 1–32 leaves headroom.
-const MAX_ESPN_ID = 32;
+// The rules are built in the browser for the chosen team only, rather than
+// shipping one rule per franchise in every page (that was ~14 KB of CSS,
+// counted twice — once in the HTML and again in the RSC payload).
+const RULES_JSON = JSON.stringify(STYLE_RULES);
 
-export const MY_TEAM_CSS = Array.from({ length: MAX_ESPN_ID }, (_, i) => i + 1)
-  .flatMap((id) =>
-    (Object.keys(STYLE_RULES) as MineStyle[]).map(
-      (style) =>
-        `html[data-my-team="${id}"] [data-mine="${style}"][data-mine-team~="${id}"]${style === "card" ? ":not(:hover)" : ""}{${STYLE_RULES[style]}}`,
-    ),
-  )
-  .join("");
-
-export const MY_TEAM_HEAD_SCRIPT = `try{var m=document.cookie.match(/(?:^|; )${MY_TEAM_COOKIE}=([^;]*)/);var v=m&&decodeURIComponent(m[1]);if(v&&v!=="none")document.documentElement.setAttribute("data-my-team",v)}catch(e){}`;
+// Defines window.__setMyTeam(v): sets <html data-my-team> and (re)writes a
+// <style id="my-team-css"> that highlights elements tagged for team v. Run
+// inline in <head> so highlights are in place before first paint.
+export const MY_TEAM_HEAD_SCRIPT = `(function(){var R=${RULES_JSON};window.__setMyTeam=function(v){var d=document,h=d.documentElement,s=d.getElementById("my-team-css");if(!/^\\d+$/.test(v||"")){h.removeAttribute("data-my-team");if(s)s.textContent="";return}h.setAttribute("data-my-team",v);if(!s){s=d.createElement("style");s.id="my-team-css";d.head.appendChild(s)}var c="";for(var k in R)c+="[data-mine=\\""+k+"\\"][data-mine-team~=\\""+v+"\\"]"+(k==="card"?":not(:hover)":"")+"{"+R[k]+"}";s.textContent=c};try{var m=document.cookie.match(/(?:^|; )${MY_TEAM_COOKIE}=([^;]*)/);window.__setMyTeam(m&&decodeURIComponent(m[1]))}catch(e){}})()`;
 
 /** Call after writing or clearing the cookie on the client. */
 export function setMyTeamAttr(value: string | null): void {
-  const el = document.documentElement;
-  if (value && value !== "none") el.setAttribute("data-my-team", value);
-  else el.removeAttribute("data-my-team");
+  (window as unknown as { __setMyTeam?: (v: string | null) => void })
+    .__setMyTeam?.(value);
 }
