@@ -1,4 +1,5 @@
 import { type Standing, winPct } from "@/lib/queries";
+import { mineProps } from "@/lib/my-team-highlight";
 
 const MEDALS: Record<number, string> = {
   1: "#f5c518", // gold
@@ -34,6 +35,7 @@ export default function StandingsTable({
             return (
               <tr
                 key={s.team.id}
+                {...mineProps(s.team.espn_id, "row")}
                 className={`border-b border-border/60 last:border-0 transition-colors hover:bg-surface-2 ${
                   mine ? "bg-accent/10" : ""
                 }`}

@@ -10,7 +10,7 @@ import {
   type Team,
 } from "@/lib/queries";
 import { teamColor, teamArt } from "@/lib/teams-config";
-import { getMyTeamEspnId } from "@/lib/my-team-server";
+import { mineProps } from "@/lib/my-team-highlight";
 import MatchupBoxScore from "@/components/MatchupBoxScore";
 import MatchupClash from "@/components/MatchupClash";
 import WeekOptimalRoster from "@/components/WeekOptimalRoster";
@@ -49,10 +49,9 @@ export default async function MatchupsPage({
     sp.year && years.includes(Number(sp.year)) ? Number(sp.year) : defaultYear;
   const view = sp.view === "optimal" ? "optimal" : "matchups";
 
-  const [matchups, teams, myEspnId] = await Promise.all([
+  const [matchups, teams] = await Promise.all([
     getMatchups(year),
     getTeams(year),
-    getMyTeamEspnId(),
   ]);
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
 
@@ -203,20 +202,18 @@ export default async function MatchupsPage({
                 const home = teamById.get(m.home_team_id);
                 const active = m.id === selectedId;
                 const aWin = (m.away_score ?? 0) > (m.home_score ?? 0);
-                const awayMine = myEspnId != null && away?.espn_id === myEspnId;
-                const homeMine = myEspnId != null && home?.espn_id === myEspnId;
-                const mine = awayMine || homeMine;
                 return (
                   <Link
                     key={m.id}
                     href={`/matchups?year=${year}&week=${week}&m=${m.id}`}
                     prefetch={false}
+                    {...(active
+                      ? {}
+                      : mineProps([away?.espn_id, home?.espn_id], "card"))}
                     className={`rounded-xl border p-3 transition-colors ${
                       active
                         ? "border-accent bg-surface-2"
-                        : mine
-                          ? "border-accent/40 bg-accent/5 hover:bg-surface-2"
-                          : "border-border bg-surface hover:bg-surface-2"
+                        : "border-border bg-surface hover:bg-surface-2"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 text-sm">
@@ -228,9 +225,8 @@ export default async function MatchupsPage({
                           }}
                         />
                         <span
-                          className={`${aWin ? "font-semibold" : ""} ${
-                            awayMine ? "text-accent" : ""
-                          }`}
+                          {...mineProps(away?.espn_id, "text")}
+                          className={aWin ? "font-semibold" : ""}
                         >
                           {away?.name.trim() ?? "—"}
                         </span>
@@ -248,9 +244,8 @@ export default async function MatchupsPage({
                           }}
                         />
                         <span
-                          className={`${!aWin ? "font-semibold" : ""} ${
-                            homeMine ? "text-accent" : ""
-                          }`}
+                          {...mineProps(home?.espn_id, "text")}
+                          className={!aWin ? "font-semibold" : ""}
                         >
                           {home?.name.trim() ?? "—"}
                         </span>

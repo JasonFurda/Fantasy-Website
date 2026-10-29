@@ -6,9 +6,10 @@ import {
   buildStandings,
   getAllTimeStandings,
 } from "@/lib/queries";
-import { getMyTeamEspnId } from "@/lib/my-team-server";
 import StandingsTable from "@/components/StandingsTable";
 
+// Rendered per request (it reads ?year=), but the response is cached on
+// Vercel's CDN — see CDN_CACHED_PAGES in next.config.ts.
 export const dynamic = "force-dynamic";
 
 export default async function StandingsPage({
@@ -16,10 +17,7 @@ export default async function StandingsPage({
 }: {
   searchParams: Promise<{ year?: string }>;
 }) {
-  const [seasons, myEspnId] = await Promise.all([
-    getSeasons(),
-    getMyTeamEspnId(),
-  ]);
+  const seasons = await getSeasons();
   if (seasons.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-16 text-muted">
@@ -99,7 +97,7 @@ export default async function StandingsPage({
         </nav>
       </div>
 
-      <StandingsTable standings={standings} highlightEspnId={myEspnId} />
+      <StandingsTable standings={standings} />
 
       {isAllTime && (
         <p className="mt-3 text-xs text-muted">

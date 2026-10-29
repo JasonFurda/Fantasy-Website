@@ -8,7 +8,7 @@ import {
 } from "@/lib/queries";
 import { getManualPowerRankings, getManualRankingHistory } from "@/lib/rankings";
 import { teamColor } from "@/lib/teams-config";
-import { getMyTeamEspnId } from "@/lib/my-team-server";
+import { mineProps } from "@/lib/my-team-highlight";
 import RankingHistoryChart from "@/components/RankingHistoryChart";
 
 export const dynamic = "force-dynamic";
@@ -52,10 +52,7 @@ export default async function PowerRankingsPage({
 }: {
   searchParams: Promise<{ year?: string; view?: string; pos?: string }>;
 }) {
-  const [seasons, myEspnId] = await Promise.all([
-    getSeasons(),
-    getMyTeamEspnId(),
-  ]);
+  const seasons = await getSeasons();
   if (seasons.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-16 text-muted">
@@ -124,13 +121,9 @@ export default async function PowerRankingsPage({
       </div>
 
       {view === "power" ? (
-        <OverallRankings year={year} highlightEspnId={myEspnId} />
+        <OverallRankings year={year} />
       ) : (
-        <PositionRankings
-          year={year}
-          posKey={posDef.key}
-          highlightEspnId={myEspnId}
-        />
+        <PositionRankings year={year} posKey={posDef.key} />
       )}
     </main>
   );
@@ -138,10 +131,8 @@ export default async function PowerRankingsPage({
 
 function RankingsTable({
   rows,
-  highlightEspnId,
 }: {
   rows: { rank: number; team: { id: number; espn_id: number; name: string }; change: number | null }[];
-  highlightEspnId?: number | null;
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -157,9 +148,8 @@ function RankingsTable({
           {rows.map((r) => (
             <tr
               key={r.team.id}
-              className={`border-b border-border/60 last:border-0 hover:bg-surface-2 ${
-                highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
-              }`}
+              {...mineProps(r.team?.espn_id, "row")}
+              className="border-b border-border/60 last:border-0 hover:bg-surface-2"
             >
               <td className="px-4 py-3">
                 <RankBadge rank={r.rank} />
@@ -186,10 +176,8 @@ function RankingsTable({
 
 async function OverallRankings({
   year,
-  highlightEspnId,
 }: {
   year: number;
-  highlightEspnId?: number | null;
 }) {
   // Manual weekly rankings take over once the season has any submissions.
   const manual = await getManualPowerRankings(year);
@@ -202,7 +190,7 @@ async function OverallRankings({
           <span className="text-foreground">{manual.label}</span>.
         </p>
 
-        <RankingsTable rows={manual.rows} highlightEspnId={highlightEspnId} />
+        <RankingsTable rows={manual.rows} />
 
         {history.weeks.length >= 2 && (
           <div className="mt-8">
@@ -223,17 +211,15 @@ async function OverallRankings({
     rows = await getPreseasonPowerRankings(year);
   }
 
-  return <RankingsTable rows={rows} highlightEspnId={highlightEspnId} />;
+  return <RankingsTable rows={rows} />;
 }
 
 async function PositionRankings({
   year,
   posKey,
-  highlightEspnId,
 }: {
   year: number;
   posKey: string;
-  highlightEspnId?: number | null;
 }) {
   const data = await getPositionStrength(year);
   const group =
@@ -291,9 +277,8 @@ async function PositionRankings({
                 {group.rows.map((r) => (
                   <tr
                     key={r.team.id}
-                    className={`border-b border-border/60 last:border-0 hover:bg-surface-2 ${
-                      highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
-                    }`}
+                    {...mineProps(r.team?.espn_id, "row")}
+                    className="border-b border-border/60 last:border-0 hover:bg-surface-2"
                   >
                     <td className="px-4 py-3">
                       <RankBadge rank={r.rank} />

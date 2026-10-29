@@ -11,7 +11,7 @@ import {
   type ProjDiffWeek,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
-import { getMyTeamEspnId } from "@/lib/my-team-server";
+import { mineProps } from "@/lib/my-team-highlight";
 import PerformanceChart from "@/components/PerformanceChart";
 
 export const dynamic = "force-dynamic";
@@ -27,19 +27,15 @@ const TABS = [
 
 function TeamCell({
   team,
-  highlightEspnId,
 }: {
   team: { espn_id: number; name: string; owner: string } | null;
-  highlightEspnId?: number | null;
 }) {
   if (!team) return <span>—</span>;
-  const mine = highlightEspnId === team.espn_id;
   return (
     <Link
       href={`/teams/${team.espn_id}`}
-      className={`flex items-center gap-2 hover:underline ${
-        mine ? "font-semibold text-accent" : ""
-      }`}
+      {...mineProps(team.espn_id, "strong")}
+      className="flex items-center gap-2 hover:underline"
     >
       <span
         className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -53,11 +49,9 @@ function TeamCell({
 function GameTable({
   rows,
   showYear,
-  highlightEspnId,
 }: {
   rows: GameRow[];
   showYear?: boolean;
-  highlightEspnId?: number | null;
 }) {
   if (rows.length === 0)
     return <p className="text-sm text-muted">Nothing here yet.</p>;
@@ -82,13 +76,12 @@ function GameTable({
           {rows.map((g, i) => (
             <tr
               key={`${g.matchupId}-${g.team?.id}`}
-              className={`border-b border-border/60 last:border-0 ${
-                highlightEspnId === g.team?.espn_id ? "bg-accent/10" : ""
-              }`}
+              {...mineProps(g.team?.espn_id, "row")}
+              className="border-b border-border/60 last:border-0"
             >
               <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
               <td className="px-4 py-3 font-medium">
-                <TeamCell team={g.team} highlightEspnId={highlightEspnId} />
+                <TeamCell team={g.team} />
               </td>
               <td className="px-4 py-3 text-right font-bold tabular-nums">
                 {g.score.toFixed(1)}
@@ -97,7 +90,7 @@ function GameTable({
                 {showYear ? `${g.year} · ${g.week}` : g.week}
               </td>
               <td className="px-4 py-3 text-muted">
-                <TeamCell team={g.opponent} highlightEspnId={highlightEspnId} />
+                <TeamCell team={g.opponent} />
               </td>
               <td className="px-4 py-3 text-right tabular-nums text-muted">
                 {g.opponentScore.toFixed(1)}
@@ -129,10 +122,7 @@ export default async function YearStatsPage({
 }: {
   searchParams: Promise<{ year?: string; tab?: string }>;
 }) {
-  const [seasons, myEspnId] = await Promise.all([
-    getSeasons(),
-    getMyTeamEspnId(),
-  ]);
+  const seasons = await getSeasons();
   if (seasons.length === 0) {
     return (
       <main className="mx-auto max-w-5xl px-5 py-16 text-muted">
@@ -243,13 +233,12 @@ export default async function YearStatsPage({
                   {stats.fraud.map((f, i) => (
                     <tr
                       key={f.team.id}
-                      className={`border-b border-border/60 last:border-0 ${
-                        myEspnId === f.team.espn_id ? "bg-accent/10" : ""
-                      }`}
+                      {...mineProps(f.team?.espn_id, "row")}
+                      className="border-b border-border/60 last:border-0"
                     >
                       <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
                       <td className="px-4 py-3 font-medium">
-                        <TeamCell team={f.team} highlightEspnId={myEspnId} />
+                        <TeamCell team={f.team} />
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {f.record}
@@ -280,7 +269,6 @@ export default async function YearStatsPage({
           <GameTable
             rows={stats.club200}
             showYear={isAllTime}
-            highlightEspnId={myEspnId}
           />
         </>
       )}
@@ -293,7 +281,6 @@ export default async function YearStatsPage({
           <GameTable
             rows={stats.subClub}
             showYear={isAllTime}
-            highlightEspnId={myEspnId}
           />
         </>
       )}
@@ -323,13 +310,12 @@ export default async function YearStatsPage({
                 {stats.mismanage.map((m, i) => (
                   <tr
                     key={m.team.id}
-                    className={`border-b border-border/60 last:border-0 ${
-                      myEspnId === m.team.espn_id ? "bg-accent/10" : ""
-                    }`}
+                    {...mineProps(m.team?.espn_id, "row")}
+                    className="border-b border-border/60 last:border-0"
                   >
                     <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
                     <td className="px-4 py-3 font-medium">
-                      <TeamCell team={m.team} highlightEspnId={myEspnId} />
+                      <TeamCell team={m.team} />
                     </td>
                     <td className="px-4 py-3 text-right font-bold tabular-nums">
                       {m.pctOptimal.toFixed(1)}%
@@ -392,7 +378,6 @@ export default async function YearStatsPage({
             <ProjDiffView
               data={projDiff}
               showYear={isAllTime}
-              highlightEspnId={myEspnId}
             />
           )}
         </>
@@ -436,11 +421,9 @@ function WeekRef({ w, showYear }: { w: ProjDiffWeek | null; showYear: boolean })
 function ProjDiffView({
   data,
   showYear,
-  highlightEspnId,
 }: {
   data: ProjectedDiff;
   showYear: boolean;
-  highlightEspnId?: number | null;
 }) {
   const isPlayoff = (wk: number) =>
     data.playoffStartWeek != null && wk >= data.playoffStartWeek;
@@ -465,13 +448,12 @@ function ProjDiffView({
             {data.rows.map((r, i) => (
               <tr
                 key={r.team.espn_id}
-                className={`border-b border-border/60 last:border-0 ${
-                  highlightEspnId === r.team.espn_id ? "bg-accent/10" : ""
-                }`}
+                {...mineProps(r.team?.espn_id, "row")}
+                className="border-b border-border/60 last:border-0"
               >
                 <td className="px-4 py-3 text-muted tabular-nums">{i + 1}</td>
                 <td className="px-4 py-3 font-medium">
-                  <TeamCell team={r.team} highlightEspnId={highlightEspnId} />
+                  <TeamCell team={r.team} />
                 </td>
                 <td
                   className={`px-4 py-3 text-right font-bold tabular-nums ${diffCls(r.avgDiff)}`}
@@ -537,7 +519,7 @@ function ProjDiffView({
                       className="border-b border-border/60 last:border-0"
                     >
                       <td className="sticky left-0 z-10 whitespace-nowrap bg-surface px-4 py-2 font-medium">
-                        <TeamCell team={r.team} highlightEspnId={highlightEspnId} />
+                        <TeamCell team={r.team} />
                       </td>
                       {data.weeks.map((wk) => {
                         const w = byWeek.get(wk);

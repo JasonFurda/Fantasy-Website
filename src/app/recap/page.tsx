@@ -8,7 +8,7 @@ import {
   type WeeklyRecapAward,
 } from "@/lib/queries";
 import { teamColor } from "@/lib/teams-config";
-import { getMyTeamEspnId } from "@/lib/my-team-server";
+import { mineProps } from "@/lib/my-team-highlight";
 import { describeAward, recapHref } from "@/components/WeeklyRecapCard";
 import RecapScreenshotView from "@/components/RecapScreenshotView";
 
@@ -28,10 +28,8 @@ const BLURBS: Record<string, string> = {
 /** One-screen summary of every award, for the phone screenshot view. */
 function ScreenshotRecap({
   recap,
-  myEspnId,
 }: {
   recap: WeeklyRecap;
-  myEspnId: number | null;
 }) {
   return (
     <div className="flex min-h-full flex-col px-3 py-3">
@@ -76,9 +74,8 @@ function ScreenshotRecap({
               {a.winners.map((w) => (
                 <div key={w.team.id}>
                   <div
-                    className={`break-words text-sm font-bold leading-snug ${
-                      myEspnId === w.team.espn_id ? "text-accent" : ""
-                    }`}
+                    {...mineProps(w.team.espn_id, "text")}
+                    className="break-words text-sm font-bold leading-snug"
                   >
                     {w.team.name.trim()}
                   </div>
@@ -97,11 +94,9 @@ function ScreenshotRecap({
 
 function TeamName({
   team,
-  mine,
   className = "",
 }: {
   team: RecapTeamWeek["team"];
-  mine: boolean;
   className?: string;
 }) {
   return (
@@ -115,7 +110,10 @@ function TeamName({
         style={{ backgroundColor: teamColor(team.espn_id) }}
       />
       {/* Wrap long names instead of truncating — they're the point of the page. */}
-      <span className={`min-w-0 break-words ${mine ? "text-accent" : ""}`}>
+      <span
+        {...mineProps(team.espn_id, "text")}
+        className="min-w-0 break-words"
+      >
         {team.name.trim()}
       </span>
     </Link>
@@ -126,12 +124,10 @@ function AwardCard({
   award,
   year,
   week,
-  myEspnId,
 }: {
   award: WeeklyRecapAward;
   year: number;
   week: number;
-  myEspnId: number | null;
 }) {
   const { winners } = award;
   const tie = winners.length > 1;
@@ -172,7 +168,6 @@ function AwardCard({
             <div className="flex items-start justify-between gap-3">
               <TeamName
                 team={w.team}
-                mine={myEspnId === w.team.espn_id}
                 className={`font-black tracking-tight ${tie ? "text-xl" : "text-2xl"}`}
               />
               <Link
@@ -198,7 +193,7 @@ function AwardCard({
           <ol className="space-y-1">
             {award.runnersUp.map((r) => (
               <li key={r.team.id} className="flex items-start justify-between gap-3 text-sm">
-                <TeamName team={r.team} mine={myEspnId === r.team.espn_id} />
+                <TeamName team={r.team} />
                 <span className="shrink-0 tabular-nums text-muted">
                   {describeAward(award.key, r).stat}
                 </span>
@@ -216,11 +211,7 @@ export default async function RecapPage({
 }: {
   searchParams: Promise<{ year?: string; week?: string }>;
 }) {
-  const [sp, seasons, myEspnId] = await Promise.all([
-    searchParams,
-    getSeasons(),
-    getMyTeamEspnId(),
-  ]);
+  const [sp, seasons] = await Promise.all([searchParams, getSeasons()]);
   const year = Number(sp.year);
   const week = Number(sp.week);
   const recap =
@@ -315,7 +306,7 @@ export default async function RecapPage({
       </nav>
 
       <RecapScreenshotView>
-        <ScreenshotRecap recap={recap} myEspnId={myEspnId} />
+        <ScreenshotRecap recap={recap} />
       </RecapScreenshotView>
 
       <div className="mt-8 grid gap-5 md:grid-cols-2">
@@ -325,7 +316,6 @@ export default async function RecapPage({
             award={a}
             year={recap.year}
             week={recap.week}
-            myEspnId={myEspnId}
           />
         ))}
       </div>
@@ -349,14 +339,14 @@ export default async function RecapPage({
           <tbody>
             {recap.entries.map((e) => {
               const diff = e.score - e.projected;
-              const mine = myEspnId === e.team.espn_id;
               return (
                 <tr
                   key={e.team.id}
-                  className={`border-b border-border/60 last:border-0 ${mine ? "bg-accent/10" : ""}`}
+                  {...mineProps(e.team.espn_id, "row")}
+                  className="border-b border-border/60 last:border-0"
                 >
                   <td className="whitespace-nowrap px-4 py-3 font-medium">
-                    <TeamName team={e.team} mine={mine} />
+                    <TeamName team={e.team} />
                   </td>
                   <td className="px-4 py-3 text-right font-bold tabular-nums">
                     {e.score.toFixed(1)}

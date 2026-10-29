@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { MY_TEAM_COOKIE, MY_TEAM_MAX_AGE } from "@/lib/my-team";
+import { setMyTeamAttr } from "@/lib/my-team-highlight";
 
 type PickTeam = { espnId: number; name: string; color: string };
 
@@ -12,6 +13,7 @@ export default function TeamPickerModal({ teams }: { teams: PickTeam[] }) {
 
   const choose = (value: string) => {
     document.cookie = `${MY_TEAM_COOKIE}=${value}; path=/; max-age=${MY_TEAM_MAX_AGE}; samesite=lax`;
+    setMyTeamAttr(value);
     router.refresh();
   };
 
