@@ -6,6 +6,13 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const MAX_QUESTION_CHARS = 500;
 
+/** The API often delivers an answer that followed a stats lookup in one burst,
+ *  so the text is revealed gradually here instead of landing as a block. */
+const REVEAL_TICK_MS = 30;
+const MIN_REVEAL_CHARS = 2;
+/** Each tick shows this fraction of the backlog, so long replies catch up. */
+const REVEAL_BACKLOG_DIVISOR = 40;
+
 const SUGGESTIONS = [
   "Who's the biggest fraud this season?",
   "Summarize my team's season",
@@ -43,6 +50,27 @@ export default function StatsChat() {
     const abort = new AbortController();
     abortRef.current = abort;
     let reply = "";
+    let shown = 0;
+    let received = false;
+    const instant = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const revealed = new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        if (shown < reply.length && !abort.signal.aborted) {
+          const step = Math.max(
+            MIN_REVEAL_CHARS,
+            Math.ceil((reply.length - shown) / REVEAL_BACKLOG_DIVISOR),
+          );
+          shown = instant ? reply.length : Math.min(reply.length, shown + step);
+          setMessages([
+            ...history,
+            { role: "assistant", content: reply.slice(0, shown) },
+          ]);
+        } else if (received || abort.signal.aborted) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, REVEAL_TICK_MS);
+    });
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -60,8 +88,9 @@ export default function StatsChat() {
         const { done, value } = await reader.read();
         if (done) break;
         reply += decoder.decode(value, { stream: true });
-        setMessages([...history, { role: "assistant", content: reply }]);
       }
+      received = true;
+      await revealed;
     } catch (err) {
       if (abort.signal.aborted) return;
       if (!reply) {
@@ -75,6 +104,7 @@ export default function StatsChat() {
           : "Couldn't reach the bot. Try again.",
       );
     } finally {
+      received = true;
       setBusy(false);
     }
   }

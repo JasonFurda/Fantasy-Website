@@ -68,6 +68,9 @@ async function RecapHome({
         </div>
       </div>
 
+      <div className="mt-10">
+        <StatsChat />
+      </div>
       <WeeklyRecapCard recap={weekly} />
       <DivisionStandingsPanel divisions={divisions} />
     </main>
@@ -121,6 +124,10 @@ async function DivisionsHome({
       <div className="mt-10">
         <ArticlesCard articles={articles} />
       </div>
+
+      <div className="mt-10">
+        <StatsChat />
+      </div>
     </main>
   );
 }
@@ -128,12 +135,6 @@ async function DivisionsHome({
 export default async function Home() {
   const store = await cookies();
   const raw = store.get(MY_TEAM_COOKIE)?.value ?? null;
-
-  const chat = (
-    <div className="mx-auto max-w-[1800px] px-8 pt-6">
-      <StatsChat />
-    </div>
-  );
 
   const franchises = await getCurrentFranchises();
   const pickerTeams = franchises.map((t) => ({
@@ -161,16 +162,13 @@ export default async function Home() {
         getTeamOutlook(chosen),
       ]);
       return (
-        <>
-          {chat}
-          <TeamHomePanel
-            home={home}
-            outlook={outlook}
-            divisions={divisions}
-            articles={articles}
-            weekly={weekly}
-          />
-        </>
+        <TeamHomePanel
+          home={home}
+          outlook={outlook}
+          divisions={divisions}
+          articles={articles}
+          weekly={weekly}
+        />
       );
     }
   }
@@ -195,7 +193,6 @@ export default async function Home() {
             />
           </div>
         </div>
-        {chat}
         {defaultHome}
       </>
     );
@@ -204,7 +201,6 @@ export default async function Home() {
   // No choice yet → default homepage with the picker popup on top.
   return (
     <>
-      {chat}
       {defaultHome}
       <TeamPickerModal teams={pickerTeams} />
     </>

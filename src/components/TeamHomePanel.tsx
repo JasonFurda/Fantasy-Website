@@ -15,6 +15,7 @@ import ArtSpotlight from "@/components/ArtSpotlight";
 import DivisionStandingsPanel from "@/components/DivisionStandingsPanel";
 import ArticlesCard from "@/components/ArticlesCard";
 import WeeklyRecapCard from "@/components/WeeklyRecapCard";
+import StatsChat from "@/components/StatsChat";
 
 function MatchRow({ m, year }: { m: UpcomingMatch; year: number }) {
   const oppEspn = m.opponent?.espn_id ?? 0;
@@ -210,6 +211,10 @@ export default function TeamHomePanel({
             className="flex-1"
           />
         </div>
+      </div>
+
+      <div className="mt-10">
+        <StatsChat />
       </div>
 
       <WeeklyRecapCard recap={weekly} highlightEspnId={home.team.espn_id} />

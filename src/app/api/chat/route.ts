@@ -172,7 +172,8 @@ export async function POST(request: NextRequest) {
   return new Response(body, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
+      // no-transform stops the CDN compressing, which would buffer the stream.
+      "Cache-Control": "no-store, no-transform",
     },
   });
 }
