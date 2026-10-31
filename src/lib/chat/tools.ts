@@ -1,7 +1,7 @@
 import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { championshipsFor } from "@/lib/league-config";
-import { PLAYER_NICKNAMES } from "@/lib/chat/personality";
+import { PLAYER_NICKNAMES, type NicknameStatus } from "@/lib/chat/personality";
 import {
   buildStandings,
   getAllPlayerNames,
@@ -13,6 +13,7 @@ import {
   getLatestPowerRankings,
   getMatchups,
   getPlayerDetail,
+  getPlayerRosterStatus,
   getSeasons,
   getTeamHome,
   getTeamOutlook,
@@ -21,7 +22,6 @@ import {
   getWeeklyRecap,
   getWeeklyRecapFor,
   getYearStats,
-  type Team,
 } from "@/lib/queries";
 
 // The bot's only view of the league: read-only lookups over the same cached
@@ -99,7 +99,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   tool("get_power_rankings", "The latest weekly power rankings."),
   tool(
     "get_player",
-    "One player's fantasy team, weekly points, season average, best week, and past seasons. Accepts a real name, part of a name, or a league nickname.",
+    "One player's weekly points, season average, best week, past seasons, and rosterStatus. rosterStatus.current is the fantasy team that has him now; if it's null he isn't on a roster, and rosterStatus.stints shows who had him and through which week. Accepts a real name, part of a name, or a league nickname.",
     {
       name: { type: "string", description: "The player's name or nickname." },
       year: YEAR,
@@ -118,36 +118,14 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   ),
 ];
 
-/** Which team has each nicknamed player, from every team's latest lineup. A
- *  player's season stats name whoever rostered him most, which goes stale after
- *  a trade or drop, so that's only the fallback for a player on a bye: lineups
- *  leave him out that week. Players on no roster are left out. */
-export async function nicknameRosters(
-  franchises: Team[],
-): Promise<{ nickname: string; teamName: string }[]> {
-  const outlooks = await Promise.all(
-    franchises.map((t) => getTeamOutlook(t.espn_id)),
+/** Every nicknamed player's roster status, for the prompt. */
+export async function nicknameStatuses(): Promise<NicknameStatus[]> {
+  return Promise.all(
+    PLAYER_NICKNAMES.map(async ({ name, nickname }) => ({
+      nickname,
+      status: await getPlayerRosterStatus(name),
+    })),
   );
-  const current = outlooks.find((o) => o != null);
-  const rosters = await Promise.all(
-    PLAYER_NICKNAMES.map(async ({ name, nickname }) => {
-      const outlook = outlooks.find((o) =>
-        [...(o?.starters ?? []), ...(o?.bench ?? [])].some(
-          (p) => p.playerName === name,
-        ),
-      );
-      if (outlook) return { nickname, teamName: outlook.team.name.trim() };
-      if (!current) return null;
-
-      const detail = await getPlayerDetail(name, current.year);
-      const thisWeek = detail?.weekly.find((w) => w.week === current.week);
-      const lastWeek = detail?.weekly.find((w) => w.week === current.week - 1);
-      return thisWeek?.bye && lastWeek && !lastWeek.freeAgent && detail?.fantasyTeam
-        ? { nickname, teamName: detail.fantasyTeam.name }
-        : null;
-    }),
-  );
-  return rosters.filter((r) => r != null);
 }
 
 type Input = Record<string, unknown>;
@@ -289,8 +267,14 @@ const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
     if (matches.length > 1) {
       return { note: "More than one match.", matches: matches.slice(0, 10) };
     }
-    const detail = await getPlayerDetail(matches[0], await resolveYear(input));
-    return detail ?? { note: "No stats for that player." };
+    const [detail, rosterStatus] = await Promise.all([
+      getPlayerDetail(matches[0], await resolveYear(input)),
+      getPlayerRosterStatus(matches[0]),
+    ]);
+    if (!detail) return { note: "No stats for that player." };
+    // fantasyTeam is whoever rostered him most that season, not who has him now.
+    const { fantasyTeam, ...rest } = detail;
+    return { ...rest, mostRosteredByThatSeason: fantasyTeam, rosterStatus };
   },
 
   async get_trades(input) {

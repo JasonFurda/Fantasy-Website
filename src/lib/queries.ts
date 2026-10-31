@@ -1560,6 +1560,110 @@ async function getPlayerDetailImpl(
   };
 }
 
+export type RosterStint = {
+  team: { name: string; espnId: number };
+  fromWeek: number;
+  toWeek: number;
+};
+
+export type PlayerRosterStatus = {
+  year: number;
+  /** The newest week with lineups loaded, which is what "current" is judged by. */
+  week: number;
+  current: { name: string; espnId: number } | null;
+  stints: RosterStint[]; // oldest first; empty if nobody has rostered them
+};
+
+/** The newest week of a season that has lineups in the database. */
+const getLatestLineupWeek = cached(getLatestLineupWeekImpl, "getLatestLineupWeek");
+async function getLatestLineupWeekImpl(year: number): Promise<number | null> {
+  const matchups = await getMatchups(year);
+  const weeks = [...new Set(matchups.map((m) => m.week))].sort((a, b) => b - a);
+  const season = (await getSeasons()).find((s) => s.year === year);
+  for (const week of weeks) {
+    if (season?.is_active && week > season.current_week) continue;
+    const { data } = await supabase
+      .from("player_slots")
+      .select("matchup_id")
+      .in(
+        "matchup_id",
+        matchups.filter((m) => m.week === week).map((m) => m.id),
+      )
+      .limit(1);
+    if (data?.length) return week;
+  }
+  return null;
+}
+
+/** Who has a player right now, and who had them earlier this season.
+ *
+ *  Unlike PlayerDetail.fantasyTeam (whoever rostered them most), this notices a
+ *  trade or drop. Every rostered player gets a slot each week, including on a bye
+ *  (is_bye), so no slot in the newest lineup week means no longer rostered. */
+export const getPlayerRosterStatus = cached(
+  getPlayerRosterStatusImpl,
+  "getPlayerRosterStatus",
+);
+async function getPlayerRosterStatusImpl(
+  name: string,
+): Promise<PlayerRosterStatus | null> {
+  const seasons = await getSeasons(); // newest first
+  const year = (seasons.find((s) => s.is_active) ?? seasons[0])?.year;
+  if (year == null) return null;
+  const [matchups, teams, week] = await Promise.all([
+    getMatchups(year),
+    getTeams(year),
+    getLatestLineupWeek(year),
+  ]);
+  if (week == null) return null;
+
+  const matchupById = new Map(matchups.map((m) => [m.id, m]));
+  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
+  const { data } = await supabase
+    .from("player_slots")
+    .select("matchup_id, team_side")
+    .eq("player_name", name)
+    .in("matchup_id", [...matchupById.keys()]);
+
+  const weeks = ((data ?? []) as { matchup_id: number; team_side: "home" | "away" }[])
+    .flatMap((r) => {
+      const m = matchupById.get(r.matchup_id);
+      const team = m
+        ? teamById.get(r.team_side === "home" ? m.home_team_id : m.away_team_id)
+        : null;
+      return m && team ? [{ week: m.week, team }] : [];
+    })
+    .sort((a, b) => a.week - b.week);
+
+  const stints: RosterStint[] = [];
+  for (const { week: w, team } of weeks) {
+    const last = stints[stints.length - 1];
+    if (last?.team.espnId === team.espn_id) last.toWeek = w;
+    else
+      stints.push({
+        team: { name: team.name.trim(), espnId: team.espn_id },
+        fromWeek: w,
+        toWeek: w,
+      });
+  }
+
+  const last = stints[stints.length - 1] ?? null;
+  // A team with no game this week (out of the playoffs) has no lineup to check,
+  // which says nothing about whether the player was dropped.
+  const lastTeamPlayed =
+    last != null &&
+    matchups.some(
+      (m) =>
+        m.week === week &&
+        [m.home_team_id, m.away_team_id].some(
+          (id) => teamById.get(id)?.espn_id === last.team.espnId,
+        ),
+    );
+  const current =
+    last && (last.toWeek === week || !lastTeamPlayed) ? last.team : null;
+  return { year, week, current, stints };
+}
+
 export type DraftValueRow = {
   name: string;
   position: string;
