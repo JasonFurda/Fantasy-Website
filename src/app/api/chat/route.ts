@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { chatContext, chatSystemPrompt } from "@/lib/chat/personality";
 import { allowChatRequest } from "@/lib/chat/rate-limit";
-import { CHAT_TOOLS, runChatTool } from "@/lib/chat/tools";
+import { CHAT_TOOLS, nicknameRosters, runChatTool } from "@/lib/chat/tools";
 import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import { getCurrentFranchises, getSeasons } from "@/lib/queries";
 
@@ -138,6 +138,7 @@ export async function POST(request: NextRequest) {
   const myTeamId = Number(request.cookies.get(MY_TEAM_COOKIE)?.value);
   const myTeam = franchises.find((t) => t.espn_id === myTeamId) ?? null;
   const season = seasons.find((s) => s.is_active) ?? seasons[0];
+  const rosters = await nicknameRosters(franchises);
 
   // Render order is tools, then system, so this breakpoint caches both. The
   // per-visitor context goes after it to keep the cached prefix identical.
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
       text: chatSystemPrompt(franchises),
       cache_control: { type: "ephemeral" },
     },
-    { type: "text", text: chatContext(season, myTeam) },
+    { type: "text", text: chatContext(season, myTeam, rosters) },
   ];
 
   const client = new Anthropic();

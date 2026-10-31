@@ -21,6 +21,7 @@ import {
   getWeeklyRecap,
   getWeeklyRecapFor,
   getYearStats,
+  type Team,
 } from "@/lib/queries";
 
 // The bot's only view of the league: read-only lookups over the same cached
@@ -60,7 +61,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   ),
   tool(
     "get_team",
-    "One franchise's history: its name, record, finish, and fraud score each season, titles, top scorers, its current record and rank, last result, and upcoming games.",
+    "One franchise's history: its name, record, finish, and fraud score each season, titles, its top scorers added up across every season (not this season's totals), its current record and rank, last result, and upcoming games. Use get_team_lineup or get_player for this season's players.",
     { espn_id: ESPN_ID },
     ["espn_id"],
   ),
@@ -116,6 +117,38 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     { year: YEAR },
   ),
 ];
+
+/** Which team has each nicknamed player, from every team's latest lineup. A
+ *  player's season stats name whoever rostered him most, which goes stale after
+ *  a trade or drop, so that's only the fallback for a player on a bye: lineups
+ *  leave him out that week. Players on no roster are left out. */
+export async function nicknameRosters(
+  franchises: Team[],
+): Promise<{ nickname: string; teamName: string }[]> {
+  const outlooks = await Promise.all(
+    franchises.map((t) => getTeamOutlook(t.espn_id)),
+  );
+  const current = outlooks.find((o) => o != null);
+  const rosters = await Promise.all(
+    PLAYER_NICKNAMES.map(async ({ name, nickname }) => {
+      const outlook = outlooks.find((o) =>
+        [...(o?.starters ?? []), ...(o?.bench ?? [])].some(
+          (p) => p.playerName === name,
+        ),
+      );
+      if (outlook) return { nickname, teamName: outlook.team.name.trim() };
+      if (!current) return null;
+
+      const detail = await getPlayerDetail(name, current.year);
+      const thisWeek = detail?.weekly.find((w) => w.week === current.week);
+      const lastWeek = detail?.weekly.find((w) => w.week === current.week - 1);
+      return thisWeek?.bye && lastWeek && !lastWeek.freeAgent && detail?.fantasyTeam
+        ? { nickname, teamName: detail.fantasyTeam.name }
+        : null;
+    }),
+  );
+  return rosters.filter((r) => r != null);
+}
 
 type Input = Record<string, unknown>;
 
@@ -199,7 +232,7 @@ const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
         fraudScore: yearStats[i].fraud.find((f) => f.team.id === s.teamId)
           ?.fraudScore,
       })),
-      topScorers: roster.topScorers,
+      topScorersAcrossAllSeasons: roster.topScorers,
       current: home,
     };
   },
