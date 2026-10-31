@@ -24,6 +24,7 @@ import TeamPickerModal from "@/components/TeamPickerModal";
 import TeamHomePanel from "@/components/TeamHomePanel";
 import ChangeTeamButton from "@/components/ChangeTeamButton";
 import WeeklyRecapCard from "@/components/WeeklyRecapCard";
+import StatsChat from "@/components/StatsChat";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,12 @@ export default async function Home() {
   const store = await cookies();
   const raw = store.get(MY_TEAM_COOKIE)?.value ?? null;
 
+  const chat = (
+    <div className="mx-auto max-w-[1800px] px-8 pt-6">
+      <StatsChat />
+    </div>
+  );
+
   const franchises = await getCurrentFranchises();
   const pickerTeams = franchises.map((t) => ({
     espnId: t.espn_id,
@@ -154,13 +161,16 @@ export default async function Home() {
         getTeamOutlook(chosen),
       ]);
       return (
-        <TeamHomePanel
-          home={home}
-          outlook={outlook}
-          divisions={divisions}
-          articles={articles}
-          weekly={weekly}
-        />
+        <>
+          {chat}
+          <TeamHomePanel
+            home={home}
+            outlook={outlook}
+            divisions={divisions}
+            articles={articles}
+            weekly={weekly}
+          />
+        </>
       );
     }
   }
@@ -185,6 +195,7 @@ export default async function Home() {
             />
           </div>
         </div>
+        {chat}
         {defaultHome}
       </>
     );
@@ -193,6 +204,7 @@ export default async function Home() {
   // No choice yet → default homepage with the picker popup on top.
   return (
     <>
+      {chat}
       {defaultHome}
       <TeamPickerModal teams={pickerTeams} />
     </>
