@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
 import { homepageConfig } from "@/lib/homepage-config";
 import {
   getSeasons,
@@ -14,7 +14,6 @@ import {
 } from "@/lib/queries";
 import { getArticles, type Article } from "@/lib/articles";
 import { teamColor } from "@/lib/teams-config";
-import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import ArtSpotlight from "@/components/ArtSpotlight";
 import ChampionBanner from "@/components/ChampionBanner";
 import StandingsTable from "@/components/StandingsTable";
@@ -26,7 +25,33 @@ import ChangeTeamButton from "@/components/ChangeTeamButton";
 import WeeklyRecapCard from "@/components/WeeklyRecapCard";
 import StatsChat from "@/components/StatsChat";
 
-export const dynamic = "force-dynamic";
+/**
+ * The homepage, one cached copy per "who's visiting" variant.
+ *
+ * Visitors never see /home/… in the address bar: next.config.ts rewrites "/"
+ * here based on the my-team cookie — /home/<espn_id> for a picked team,
+ * /home/none for "just browsing", /home/new for first-timers (picker popup).
+ * Vercel applies that rewrite in its routing layer, so the cookie never has
+ * to be read in a function.
+ *
+ * This page used to be force-dynamic and read cookies() itself, which meant
+ * every visit and every nav prefetch of "/" ran a full server render (the
+ * site's busiest page, and its biggest Fluid Active CPU cost). As static +
+ * ISR it renders once per variant per hour; the daily sync's revalidateTag
+ * ("db") and article publishing (revalidatePath) refresh it immediately.
+ */
+export const revalidate = 3600;
+
+/** Prerender the default variants and every current franchise. A franchise
+ *  that shows up later still renders on demand, then gets cached. */
+export async function generateStaticParams() {
+  const franchises = await getCurrentFranchises();
+  return [
+    { variant: "new" },
+    { variant: "none" },
+    ...franchises.map((t) => ({ variant: String(t.espn_id) })),
+  ];
+}
 
 /** Articles shown on the homepage; the rest live on /articles. */
 const HOME_ARTICLE_COUNT = 3;
@@ -132,9 +157,20 @@ async function DivisionsHome({
   );
 }
 
-export default async function Home() {
-  const store = await cookies();
-  const raw = store.get(MY_TEAM_COOKIE)?.value ?? null;
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ variant: string }>;
+}) {
+  const { variant } = await params;
+  // Only the shapes the "/" rewrite produces; anything else would just mint
+  // junk cache entries.
+  if (variant !== "new" && variant !== "none" && !/^\d+$/.test(variant)) {
+    notFound();
+  }
+  // Same meaning the cookie value had: "none" = browsing without a team, a
+  // number = a picked team, "new" = hasn't chosen yet.
+  const raw = variant === "new" ? null : variant;
 
   const franchises = await getCurrentFranchises();
   const pickerTeams = franchises.map((t) => ({

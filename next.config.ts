@@ -42,6 +42,38 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "2mb",
     },
   },
+  /**
+   * "/" is served by src/app/home/[variant] (static + ISR), picked from the
+   * my-team cookie here instead of by reading cookies() in a function — so a
+   * homepage visit is a cache hit, not a server render. See that page for why.
+   * Keep the cookie name in sync with MY_TEAM_COOKIE in src/lib/my-team.ts
+   * (config values must be literals for Vercel to apply them at the edge).
+   */
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/",
+          has: [{ type: "cookie", key: "chamoms_team", value: "(?<team>\\d+)" }],
+          destination: "/home/:team",
+        },
+        {
+          source: "/",
+          has: [{ type: "cookie", key: "chamoms_team", value: "none" }],
+          destination: "/home/none",
+        },
+        {
+          source: "/",
+          missing: [{ type: "cookie", key: "chamoms_team" }],
+          destination: "/home/new",
+        },
+      ],
+      afterFiles: [],
+      // A cookie with any other value: treat as not chosen yet (shows the
+      // picker), as the old cookie-reading homepage did.
+      fallback: [{ source: "/", destination: "/home/new" }],
+    };
+  },
   async headers() {
     return CDN_CACHED_PAGES.map((source) => ({
       source,

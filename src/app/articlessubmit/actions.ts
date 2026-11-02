@@ -83,7 +83,8 @@ export async function submitArticle(
     // post out now instead of waiting for the ISR window to lapse.
     revalidatePath("/articles");
     revalidatePath(`/articles/${slug}`);
-    revalidatePath("/");
+    // "/" is rewritten to one cached page per my-team variant; refresh them all.
+    revalidatePath("/home/[variant]", "page");
     return { ok: true, message: "Published.", slug };
   } catch (e) {
     return {

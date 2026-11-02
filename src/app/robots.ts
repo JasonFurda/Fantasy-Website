@@ -45,7 +45,8 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/*?", "/api/", "/rankings-entry/", "/articlessubmit"],
+        // /home/ is the homepage's internal rewrite target ("/" serves it).
+        disallow: ["/*?", "/api/", "/rankings-entry/", "/articlessubmit", "/home/"],
       },
     ],
   };
