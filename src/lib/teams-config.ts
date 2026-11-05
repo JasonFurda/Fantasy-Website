@@ -23,7 +23,7 @@ export type TeamMeta = {
 // swap each for its real portrait piece as it arrives.
 export const teamMeta: Record<number, TeamMeta> = {
   1: { color: "#f97316", art: "/team-art/magic-in-the-hampton.webp", artFocus: "50% 28%" }, // Festive7 — Magic in the Hampton — orange
-  3: { color: "#7c4a21", art: "/art/me-vs-duck-playoffs.jpg" }, // jasonsexybod — brown
+  3: { color: "#7c4a21", art: "/team-art/tiennamon-square.webp", artFocus: "50% 18%" }, // jasonsexybod — TiennAmon Square — brown
   4: { color: "#dc2626", art: "/art/me-v-brum.png" }, // drasktic — red
   5: { color: "#9333ea", art: "/art/jason-vs-west-2.jpg" }, // ESPNfan2807758783 — Bell Milers — purple
   6: { color: "#1e3a8a", art: "/art/me-v-mich.png" }, // espn62403996 — dark blue
