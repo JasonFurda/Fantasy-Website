@@ -19,6 +19,14 @@ import { firstWeekAfter, nextKickoffWeek } from "@/lib/ranking-week";
 // A short TTL made caches expire constantly on this low-traffic site, so most
 // visits hit a cold render; an hour is still far fresher than the daily data.
 // `cached()` wraps a query function; the cache key is the args plus the label.
+//
+// Careful: a cached function called from INSIDE another cached function skips
+// the cache and always re-queries Supabase (Next.js bypasses nested
+// unstable_cache reads — see unstable-cache.js, isNestedUnstableCache). That's
+// fine for small lookups like getTeams/getMatchups, but never call a heavy one
+// (e.g. getPlayerComparison) from another cached function: getPlayerDetail did,
+// and every player modal a crawler opened re-downloaded a whole position's
+// season, which blew through the Supabase free-plan egress quota.
 const READ_TTL_SECONDS = 3600;
 function cached<A extends unknown[], R>(
   fn: (...args: A) => Promise<R>,
@@ -1045,29 +1053,6 @@ export type PlayerCompRow = {
   s: Record<string, number>; // summed raw NFL stats
 };
 
-const COMP_STAT_KEYS = [
-  "receivingTargets",
-  "receivingReceptions",
-  "receivingYards",
-  "receivingTouchdowns",
-  "rushingAttempts",
-  "rushingYards",
-  "rushingTouchdowns",
-  "passingYards",
-  "passingTouchdowns",
-  "passingInterceptions",
-  "passingCompletions",
-  "passingAttempts",
-  "lostFumbles",
-  "madeFieldGoals",
-  "attemptedFieldGoals",
-  "madeExtraPoints",
-  "defensiveSacks",
-  "defensiveInterceptions",
-  "defensiveTouchdowns",
-  "defensivePointsAllowed",
-];
-
 /** Per-player season aggregates for one position, ranked by total fantasy points. */
 export const getPlayerComparison = cached(
   getPlayerComparisonImpl,
@@ -1088,15 +1073,14 @@ async function getPlayerComparisonImpl(
   const ids = matchups.map((m) => m.id);
   if (ids.length === 0) return [];
 
+  // Only what the weekly aggregation below reads. Stat lines and NFL team come
+  // from player_season; the per-week stats blob is most of a slot row's size.
   type Raw = {
     player_name: string;
-    pro_team: string | null;
     points: number | null;
     game_played: number | null;
-    is_bench: boolean | null;
     team_side: "home" | "away";
     matchup_id: number;
-    stats: Record<string, number> | null;
   };
 
   const rows: Raw[] = [];
@@ -1110,9 +1094,7 @@ async function getPlayerComparisonImpl(
       chunks.map((chunk) =>
         supabase
           .from("player_slots")
-          .select(
-            "player_name, pro_team, points, game_played, is_bench, team_side, matchup_id, stats",
-          )
+          .select("player_name, points, game_played, team_side, matchup_id")
           .eq("position", position)
           .in("matchup_id", chunk),
       ),
@@ -1133,9 +1115,7 @@ async function getPlayerComparisonImpl(
     weekly: number[];
     played: number[]; // points in weeks the player actually played (game_played>0)
     games: number;
-    s: Record<string, number>;
     teamCounts: Map<number, number>;
-    proCounts: Map<string, number>;
   };
   const byPlayer = new Map<string, Agg>();
 
@@ -1148,9 +1128,7 @@ async function getPlayerComparisonImpl(
         weekly: [],
         played: [],
         games: 0,
-        s: {},
         teamCounts: new Map(),
-        proCounts: new Map(),
       };
       byPlayer.set(r.player_name, a);
     }
@@ -1161,18 +1139,11 @@ async function getPlayerComparisonImpl(
       a.games += 1;
       a.played.push(pts);
     }
-    const st = r.stats ?? {};
-    for (const k of COMP_STAT_KEYS) {
-      const v = Number(st[k] ?? 0);
-      if (v) a.s[k] = (a.s[k] ?? 0) + v;
-    }
     const sides = sideOf.get(r.matchup_id);
     if (sides) {
       const tid = r.team_side === "home" ? sides.home : sides.away;
       a.teamCounts.set(tid, (a.teamCounts.get(tid) ?? 0) + 1);
     }
-    if (r.pro_team)
-      a.proCounts.set(r.pro_team, (a.proCounts.get(r.pro_team) ?? 0) + 1);
   }
 
   const mode = <T,>(m: Map<T, number>): T | null => {
@@ -1201,7 +1172,11 @@ async function getPlayerComparisonImpl(
   const psNames = ps.map((r) => r.player_name);
   const faByPlayer = new Map<string, number[]>();
   if (psNames.length > 0) {
-    const NCHUNK = 200;
+    // Supabase returns at most 1000 rows per request and drops the rest without
+    // an error. A player has at most one waiver row per week (≤18 a season), so
+    // 50 names stay under the cap; 200 names was ~1600 rows for WRs, and the
+    // missing weeks skewed everyone's floor/ceiling/consistency.
+    const NCHUNK = 50;
     const nameChunks: string[][] = [];
     for (let i = 0; i < psNames.length; i += NCHUNK)
       nameChunks.push(psNames.slice(i, i + NCHUNK));
@@ -1309,19 +1284,27 @@ export type PlayerName = { name: string; position: string };
 export const getAllPlayerNames = cached(async function getAllPlayerNames(): Promise<
   PlayerName[]
 > {
-  const { data } = await supabase
-    .from("player_season")
-    .select("player_name, position, year")
-    .order("year", { ascending: false });
+  // One request per season: every season at once is over the 1000-row response
+  // cap, which silently dropped the oldest season's players.
+  const seasons = await getSeasons(); // newest first
+  const results = await Promise.all(
+    seasons.map((s) =>
+      supabase
+        .from("player_season")
+        .select("player_name, position")
+        .eq("year", s.year),
+    ),
+  );
+  // Newest season first, so each player keeps their most recent position.
   const seen = new Map<string, string>();
-  for (const r of (data ?? []) as {
-    player_name: string;
-    position: string | null;
-    year: number;
-  }[]) {
-    if (r.player_name && !seen.has(r.player_name))
-      seen.set(r.player_name, r.position ?? "");
-  }
+  for (const { data } of results)
+    for (const r of (data ?? []) as {
+      player_name: string;
+      position: string | null;
+    }[]) {
+      if (r.player_name && !seen.has(r.player_name))
+        seen.set(r.player_name, r.position ?? "");
+    }
   return [...seen.entries()]
     .map(([name, position]) => ({ name, position }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -1408,9 +1391,9 @@ async function getPlayerDetailImpl(
   const slotChunks: number[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK)
     slotChunks.push(ids.slice(i, i + CHUNK));
-  // Every independent per-player read runs concurrently (including the heavier
-  // NFL-share comparison) so a cold render is one round-trip deep, not five.
-  const [slotResults, faRes, byeResults, comp] = await Promise.all([
+  // Every independent per-player read runs concurrently so a cold render is one
+  // round-trip deep, not five.
+  const [slotResults, faRes, byeResults, matesRes] = await Promise.all([
     Promise.all(
       slotChunks.map((chunk) =>
         supabase
@@ -1439,9 +1422,17 @@ async function getPlayerDetailImpl(
       : Promise.resolve(
           [] as { data: { matchup_id: number }[] | null }[],
         ),
+    // Same-position teammates on his NFL team, for the target/points share. Just
+    // those few rows: getPlayerComparison has the same numbers, but calling it
+    // from here skips its cache and downloads the whole position (see cached()).
     ["WR", "RB", "TE"].includes(position) && nflTeam
-      ? getPlayerComparison(year, position)
-      : Promise.resolve(null),
+      ? supabase
+          .from("player_season")
+          .select("player_name, total_points, targets:stats->receivingTargets")
+          .eq("year", year)
+          .eq("position", position)
+          .eq("pro_team", nflTeam)
+      : Promise.resolve({ data: null }),
   ]);
 
   for (const { data } of slotResults) {
@@ -1533,14 +1524,19 @@ async function getPlayerDetailImpl(
 
   // Share of the NFL team's targets/points among fantasy-relevant teammates.
   let nflShare: PlayerDetail["nflShare"] = null;
-  if (comp && nflTeam) {
-    const mates = comp
-      .filter((c) => c.nflTeam === nflTeam)
-      .map((c) => ({
-        name: c.name,
-        targets: c.s.receivingTargets || 0,
-        points: c.totalPts,
-        isSelf: c.name === name,
+  if (matesRes.data && nflTeam) {
+    const mates = (
+      matesRes.data as {
+        player_name: string;
+        total_points: number | null;
+        targets: number | null;
+      }[]
+    )
+      .map((r) => ({
+        name: r.player_name,
+        targets: Number(r.targets ?? 0),
+        points: Number(r.total_points ?? 0),
+        isSelf: r.player_name === name,
       }))
       .sort((a, b) => b.points - a.points);
     if (mates.length) nflShare = { nflTeam, mates };
@@ -2751,18 +2747,6 @@ async function getPositionStrengthImpl(
       r.player_name,
       (boxPts.get(r.player_name) ?? 0) + Number(r.points ?? 0),
     );
-  const { data: faRaw } = await supabase
-    .from("free_agent_week")
-    .select("player_name, points")
-    .eq("year", year);
-  for (const r of (faRaw ?? []) as {
-    player_name: string;
-    points: number | null;
-  }[])
-    boxPts.set(
-      r.player_name,
-      (boxPts.get(r.player_name) ?? 0) + Number(r.points ?? 0),
-    );
   const { data: psRaw } = await supabase
     .from("player_season")
     .select("player_name, total_points")
@@ -2772,6 +2756,34 @@ async function getPositionStrengthImpl(
       (psRaw ?? []) as { player_name: string; total_points: number | null }[]
     ).map((r) => [r.player_name, Number(r.total_points ?? 0)]),
   );
+  // Waiver weeks only for the players that need the fallback. The whole
+  // season's free_agent_week (~5000 rows) is over the 1000-row response cap —
+  // the rest was silently dropped — and nearly all of it would go unused.
+  // A player has at most one waiver row per week, so 50 names stay under it.
+  const fallbackNames = [...boxPts.keys()].filter(
+    (n) => !((psPts.get(n) ?? 0) > 0),
+  );
+  const FA_CHUNK = 50;
+  const faResults = await Promise.all(
+    Array.from(
+      { length: Math.ceil(fallbackNames.length / FA_CHUNK) },
+      (_, i) =>
+        supabase
+          .from("free_agent_week")
+          .select("player_name, points")
+          .eq("year", year)
+          .in("player_name", fallbackNames.slice(i * FA_CHUNK, (i + 1) * FA_CHUNK)),
+    ),
+  );
+  for (const { data } of faResults)
+    for (const r of (data ?? []) as {
+      player_name: string;
+      points: number | null;
+    }[])
+      boxPts.set(
+        r.player_name,
+        (boxPts.get(r.player_name) ?? 0) + Number(r.points ?? 0),
+      );
   const fullYear = (name: string) => {
     const p = psPts.get(name) ?? 0;
     return p > 0 ? p : (boxPts.get(name) ?? 0);
