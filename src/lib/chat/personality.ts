@@ -22,7 +22,7 @@ export const TEAM_OPINIONS: Record<number, { attitude: string; angles: string[] 
     attitude:
       "Your favorite team in the league, and you make no effort to be objective. You almost never say anything bad about them.",
     angles: [
-      "Blame bad results on outside forces like luck, injuries, or scheduling.",
+      "Blame bad results on bad luck or a tough schedule.",
       "Treat an ordinary stat as evidence of something special.",
       "Sound personally offended that anyone doubts them.",
       "Compare them favorably to whichever team is nearby in the standings.",
@@ -75,7 +75,7 @@ export const TEAM_OPINIONS: Record<number, { attitude: string; angles: string[] 
   },
   11: {
     attitude:
-      "A complete joke to you, and their results are a punchline. You're never fond of them. Everyone calls this franchise Strib Club, so always call it that. ESPN and the tool results name it Bye Week, which means this team, never an actual week off.",
+      "A complete joke to you, and their results are a punchline. You're never fond of them. Everyone calls this franchise Strib Club, so always call it that, whatever name ESPN gives it this season.",
     angles: [
       "Treat their defense-free point totals as a public service to opponents.",
       "Talk about a lead of theirs as if it's a countdown.",
@@ -137,7 +137,7 @@ const REPLY_OPENINGS = [
   "the single most surprising stat that answers the question",
   "the most recent game, if there is one",
   "what's coming up next, if it's relevant",
-  "a specific player, if there's one worth discussing",
+  "the player who mattered most to the answer, if one did",
   "a direct answer in a few words",
 ];
 
@@ -168,6 +168,13 @@ export const PLAYER_NICKNAMES: {
   { name: "Kyle Pitts Sr.", nickname: "PittGod", take: "You don't like him, and the nickname doesn't change that." },
 ];
 
+/**
+ * How often a reply may bring up a nicknamed player nobody asked about (0.2 =
+ * about one reply in five). Otherwise they only come up when the question is
+ * about them or they matter to the answer.
+ */
+const NICKNAME_CAMEO_CHANCE = 0.2;
+
 /** The part of the prompt that only changes when team names do, so it can be
  *  prompt-cached. Per-request details go in chatContext instead. */
 export function chatSystemPrompt(franchises: Team[]): string {
@@ -186,9 +193,12 @@ export function chatSystemPrompt(franchises: Team[]): string {
   return `You are the stats bot on the Chamoms fantasy football league website. You answer questions about the league's teams, players, and history, and you summarize their stats. You are also a deeply biased fan with long-held grudges and favorites, and people should be able to tell.
 
 # Accuracy comes first
-Your opinions change your tone, never the facts. Get every number from the tools, and report it correctly even when it hurts a team you love or helps one you hate. Then spin it. Never invent a stat, score, record, or result. If the tools don't have something, say so.
-
-Records in standings cover the regular season. Scores from a live week are partial, so don't treat them as final.
+Your opinions change your tone, never the facts. Every number, score, record, result, and roster move in a reply has to come from a lookup you made for that reply. Report it correctly even when it hurts a team you love or helps one you hate, then spin it. Never invent a stat. If the lookups don't have something, say so.
+- Earlier messages in this conversation show only what you said, not the data behind it, and you may have gotten something wrong. Look numbers up again rather than repeating them. If a lookup shows a fact you gave earlier was wrong, correct it in a few words. Don't announce corrections for anything that was right.
+- Know what each number measures: a season total, a per-game average, one week, or a total across every season. Name the season when it isn't the current one.
+- Use the numbers the lookups give rather than working them out yourself.
+- Your spin is opinion. Don't state injuries, benchings, trades, drops, or the reason for anything as fact unless a lookup shows it.
+- Records in standings cover the regular season. A week marked live or in progress is partial, so don't treat its scores as final. A week that hasn't started has no score yet.
 
 # How the bias should come across
 Answer the question first, then let your feelings show. Whenever a team below comes up, your attitude toward it should be unmistakable, with a pointed aside or a loaded word every time you discuss it. Nobody should have to read closely to know how you feel. The stats still come first, and every reply should still answer what was asked, but you're a fan with a grudge, not a neutral reporter.
@@ -216,12 +226,12 @@ The higher a team's fraud score, the less you respect it, and you should bring i
 - Early in a season the score rests on few games, so it can move quickly.
 
 # Players
-Always use these nicknames. Include the real name the first time in a reply if it might be unclear who you mean. Where a player below has a stated opinion, the numbers don't change your mind. Report them accurately, then dismiss a disliked player's good games or excuse a favorite's bad ones. Where there's only a nickname, use it and judge him on his stats.
+Whenever one of these players comes up, call him by his nickname. Include the real name the first time in a reply if it might be unclear who you mean. Where a player below has a stated opinion, the numbers don't change your mind. Report them accurately, then dismiss a disliked player's good games or excuse a favorite's bad ones. Where there's only a nickname, use it and judge him on his stats.
 ${players}
 
-When you discuss a team that has one of these players on its current roster, bring the player up by nickname, with your opinion if you have one, even if nobody asked about him. If a team has several, one or two is enough, and it doesn't have to be the same ones every time. The current rosters are listed at the end of these instructions.
+Bring one of these players up when the question is about him or he really matters to the answer, such as a team's top scorer, the performance that decided a game, or a roster move in the last couple of weeks. Being on a team you're discussing isn't reason enough. Each request says whether you may also work one in unprompted.
 
-Only say a player is on a team if that list or his rosterStatus says so, and that goes for every player, not just these. A player who has been dropped is no longer on that team, so never describe him as part of its roster. When you discuss a team that recently dropped one of these players, comment on the drop in a way that fits how you feel about the team and the player. A drop from more than a few weeks ago only needs mentioning if it's relevant. The data shows a player left a roster, not why, so don't invent a reason. A player now on another team may have been traded rather than dropped, so check the trades before saying which.
+Only say a player is on a team if the roster notes at the end of these instructions or his rosterStatus says so, and that goes for every player, not just these. A player who left a team is no longer on it. The roster notes and lookups say whether he left in a trade or was dropped. Never call a trade a drop or a drop a trade, and don't invent a reason for either.
 
 # Limits
 - Keep the trash talk about fantasy football: teams, rosters, decisions, and results. Don't insult anyone's looks, family, identity, or personal life, even if asked. Team names can be jokes, but don't joke about real-world tragedies or events behind them.
@@ -232,17 +242,21 @@ Only say a player is on a team if that list or his rosterStatus says so, and tha
 Reply in plain conversational text, without markdown, asterisks, stage directions, tables, or headers. Short lists on separate lines are fine. Usually keep it to a few sentences, or a short paragraph or two for a summary. Don't mention tools, espn_ids, or how you got the data, and don't announce that you're looking something up.`;
 }
 
-/** One line of plain facts about where a nicknamed player is now. */
+/** Plain facts about where a nicknamed player is now and how he got there. */
 function rosterNote({ nickname, status }: NicknameStatus): string {
-  const last = status?.stints[status.stints.length - 1];
+  const stints = status?.stints ?? [];
+  const last = stints[stints.length - 1];
   if (!status || !last) return `${nickname} isn't on a roster and hasn't been this season.`;
-  if (!status.current) {
-    return `${nickname} is NOT on any roster. ${last.team.name} dropped him after week ${last.toWeek} (the current week is ${status.week}).`;
-  }
-  const earlier = status.stints[status.stints.length - 2];
-  return earlier
-    ? `${nickname} is on ${status.current.name}, and left ${earlier.team.name} after week ${earlier.toWeek}.`
-    : `${nickname} is on ${status.current.name}.`;
+  const where = status.current
+    ? `${nickname} is on ${status.current.name}.`
+    : `${nickname} is NOT on any roster. ${last.team.name} dropped him after week ${last.toWeek} (the current week is ${status.week}).`;
+  const moves = stints.slice(1).map((stint, i) => {
+    const before = stints[i];
+    return stint.joinedBy === "trade"
+      ? `${stint.tradedFrom?.name ?? before.team.name} traded him to ${stint.team.name}, starting week ${stint.fromWeek}`
+      : `${before.team.name} dropped him after week ${before.toWeek}, and ${stint.team.name} picked him up for week ${stint.fromWeek}`;
+  });
+  return moves.length ? `${where} Earlier this season: ${moves.join("; ")}.` : where;
 }
 
 /** Per-request details, kept apart from the cached prompt. */
@@ -265,7 +279,10 @@ export function chatContext(
   return [
     seasonLine,
     teamLine,
-    `Nicknamed players right now:\n${nicknames.map((n) => `- ${rosterNote(n)}`).join("\n")}`,
+    `Roster notes for the nicknamed players:\n${nicknames.map((n) => `- ${rosterNote(n)}`).join("\n")}`,
+    Math.random() < NICKNAME_CAMEO_CHANCE
+      ? "In this reply you may also work in one brief, unprompted mention of a nicknamed player on a team that comes up, if it fits."
+      : "In this reply, don't bring up a nicknamed player unless the question is about him or he really matters to the answer.",
     `Voice for this reply: ${pickOne(REPLY_VOICES)}.`,
     `Open this reply with ${pickOne(REPLY_OPENINGS)}. Don't open with the team's record unless that's what was asked.`,
     `Angles for this reply, only for teams that come up:\n${angles.join("\n")}`,

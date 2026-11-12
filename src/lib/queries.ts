@@ -1560,6 +1560,10 @@ export type RosterStint = {
   team: { name: string; espnId: number };
   fromWeek: number;
   toWeek: number;
+  /** How he got to this team: a trade from `tradedFrom`, or (no trade on
+   *  record) the draft or a waiver/free-agent pickup. */
+  joinedBy: "trade" | "draft or pickup";
+  tradedFrom?: { name: string; espnId: number };
 };
 
 export type PlayerRosterStatus = {
@@ -1598,7 +1602,7 @@ async function getLatestLineupWeekImpl(year: number): Promise<number | null> {
  *  (is_bye), so no slot in the newest lineup week means no longer rostered. */
 export const getPlayerRosterStatus = cached(
   getPlayerRosterStatusImpl,
-  "getPlayerRosterStatus",
+  "getPlayerRosterStatus-v2",
 );
 async function getPlayerRosterStatusImpl(
   name: string,
@@ -1615,11 +1619,33 @@ async function getPlayerRosterStatusImpl(
 
   const matchupById = new Map(matchups.map((m) => [m.id, m]));
   const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
-  const { data } = await supabase
-    .from("player_slots")
-    .select("matchup_id, team_side")
-    .eq("player_name", name)
-    .in("matchup_id", [...matchupById.keys()]);
+  const [{ data }, { data: tradeRows }] = await Promise.all([
+    supabase
+      .from("player_slots")
+      .select("matchup_id, team_side")
+      .eq("player_name", name)
+      .in("matchup_id", [...matchupById.keys()]),
+    supabase
+      .from("trade_players")
+      .select("traded_at, from_espn_id, to_espn_id")
+      .eq("year", year)
+      .eq("player_name", name),
+  ]);
+  const trades = (
+    (tradeRows ?? []) as {
+      traded_at: string;
+      from_espn_id: number;
+      to_espn_id: number;
+    }[]
+  ).map((t) => ({
+    week: firstWeekAfter(t.traded_at, year),
+    from: t.from_espn_id,
+    to: t.to_espn_id,
+  }));
+  const teamRef = (espnId: number) => {
+    const t = teams.find((x) => x.espn_id === espnId);
+    return { name: t ? t.name.trim() : `Team ${espnId}`, espnId };
+  };
 
   const weeks = ((data ?? []) as { matchup_id: number; team_side: "home" | "away" }[])
     .flatMap((r) => {
@@ -1634,13 +1660,24 @@ async function getPlayerRosterStatusImpl(
   const stints: RosterStint[] = [];
   for (const { week: w, team } of weeks) {
     const last = stints[stints.length - 1];
-    if (last?.team.espnId === team.espn_id) last.toWeek = w;
-    else
-      stints.push({
-        team: { name: team.name.trim(), espnId: team.espn_id },
-        fromWeek: w,
-        toWeek: w,
-      });
+    if (last?.team.espnId === team.espn_id) {
+      last.toWeek = w;
+      continue;
+    }
+    // A trade to this team that took effect after his previous stint began.
+    const trade = trades.find(
+      (t) =>
+        t.to === team.espn_id &&
+        t.week <= w &&
+        (last == null || t.week > last.fromWeek),
+    );
+    stints.push({
+      team: { name: team.name.trim(), espnId: team.espn_id },
+      fromWeek: w,
+      toWeek: w,
+      joinedBy: trade ? "trade" : "draft or pickup",
+      ...(trade && { tradedFrom: teamRef(trade.from) }),
+    });
   }
 
   const last = stints[stints.length - 1] ?? null;

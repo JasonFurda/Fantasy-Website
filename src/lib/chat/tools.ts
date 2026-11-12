@@ -4,6 +4,7 @@ import { championshipsFor } from "@/lib/league-config";
 import { PLAYER_NICKNAMES, type NicknameStatus } from "@/lib/chat/personality";
 import {
   buildStandings,
+  firstUnfinishedWeek,
   getAllPlayerNames,
   getAllTimeStats,
   getDraftRecap,
@@ -22,6 +23,9 @@ import {
   getWeeklyRecap,
   getWeeklyRecapFor,
   getYearStats,
+  type PlayerDetail,
+  type PlayerRosterStatus,
+  type UpcomingMatch,
 } from "@/lib/queries";
 
 // The bot's only view of the league: read-only lookups over the same cached
@@ -56,7 +60,7 @@ function tool(
 export const CHAT_TOOLS: Anthropic.Tool[] = [
   tool(
     "get_standings",
-    "A season's regular-season standings: rank, record, points for and against, fraud score, and fraud rank (1 = biggest fraud).",
+    "A season's regular-season standings: rank, record, points for and against with where they rank in the league (pointsForRank 1 = scored the most, pointsAgainstRank 1 = gave up the most), fraud score, and fraud rank (1 = biggest fraud).",
     { year: YEAR },
   ),
   tool(
@@ -99,7 +103,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   tool("get_power_rankings", "The latest weekly power rankings."),
   tool(
     "get_player",
-    "One player's weekly points, season average, best week, past seasons, and rosterStatus. rosterStatus.current is the fantasy team that has him now; if it's null he isn't on a roster, and rosterStatus.stints shows who had him and through which week. Accepts a real name, part of a name, or a league nickname.",
+    "One player's season. weekly lists his fantasy points for each week played so far: fantasyTeam is who had him that week (this season only), freeAgent means nobody did, points is null when there's no record of him, and inProgress marks the week being played now, whose points are partial. seasons has a line for every season on record: NFL games played, fantasy points in total and per game, and NFL stats, which are season totals unless the name ends in PerGame. rosterStatus covers the current season: current is the team that has him now (null means nobody), and each stint says whether he arrived by trade. Accepts a real name, part of a name, or a league nickname.",
     {
       name: { type: "string", description: "The player's name or nickname." },
       year: YEAR,
@@ -108,7 +112,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   ),
   tool(
     "get_trades",
-    "A season's trades and the scoreboard of who gained the most from them.",
+    "A season's trades. For each player a team received: the finished weeks it has had him, his points for it (as a starter and in total), valueOverBackup (his starting points minus what that team's best healthy backup at the slot scored, the main measure), and costToGiver (what the team that gave him up lost, measured against its own backups). A side's net is gainedPts minus gavePts, and positive means the trade has helped it so far. scoreboard totals net trade points per team, best first.",
     { year: YEAR },
   ),
   tool(
@@ -169,6 +173,107 @@ async function matchPlayers(query: string): Promise<string[]> {
   return names.filter((n) => n.toLowerCase().includes(q));
 }
 
+/** A schedule entry without the zeros an unplayed game carries, which the bot
+ *  read as real scores and projections. */
+function gameForBot(g: UpcomingMatch) {
+  const { teamScore, oppScore, teamProjected, oppProjected } = g;
+  return {
+    week: g.week,
+    isHome: g.isHome,
+    opponent: g.opponent,
+    played: g.played,
+    live: g.live,
+    ...(g.played || g.live ? { teamScore, oppScore } : {}),
+    ...(teamProjected ? { teamProjected } : {}),
+    ...(oppProjected ? { oppProjected } : {}),
+  };
+}
+
+/** In player_season, ESPN's per-game yardage overwrites the season total under
+ *  the same name (stats 22/40/61 share a name with 3/24/42 in espn_api), so
+ *  these three hold per-game averages. */
+const PER_GAME_YARDS = ["passingYards", "rushingYards", "receivingYards"];
+/** The NFL team's record and the player's real NFL points, which read like
+ *  fantasy numbers. */
+const MISLEADING_STATS = new Set(["teamWin", "teamLoss", "pointsScored"]);
+
+function seasonStats(
+  stats: Record<string, number>,
+  games: number,
+  position: string,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(stats)) {
+    // Numeric keys are ESPN stat ids nobody has named.
+    if (/^\d+$/.test(key) || MISLEADING_STATS.has(key)) continue;
+    if (position !== "D/ST" && key.startsWith("defensive")) continue;
+    if (PER_GAME_YARDS.includes(key)) {
+      out[`${key}PerGame`] = value;
+      if (games > 0) out[key] = Math.round(value * games);
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/** PlayerDetail reshaped so it can't be misread. The page's weekly chart pads
+ *  the rest of the season with zeros and counts the unplayed current week in
+ *  its average, which had the bot reporting games that hadn't happened. */
+function playerForBot(
+  detail: PlayerDetail,
+  roster: PlayerRosterStatus | null,
+  liveWeek: number,
+) {
+  const stints = roster?.year === detail.year ? roster.stints : [];
+  const teamIn = (week: number) =>
+    stints.find((s) => week >= s.fromWeek && week <= s.toWeek)?.team.name;
+
+  const weekly = detail.weekly
+    // The week being played only counts once he has points in it.
+    .filter((w) => w.week < liveWeek || (w.week === liveWeek && w.points !== 0))
+    .map((w) => {
+      const team = teamIn(w.week);
+      return {
+        week: w.week,
+        points: w.dnp ? null : w.points,
+        ...(w.freeAgent ? { freeAgent: true } : team ? { fantasyTeam: team } : {}),
+        ...(w.bye && { nflBye: true }),
+        ...(w.week >= liveWeek && { inProgress: true }),
+        ...(w.injury && { injury: w.injury }),
+      };
+    });
+  let bestWeek: { week: number; points: number } | null = null;
+  for (const w of weekly) {
+    if (w.points == null || w.nflBye || w.inProgress) continue;
+    if (!bestWeek || w.points > bestWeek.points) {
+      bestWeek = { week: w.week, points: w.points };
+    }
+  }
+
+  return {
+    name: detail.name,
+    position: detail.position,
+    nflTeam: detail.nflTeam,
+    year: detail.year,
+    weekly,
+    bestWeek,
+    seasons: detail.seasons.map((s) => ({
+      year: s.year,
+      position: s.position,
+      nflTeam: s.nflTeam,
+      gamesPlayed: s.games,
+      fantasyPointsTotal: s.totalPts,
+      fantasyPointsPerGame: s.avgPts,
+      stats: seasonStats(s.s, s.games, s.position),
+    })),
+    nflTeamShare: detail.nflShare,
+    // Who has him now is in rosterStatus; this only helps for a past season.
+    ...(stints.length === 0 && { rosteredMostThatSeasonBy: detail.fantasyTeam }),
+    rosterStatus: roster,
+  };
+}
+
 const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
   async get_standings(input) {
     const year = await resolveYear(input);
@@ -184,10 +289,18 @@ const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
         { fraudScore: f.fraudScore, fraudRank: i + 1 },
       ]),
     );
+    const standings = buildStandings(teams, matchups);
+    // Ranked here because the bot got comparisons wrong working them out itself.
+    const rankAmong = (value: number, all: number[]) =>
+      1 + all.filter((v) => v > value).length;
+    const pointsFor = standings.map((s) => s.pointsFor);
+    const pointsAgainst = standings.map((s) => s.pointsAgainst);
     return {
       year,
-      standings: buildStandings(teams, matchups).map((s) => ({
+      standings: standings.map((s) => ({
         ...s,
+        pointsForRank: rankAmong(s.pointsFor, pointsFor),
+        pointsAgainstRank: rankAmong(s.pointsAgainst, pointsAgainst),
         ...fraudById.get(s.team.id),
       })),
     };
@@ -211,7 +324,11 @@ const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
           ?.fraudScore,
       })),
       topScorersAcrossAllSeasons: roster.topScorers,
-      current: home,
+      current: home && {
+        ...home,
+        upcoming: home.upcoming.map(gameForBot),
+        lastResult: home.lastResult && gameForBot(home.lastResult),
+      },
     };
   },
 
@@ -267,19 +384,64 @@ const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
     if (matches.length > 1) {
       return { note: "More than one match.", matches: matches.slice(0, 10) };
     }
-    const [detail, rosterStatus] = await Promise.all([
-      getPlayerDetail(matches[0], await resolveYear(input)),
+    const year = await resolveYear(input);
+    const [detail, rosterStatus, seasons] = await Promise.all([
+      getPlayerDetail(matches[0], year),
       getPlayerRosterStatus(matches[0]),
+      getSeasons(),
     ]);
     if (!detail) return { note: "No stats for that player." };
-    // fantasyTeam is whoever rostered him most that season, not who has him now.
-    const { fantasyTeam, ...rest } = detail;
-    return { ...rest, mostRosteredByThatSeason: fantasyTeam, rosterStatus };
+    const liveWeek = firstUnfinishedWeek(seasons.find((s) => s.year === year));
+    return playerForBot(detail, rosterStatus, liveWeek);
   },
 
   async get_trades(input) {
     const year = await resolveYear(input);
-    return { year, ...(await getTrades(year)) };
+    const seasons = await getSeasons();
+    const { trades, scoreboard } = await getTrades(year);
+    if (trades.length === 0) {
+      const current = seasons.find((s) => s.is_active)?.year === year;
+      return {
+        year,
+        trades: [],
+        note: current
+          ? "No trades yet this season."
+          : "Trades weren't recorded for this season, so this doesn't mean none happened.",
+      };
+    }
+    // The page's week-by-week breakdowns roughly double the size, and a long
+    // trade list would get cut off.
+    return {
+      year,
+      trades: trades.map((t) => ({
+        tradedOn: t.tradedAt.slice(0, 10),
+        firstWeek: t.firstWeek,
+        finishedWeeksSince: t.weeksSince,
+        sides: t.sides.map((s) => ({
+          team: s.team,
+          received: s.receives.map((p) => ({
+            name: p.name,
+            position: p.position,
+            fromEspnId: p.fromEspnId,
+            weeksWithTeam: p.weeks,
+            startedPts: p.startedPts,
+            totalPts: p.totalPts,
+            valueOverBackup: p.value,
+            costToGiver: p.lost,
+          })),
+          gainedPts: s.gainedPts,
+          gavePts: s.gavePts,
+          net: s.net,
+        })),
+      })),
+      scoreboard: scoreboard.map((s) => ({
+        team: s.team,
+        trades: s.trades,
+        gainedPts: s.gainedPts,
+        gavePts: s.gavePts,
+        net: s.net,
+      })),
+    };
   },
 
   async get_draft_recap(input) {

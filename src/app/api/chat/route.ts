@@ -60,7 +60,8 @@ async function streamReply(
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
         max_tokens: MAX_OUTPUT_TOKENS,
-        output_config: { effort: "low" },
+        // At "low" it often answered from memory instead of looking things up.
+        output_config: { effort: "medium" },
         system: params.system,
         tools: CHAT_TOOLS,
         tool_choice: round === MAX_ROUNDS ? { type: "none" } : { type: "auto" },
