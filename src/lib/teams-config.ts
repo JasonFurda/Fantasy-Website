@@ -29,7 +29,7 @@ export const teamMeta: Record<number, TeamMeta> = {
   6: { color: "#1e3a8a", art: "/art/me-v-mich.png" }, // espn62403996 — dark blue
   7: { color: "#ffb7c5", art: "/team-art/sauce.webp", artFocus: "50% 20%" }, // sauc3 — Sauce — sakura pink
   10: { color: "#eab308", art: "/art/jason-vs-varca-kicker-bowl.jpg" }, // fflubb — gold
-  11: { color: "#14b8a6", art: "/art/west-vs-yeakel-playoffs.jpg" }, // Westy318 — teal
+  11: { color: "#14b8a6", art: "/team-art/the-brown-terrorists.webp", artFocus: "50% 18%" }, // Westy318 — The Brown Terrorists — teal
   12: { color: "#228b22", art: "/team-art/maltbys-mans.webp", artFocus: "50% 12%" }, // DraymondGreen…  — Maltby's Mans — forest green
   13: { color: "#c0c0c0", art: "/team-art/ldpenix.webp", artFocus: "50% 12%" }, // ESPNfan7205…  — LDPenix — silver
 };
