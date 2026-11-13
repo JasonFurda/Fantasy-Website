@@ -428,6 +428,26 @@ def sync_trades(client: Client, year: int, rows_in: list[dict[str, Any]]) -> Non
         client.table("trade_players").insert(rows).execute()
 
 
+def sync_trade_block(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
+    """Replace a year's trading block with ESPN's current one. ESPN only knows
+    the present state, so whatever isn't flagged now is removed."""
+    rows = [
+        {
+            "year": year,
+            "player_id": int(r["playerId"]),
+            "espn_id": int(r["teamId"]),
+            "player_name": str(r["playerName"]).strip(),
+            "position": r.get("position") or None,
+            "pro_team": r.get("proTeam") or None,
+            "status": r["status"],
+        }
+        for r in rows_in
+    ]
+    client.table("trade_block").delete().eq("year", year).execute()
+    if rows:
+        client.table("trade_block").insert(rows).execute()
+
+
 def sync_free_agent_weeks(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
     """Replace per-week free-agent stat lines for a year."""
     client.table("free_agent_week").delete().eq("year", year).execute()

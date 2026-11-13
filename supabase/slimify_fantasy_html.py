@@ -379,6 +379,41 @@ def build_pro_byes(league):
     return out
 
 
+TRADE_BLOCK_STATUSES = ("ON_THE_BLOCK", "UNTOUCHABLE")
+
+
+def build_trade_block(league):
+    """Each team's trading block right now, one row per flagged player.
+
+    ESPN keeps it on each team in the mTeam view as
+    `tradeBlock: {players: {"<playerId>": "ON_THE_BLOCK" | "UNTOUCHABLE" |
+    "NORMAL"}}`. "NORMAL" means the flag was cleared, so it's skipped. ESPN
+    doesn't remove a player when he leaves the team, so anyone not on that
+    team's current roster is dropped as stale.
+    """
+    rosters = {team.team_id: {p.playerId: p for p in team.roster} for team in league.teams}
+    data = league.espn_request.league_get(params={"view": "mTeam"})
+    out = []
+    for t in data.get("teams") or []:
+        roster = rosters.get(t.get("id"), {})
+        flagged = ((t.get("tradeBlock") or {}).get("players") or {}).items()
+        for pid, status in flagged:
+            if status not in TRADE_BLOCK_STATUSES:
+                continue
+            p = roster.get(int(pid))
+            if p is None:
+                continue
+            out.append({
+                "playerId": int(pid),
+                "teamId": int(t["id"]),
+                "playerName": p.name,
+                "position": getattr(p, "position", "") or "",
+                "proTeam": getattr(p, "proTeam", "") or "",
+                "status": status,
+            })
+    return out
+
+
 TRADE_MSG_TYPE = 244  # ESPN activity message type for "TRADED"
 
 

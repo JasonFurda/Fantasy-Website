@@ -4374,3 +4374,115 @@ async function getTradeCalcDataImpl(): Promise<TradeCalcData | null> {
     scoreSd: round1(scoreSd),
   };
 }
+
+// --- Trading block ---------------------------------------------------------
+
+export type BlockPlayer = {
+  name: string;
+  position: string | null;
+  proTeam: string | null;
+  /** Season fantasy points and NFL games played (player_season). */
+  points: number;
+  games: number;
+};
+
+export type BlockTeam = {
+  espnId: number;
+  name: string;
+  onBlock: BlockPlayer[];
+  untouchable: BlockPlayer[];
+};
+
+export type TradeBlock = {
+  year: number;
+  /** Every team this season, ones with players listed first. */
+  teams: BlockTeam[];
+};
+
+const BLOCK_POS_ORDER = ["QB", "RB", "WR", "TE", "K", "D/ST"];
+
+/** Each team's ESPN trading block as of the last sync: who its owner has
+ *  marked available ("on the block") or untouchable, with season points for
+ *  context. ESPN only exposes the current state, so there's one season — the
+ *  active one, or the latest if none is active. */
+export const getTradeBlock = cached(getTradeBlockImpl, "getTradeBlock");
+async function getTradeBlockImpl(): Promise<TradeBlock | null> {
+  const seasons = await getSeasons();
+  const season = seasons.find((s) => s.is_active) ?? seasons[0];
+  if (!season) return null;
+  const year = season.year;
+
+  const [{ data }, teams] = await Promise.all([
+    supabase
+      .from("trade_block")
+      .select("espn_id, player_name, position, pro_team, status")
+      .eq("year", year),
+    getTeams(year),
+  ]);
+  type Row = {
+    espn_id: number;
+    player_name: string;
+    position: string | null;
+    pro_team: string | null;
+    status: "ON_THE_BLOCK" | "UNTOUCHABLE";
+  };
+  const rows = (data ?? []) as Row[];
+
+  const seasonLines = new Map<string, { points: number; games: number }>();
+  if (rows.length > 0) {
+    const { data: ps } = await supabase
+      .from("player_season")
+      .select("player_name, total_points, games")
+      .eq("year", year)
+      .in(
+        "player_name",
+        rows.map((r) => r.player_name),
+      );
+    for (const p of (ps ?? []) as {
+      player_name: string;
+      total_points: number | null;
+      games: number | null;
+    }[])
+      seasonLines.set(p.player_name, {
+        points: round1(Number(p.total_points ?? 0)),
+        games: Number(p.games ?? 0),
+      });
+  }
+
+  const posRank = (p: string | null) => {
+    const i = BLOCK_POS_ORDER.indexOf(p ?? "");
+    return i === -1 ? BLOCK_POS_ORDER.length : i;
+  };
+  const byPosThenPoints = (a: BlockPlayer, b: BlockPlayer) =>
+    posRank(a.position) - posRank(b.position) || b.points - a.points;
+
+  const out: BlockTeam[] = teams.map((t) => {
+    const mine = rows.filter((r) => r.espn_id === t.espn_id);
+    const toPlayer = (r: Row): BlockPlayer => ({
+      name: r.player_name,
+      position: r.position,
+      proTeam: r.pro_team,
+      ...(seasonLines.get(r.player_name) ?? { points: 0, games: 0 }),
+    });
+    return {
+      espnId: t.espn_id,
+      name: t.name.trim(),
+      onBlock: mine
+        .filter((r) => r.status === "ON_THE_BLOCK")
+        .map(toPlayer)
+        .sort(byPosThenPoints),
+      untouchable: mine
+        .filter((r) => r.status === "UNTOUCHABLE")
+        .map(toPlayer)
+        .sort(byPosThenPoints),
+    };
+  });
+  const listed = (t: BlockTeam) => t.onBlock.length + t.untouchable.length;
+  out.sort(
+    (a, b) =>
+      b.onBlock.length - a.onBlock.length ||
+      listed(b) - listed(a) ||
+      a.name.localeCompare(b.name),
+  );
+  return { year, teams: out };
+}

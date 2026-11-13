@@ -41,6 +41,7 @@ def main() -> None:
         sync_free_agent_weeks,
         sync_schedule,
         sync_trades,
+        sync_trade_block,
         sync_pro_byes,
     )
 
@@ -98,6 +99,12 @@ def main() -> None:
         print(f"  Trades: {len({t['tradeId'] for t in trades})}")
     except Exception as e:
         print(f"  Trades: error {e}")
+    try:
+        block = slim.build_trade_block(league)
+        sync_trade_block(client, year, block)
+        print(f"  Trading block: {len(block)} players")
+    except Exception as e:
+        print(f"  Trading block: error {e}")
     try:
         byes = slim.build_pro_byes(league)
         sync_pro_byes(client, year, byes)
