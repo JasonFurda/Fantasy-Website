@@ -110,7 +110,7 @@ PLAYER_STATS_MAP = {
     19: 'passing2PtConversions', # 2PC
     20: 'passingInterceptions', # INT
     21: 'passingCompletionPercentage',
-    22: 'passingYards', # PY - TODO: figure out what the difference is between 22 and 3
+    22: 'passingYardsPerGame', # PYPG - was 'passingYards', which overwrote the season total (3)
 
     # Rushing Stats
     23: 'rushingAttempts', # RA
@@ -126,7 +126,7 @@ PLAYER_STATS_MAP = {
     37: 'rushing100To199YardGame', # RY100
     38: 'rushing200PlusYardGame', # RY200
     39: 'rushingYardsPerAttempt',
-    40: 'rushingYards', # RY - TODO: figure out what the difference is between 40 and 24
+    40: 'rushingYardsPerGame', # RYPG - was 'rushingYards', which overwrote the season total (24)
 
     # Receiving Stats
     41: 'receivingReceptions', # REC
@@ -146,7 +146,7 @@ PLAYER_STATS_MAP = {
     58: 'receivingTargets', # RET
     59: 'receivingYardsAfterCatch',
     60: 'receivingYardsPerReception',
-    61: 'receivingYards', # REY - TODO: figure out what the difference is between 61 and 42
+    61: 'receivingYardsPerGame', # REYPG - was 'receivingYards', which overwrote the season total (42)
     62: '2PtConversions',
     63: 'fumbleRecoveredForTD', # FTD
     64: 'passingTimesSacked', # SK

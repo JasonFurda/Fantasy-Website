@@ -189,32 +189,25 @@ function gameForBot(g: UpcomingMatch) {
   };
 }
 
-/** In player_season, ESPN's per-game yardage overwrites the season total under
- *  the same name (stats 22/40/61 share a name with 3/24/42 in espn_api), so
- *  these three hold per-game averages. */
-const PER_GAME_YARDS = ["passingYards", "rushingYards", "receivingYards"];
 /** The NFL team's record and the player's real NFL points, which read like
  *  fantasy numbers. */
 const MISLEADING_STATS = new Set(["teamWin", "teamLoss", "pointsScored"]);
 
+/** A season stat line without unnamed ESPN stat ids or stats that read like
+ *  something else. Yardage is already season totals (see seasonTotals in
+ *  queries.ts), with `…PerGame` keys alongside. */
 function seasonStats(
   stats: Record<string, number>,
-  games: number,
   position: string,
 ): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [key, value] of Object.entries(stats)) {
-    // Numeric keys are ESPN stat ids nobody has named.
-    if (/^\d+$/.test(key) || MISLEADING_STATS.has(key)) continue;
-    if (position !== "D/ST" && key.startsWith("defensive")) continue;
-    if (PER_GAME_YARDS.includes(key)) {
-      out[`${key}PerGame`] = value;
-      if (games > 0) out[key] = Math.round(value * games);
-    } else {
-      out[key] = value;
-    }
-  }
-  return out;
+  return Object.fromEntries(
+    Object.entries(stats).filter(
+      ([key]) =>
+        !/^\d+$/.test(key) &&
+        !MISLEADING_STATS.has(key) &&
+        (position === "D/ST" || !key.startsWith("defensive")),
+    ),
+  );
 }
 
 /** PlayerDetail reshaped so it can't be misread. The page's weekly chart pads
@@ -265,7 +258,7 @@ function playerForBot(
       gamesPlayed: s.games,
       fantasyPointsTotal: s.totalPts,
       fantasyPointsPerGame: s.avgPts,
-      stats: seasonStats(s.s, s.games, s.position),
+      stats: seasonStats(s.s, s.position),
     })),
     nflTeamShare: detail.nflShare,
     // Who has him now is in rosterStatus; this only helps for a past season.

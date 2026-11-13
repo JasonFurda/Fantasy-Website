@@ -1053,6 +1053,30 @@ export type PlayerCompRow = {
   s: Record<string, number>; // summed raw NFL stats
 };
 
+const YARD_STATS = ["passingYards", "rushingYards", "receivingYards"];
+
+/**
+ * A player_season stat line with yardage as season totals, plus a `…PerGame`
+ * key for each. Rows synced before the stat-name fix in espn_api/constant.py
+ * hold ESPN's per-game yardage under the total's name (stats 22/40/61 shared
+ * a name with 3/24/42 and the per-game one won), so those are multiplied back
+ * out by games played. Rows that already have the `…PerGame` keys are left as
+ * they are.
+ */
+function seasonTotals(
+  stats: Record<string, number> | null,
+  games: number,
+): Record<string, number> {
+  const s = { ...(stats ?? {}) };
+  for (const key of YARD_STATS) {
+    const perGame = `${key}PerGame`;
+    if (s[key] == null || s[perGame] != null || games <= 0) continue;
+    s[perGame] = s[key];
+    s[key] = Math.round(s[key] * games);
+  }
+  return s;
+}
+
 /** Per-player season aggregates for one position, ranked by total fantasy points. */
 export const getPlayerComparison = cached(
   getPlayerComparisonImpl,
@@ -1231,7 +1255,7 @@ async function getPlayerComparisonImpl(
       ceiling: vol.ceiling,
       bustPct: vol.bustPct,
       boomPct: vol.boomPct,
-      s: r.stats ?? {},
+      s: seasonTotals(r.stats, games),
     };
   });
 
@@ -1365,7 +1389,7 @@ async function getPlayerDetailImpl(
       games,
       totalPts,
       avgPts: games ? totalPts / games : 0,
-      s: r.stats ?? {},
+      s: seasonTotals(r.stats, games),
     };
   });
 
