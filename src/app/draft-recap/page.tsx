@@ -26,8 +26,15 @@ const MEDALS: Record<number, string> = {
   3: "#cd7f32", // bronze
 };
 
-function TeamTag({ team }: { team: { name: string; espnId: number } | null }) {
-  if (!team) return <span className="text-muted">—</span>;
+function TeamTag({
+  team,
+  empty = "—",
+}: {
+  team: { name: string; espnId: number } | null;
+  /** Shown when there's no team: "FA" where null means a free agent. */
+  empty?: string;
+}) {
+  if (!team) return <span className="text-muted">{empty}</span>;
   return (
     <Link
       href={`/teams/${team.espnId}`}
@@ -136,7 +143,7 @@ function DraftValueTable({
                 </td>
                 <td className="px-3 py-2 text-muted">{r.position}</td>
                 <td className="px-3 py-2">
-                  <TeamTag team={r.fantasyTeam} />
+                  <TeamTag team={r.fantasyTeam} empty="FA" />
                 </td>
                 <td className="px-3 py-2">
                   <TeamTag team={r.originalDrafter} />

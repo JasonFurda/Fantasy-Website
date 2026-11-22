@@ -103,7 +103,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   tool("get_power_rankings", "The latest weekly power rankings."),
   tool(
     "get_player",
-    "One player's season. weekly lists his fantasy points for each week played so far: fantasyTeam is who had him that week (this season only), freeAgent means nobody did, points is null when there's no record of him, and inProgress marks the week being played now, whose points are partial. seasons has a line for every season on record: NFL games played, fantasy points in total and per game, and NFL stats, which are season totals unless the name ends in PerGame. rosterStatus covers the current season: current is the team that has him now (null means nobody), and each stint says whether he arrived by trade. Accepts a real name, part of a name, or a league nickname.",
+    "One player's season. weekly lists his fantasy points for each week played so far: fantasyTeam is who had him that week (this season only), freeAgent means nobody did, points is null when there's no record of him, and inProgress marks the week being played now, whose points are partial. seasons has a line for every season on record: NFL games played, fantasy points in total and per game, and NFL stats, which are season totals unless the name ends in PerGame. rosterStatus covers the current season: current is the team that has him now (null means nobody), and each stint says whether he arrived by trade. For a past season, teamAtSeasonEnd is who had him when it ended (null means nobody). Accepts a real name, part of a name, or a league nickname.",
     {
       name: { type: "string", description: "The player's name or nickname." },
       year: YEAR,
@@ -262,7 +262,7 @@ function playerForBot(
     })),
     nflTeamShare: detail.nflShare,
     // Who has him now is in rosterStatus; this only helps for a past season.
-    ...(stints.length === 0 && { rosteredMostThatSeasonBy: detail.fantasyTeam }),
+    ...(!detail.liveSeason && { teamAtSeasonEnd: detail.fantasyTeam }),
     rosterStatus: roster,
   };
 }

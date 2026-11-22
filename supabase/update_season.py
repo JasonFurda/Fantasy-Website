@@ -43,6 +43,7 @@ def main() -> None:
         sync_trades,
         sync_trade_block,
         sync_pro_byes,
+        sync_rosters,
     )
 
     if not slim.ESPN_S2 or not slim.SWID:
@@ -88,6 +89,11 @@ def main() -> None:
 
     payload = slim.build_year_json(league, all_weeks_data, year)
     sync_year_payload(client, payload)
+    # Who is on which team right now. Not in a try/except: the site reads a
+    # player's team only from here, so a failure should fail the run.
+    rosters = slim.build_rosters(league)
+    sync_rosters(client, year, rosters)
+    print(f"  Rosters: {len(rosters)} players")
     sync_player_season(client, year, slim.build_player_season(league, payload))
     sync_free_agent_weeks(
         client, year, slim.build_free_agent_weeks(league, payload, max_week=current_week)

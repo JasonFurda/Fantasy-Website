@@ -379,6 +379,29 @@ def build_pro_byes(league):
     return out
 
 
+def build_rosters(league):
+    """Every team's roster right now, one row per player.
+
+    This is what the site shows as a player's fantasy team. It comes with the
+    League load (no extra request) and, unlike a week's box scores, it includes
+    teams with no game that week. For a past season ESPN returns the final
+    roster.
+    """
+    out = []
+    for team in league.teams:
+        for p in team.roster:
+            out.append({
+                "playerId": int(p.playerId),
+                "teamId": int(team.team_id),
+                "playerName": p.name,
+                "position": getattr(p, "position", "") or "",
+                "proTeam": getattr(p, "proTeam", "") or "",
+                "lineupSlot": getattr(p, "lineupSlot", "") or "",
+                "acquisitionType": getattr(p, "acquisitionType", "") or "",
+            })
+    return out
+
+
 TRADE_BLOCK_STATUSES = ("ON_THE_BLOCK", "UNTOUCHABLE")
 
 

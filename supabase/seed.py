@@ -448,6 +448,33 @@ def sync_trade_block(client: Client, year: int, rows_in: list[dict[str, Any]]) -
         client.table("trade_block").insert(rows).execute()
 
 
+def sync_rosters(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
+    """Make a year's rosters match ESPN's. Upserts first and only then deletes
+    the players who left, so a page read mid-sync never sees an empty table
+    (which would show every player as a free agent)."""
+    rows = [
+        {
+            "year": year,
+            "player_id": int(r["playerId"]),
+            "espn_id": int(r["teamId"]),
+            "player_name": str(r["playerName"]).strip(),
+            "position": r.get("position") or None,
+            "pro_team": r.get("proTeam") or None,
+            "lineup_slot": r.get("lineupSlot") or None,
+            "acquisition_type": r.get("acquisitionType") or None,
+        }
+        for r in rows_in
+    ]
+    if not rows:
+        # An empty roster list means a bad ESPN response, not a league where
+        # nobody has a player. Keep what's there.
+        print(f"  Rosters: ESPN returned none for {year}; left as is")
+        return
+    client.table("rosters").upsert(rows, on_conflict="year,player_id").execute()
+    keep = [r["player_id"] for r in rows]
+    client.table("rosters").delete().eq("year", year).not_.in_("player_id", keep).execute()
+
+
 def sync_free_agent_weeks(client: Client, year: int, rows_in: list[dict[str, Any]]) -> None:
     """Replace per-week free-agent stat lines for a year."""
     client.table("free_agent_week").delete().eq("year", year).execute()

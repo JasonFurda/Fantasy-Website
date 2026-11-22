@@ -220,7 +220,9 @@ export default function PlayerCompareTable({
                     {r.fantasyTeam.name}
                   </Link>
                 ) : (
-                  <span className="text-muted">—</span>
+                  <span className="text-muted" title="Free agent">
+                    FA
+                  </span>
                 )}
               </td>
               <td className="px-3 py-2 text-muted">{r.nflTeam}</td>

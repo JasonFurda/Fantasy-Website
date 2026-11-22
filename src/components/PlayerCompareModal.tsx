@@ -140,7 +140,7 @@ function PlayerPanel({
             </span>
           )}
           {d.nflTeam && <span>{d.nflTeam}</span>}
-          {d.fantasyTeam && (
+          {d.fantasyTeam ? (
             <Link
               href={`/teams/${d.fantasyTeam.espnId}`}
               className="flex items-center gap-1 hover:underline"
@@ -149,8 +149,20 @@ function PlayerPanel({
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: teamColor(d.fantasyTeam.espnId) }}
               />
-              {d.fantasyTeam.name}
+              <span>
+                {d.fantasyTeam.name}
+                {!d.liveSeason && (
+                  <span className="whitespace-nowrap text-muted/70">
+                    {" "}
+                    (end of {d.year})
+                  </span>
+                )}
+              </span>
             </Link>
+          ) : (
+            d.liveSeason && (
+              <span className="font-medium text-accent">Free Agent</span>
+            )
           )}
         </div>
       </div>

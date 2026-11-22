@@ -314,7 +314,7 @@ export default function PlayerDetailModal({
                 </span>
               )}
               {data.nflTeam && <span>{data.nflTeam}</span>}
-              {data.fantasyTeam && (
+              {data.fantasyTeam ? (
                 <Link
                   href={`/teams/${data.fantasyTeam.espnId}`}
                   className="flex items-center gap-1.5 hover:underline"
@@ -323,8 +323,20 @@ export default function PlayerDetailModal({
                     className="h-2 w-2 shrink-0 rounded-full"
                     style={{ backgroundColor: teamColor(data.fantasyTeam.espnId) }}
                   />
-                  {data.fantasyTeam.name}
+                  <span>
+                    {data.fantasyTeam.name}
+                    {!data.liveSeason && (
+                      <span className="whitespace-nowrap text-muted/70">
+                        {" "}
+                        (end of {data.year})
+                      </span>
+                    )}
+                  </span>
                 </Link>
+              ) : (
+                data.liveSeason && (
+                  <span className="font-medium text-accent">Free Agent</span>
+                )
               )}
             </div>
           </div>

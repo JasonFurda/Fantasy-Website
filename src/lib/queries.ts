@@ -117,6 +117,55 @@ export const getTeams = cached(async function getTeams(
   return (data as Team[]) ?? [];
 }, "getTeams");
 
+export type FantasyTeamRef = { name: string; espnId: number };
+
+/** Which fantasy team has each player, by player name, straight from ESPN's
+ *  rosters (the `rosters` table): the current roster for the active season, the
+ *  final roster for a past one. A player who isn't in the map is a free agent.
+ *
+ *  This is the one place to answer "what team is he on". Don't work it out from
+ *  weekly lineups: "whoever rostered him most" keeps showing dropped and traded
+ *  players on their old team, and a week's lineups leave out teams with no game
+ *  (playoff byes, eliminated teams). */
+export const getRosterTeams = cached(getRosterTeamsImpl, "getRosterTeams");
+async function getRosterTeamsImpl(
+  year: number,
+): Promise<Record<string, FantasyTeamRef>> {
+  const [teams, { data }] = await Promise.all([
+    getTeams(year),
+    supabase.from("rosters").select("player_name, espn_id").eq("year", year),
+  ]);
+  const nameByEspn = new Map(teams.map((t) => [t.espn_id, t.name.trim()]));
+  const out: Record<string, FantasyTeamRef> = {};
+  for (const r of (data ?? []) as { player_name: string; espn_id: number }[]) {
+    out[r.player_name] = {
+      name: nameByEspn.get(r.espn_id) ?? `Team ${r.espn_id}`,
+      espnId: r.espn_id,
+    };
+  }
+  return out;
+}
+
+/** One player's fantasy team (see getRosterTeams), or null for a free agent. */
+async function getRosterTeamOf(
+  name: string,
+  year: number,
+): Promise<FantasyTeamRef | null> {
+  const [teams, { data }] = await Promise.all([
+    getTeams(year),
+    supabase
+      .from("rosters")
+      .select("espn_id")
+      .eq("year", year)
+      .eq("player_name", name)
+      .limit(1),
+  ]);
+  const espnId = (data as { espn_id: number }[] | null)?.[0]?.espn_id;
+  if (espnId == null) return null;
+  const t = teams.find((x) => x.espn_id === espnId);
+  return { name: t ? t.name.trim() : `Team ${espnId}`, espnId };
+}
+
 export const getMatchups = cached(async function getMatchups(
   year: number,
 ): Promise<Matchup[]> {
@@ -1037,7 +1086,8 @@ async function weeklyRecapFor(
 
 export type PlayerCompRow = {
   name: string;
-  fantasyTeam: { name: string; espnId: number } | null;
+  /** Who has him now (active season) or at season's end; null = free agent. */
+  fantasyTeam: FantasyTeamRef | null;
   nflTeam: string;
   games: number;
   totalPts: number;
@@ -1086,25 +1136,20 @@ async function getPlayerComparisonImpl(
   year: number,
   position: string,
 ): Promise<PlayerCompRow[]> {
-  const [matchups, teams] = await Promise.all([
+  const [matchups, rosterTeams] = await Promise.all([
     getMatchups(year),
-    getTeams(year),
+    getRosterTeams(year),
   ]);
-  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
-  const sideOf = new Map<number, { home: number; away: number }>();
-  for (const m of matchups)
-    sideOf.set(m.id, { home: m.home_team_id, away: m.away_team_id });
   const ids = matchups.map((m) => m.id);
   if (ids.length === 0) return [];
 
   // Only what the weekly aggregation below reads. Stat lines and NFL team come
-  // from player_season; the per-week stats blob is most of a slot row's size.
+  // from player_season, fantasy team from rosters; the per-week stats blob is
+  // most of a slot row's size.
   type Raw = {
     player_name: string;
     points: number | null;
     game_played: number | null;
-    team_side: "home" | "away";
-    matchup_id: number;
   };
 
   const rows: Raw[] = [];
@@ -1118,7 +1163,7 @@ async function getPlayerComparisonImpl(
       chunks.map((chunk) =>
         supabase
           .from("player_slots")
-          .select("player_name, points, game_played, team_side, matchup_id")
+          .select("player_name, points, game_played")
           .eq("position", position)
           .in("matchup_id", chunk),
       ),
@@ -1139,7 +1184,6 @@ async function getPlayerComparisonImpl(
     weekly: number[];
     played: number[]; // points in weeks the player actually played (game_played>0)
     games: number;
-    teamCounts: Map<number, number>;
   };
   const byPlayer = new Map<string, Agg>();
 
@@ -1152,7 +1196,6 @@ async function getPlayerComparisonImpl(
         weekly: [],
         played: [],
         games: 0,
-        teamCounts: new Map(),
       };
       byPlayer.set(r.player_name, a);
     }
@@ -1163,23 +1206,7 @@ async function getPlayerComparisonImpl(
       a.games += 1;
       a.played.push(pts);
     }
-    const sides = sideOf.get(r.matchup_id);
-    if (sides) {
-      const tid = r.team_side === "home" ? sides.home : sides.away;
-      a.teamCounts.set(tid, (a.teamCounts.get(tid) ?? 0) + 1);
-    }
   }
-
-  const mode = <T,>(m: Map<T, number>): T | null => {
-    let best: T | null = null;
-    let n = -1;
-    for (const [k, c] of m)
-      if (c > n) {
-        n = c;
-        best = k;
-      }
-    return best;
-  };
 
   // Full-season totals + stats for everyone (rostered + free agents).
   const ps = (psRes.data ?? []) as {
@@ -1227,12 +1254,6 @@ async function getPlayerComparisonImpl(
 
   const out: PlayerCompRow[] = ps.map((r) => {
     const a = byPlayer.get(r.player_name);
-    let fantasyTeam: { name: string; espnId: number } | null = null;
-    if (a) {
-      const tid = mode(a.teamCounts);
-      const team = tid != null ? teamById.get(tid) : null;
-      if (team) fantasyTeam = { name: team.name.trim(), espnId: team.espn_id };
-    }
     const playedAll = [
       ...(a?.played ?? []),
       ...(faByPlayer.get(r.player_name) ?? []),
@@ -1242,7 +1263,7 @@ async function getPlayerComparisonImpl(
     const totalPts = Number(r.total_points);
     return {
       name: r.player_name,
-      fantasyTeam,
+      fantasyTeam: rosterTeams[r.player_name] ?? null,
       nflTeam: r.pro_team,
       games,
       totalPts,
@@ -1292,8 +1313,11 @@ export type PlayerDetail = {
   name: string;
   position: string;
   nflTeam: string;
-  fantasyTeam: { name: string; espnId: number } | null;
+  /** Who has him: the current roster when `year` is the live season, else that
+   *  season's final roster. null = free agent. */
+  fantasyTeam: FantasyTeamRef | null;
   year: number; // season the weekly chart covers
+  liveSeason: boolean; // `year` is the season being played now
   weekly: PlayerWeekPoint[]; // week 1..maxWeek
   avg: number; // this player's average over weeks played
   bestWeek: PlayerWeekPoint | null;
@@ -1356,9 +1380,9 @@ async function getPlayerDetailImpl(
   name: string,
   year: number,
 ): Promise<PlayerDetail | null> {
-  const [matchups, teams, allSeasons, { data: psRaw }] = await Promise.all([
+  const [matchups, fantasyTeam, allSeasons, { data: psRaw }] = await Promise.all([
     getMatchups(year),
-    getTeams(year),
+    getRosterTeamOf(name, year),
     getSeasons(),
     supabase
       .from("player_season")
@@ -1400,17 +1424,12 @@ async function getPlayerDetailImpl(
   const weekByMatchup = new Map<number, number>(
     matchups.map((m) => [m.id, m.week]),
   );
-  const sideTeam = new Map<number, { home: number; away: number }>();
-  for (const m of matchups)
-    sideTeam.set(m.id, { home: m.home_team_id, away: m.away_team_id });
-  const teamById = new Map<number, Team>(teams.map((t) => [t.id, t]));
   const ids = matchups.map((m) => m.id);
 
   const wk = new Map<
     number,
     { points: number; freeAgent: boolean; bye: boolean; injury: string | null }
   >();
-  const teamCount = new Map<number, number>();
   const CHUNK = 20;
   const slotChunks: number[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK)
@@ -1422,7 +1441,7 @@ async function getPlayerDetailImpl(
       slotChunks.map((chunk) =>
         supabase
           .from("player_slots")
-          .select("matchup_id, team_side, points, is_bye, injury_status")
+          .select("matchup_id, points, is_bye, injury_status")
           .eq("player_name", name)
           .in("matchup_id", chunk),
       ),
@@ -1462,7 +1481,6 @@ async function getPlayerDetailImpl(
   for (const { data } of slotResults) {
     for (const r of (data ?? []) as {
       matchup_id: number;
-      team_side: "home" | "away";
       points: number | null;
       is_bye: boolean | null;
       injury_status: string | null;
@@ -1475,13 +1493,6 @@ async function getPlayerDetailImpl(
         bye: !!r.is_bye,
         injury: injuryLive ? injuryTag(r.injury_status) : null,
       });
-      const sides = sideTeam.get(r.matchup_id);
-      const tid = sides
-        ? r.team_side === "home"
-          ? sides.home
-          : sides.away
-        : null;
-      if (tid != null) teamCount.set(tid, (teamCount.get(tid) ?? 0) + 1);
     }
   }
 
@@ -1507,20 +1518,6 @@ async function getPlayerDetailImpl(
       const w = weekByMatchup.get(r.matchup_id);
       if (w != null) teamByeWeeks.add(w);
     }
-
-  // Most-frequent fantasy team that rostered them this season → header label.
-  let fantasyTeam: { name: string; espnId: number } | null = null;
-  let bestTid: number | null = null;
-  let bestN = -1;
-  for (const [tid, cnt] of teamCount)
-    if (cnt > bestN) {
-      bestN = cnt;
-      bestTid = tid;
-    }
-  if (bestTid != null) {
-    const t = teamById.get(bestTid);
-    if (t) fantasyTeam = { name: t.name.trim(), espnId: t.espn_id };
-  }
 
   const maxWeek = matchups.reduce((a, m) => Math.max(a, m.week), 0);
   const weekly: PlayerWeekPoint[] = [];
@@ -1572,6 +1569,7 @@ async function getPlayerDetailImpl(
     nflTeam,
     fantasyTeam,
     year,
+    liveSeason: injuryLive,
     weekly,
     avg,
     bestWeek,
@@ -1592,9 +1590,10 @@ export type RosterStint = {
 
 export type PlayerRosterStatus = {
   year: number;
-  /** The newest week with lineups loaded, which is what "current" is judged by. */
+  /** The newest week with lineups loaded; the stints run up to it. */
   week: number;
-  current: { name: string; espnId: number } | null;
+  /** The team that has him now, from ESPN's roster; null = free agent. */
+  current: FantasyTeamRef | null;
   stints: RosterStint[]; // oldest first; empty if nobody has rostered them
 };
 
@@ -1621,12 +1620,12 @@ async function getLatestLineupWeekImpl(year: number): Promise<number | null> {
 
 /** Who has a player right now, and who had them earlier this season.
  *
- *  Unlike PlayerDetail.fantasyTeam (whoever rostered them most), this notices a
- *  trade or drop. Every rostered player gets a slot each week, including on a bye
- *  (is_bye), so no slot in the newest lineup week means no longer rostered. */
+ *  `current` is ESPN's roster (see getRosterTeams). The stints come from weekly
+ *  lineups: every rostered player gets a slot each week, including on a bye
+ *  (is_bye), so a gap in his slots is a stretch nobody had him. */
 export const getPlayerRosterStatus = cached(
   getPlayerRosterStatusImpl,
-  "getPlayerRosterStatus-v2",
+  "getPlayerRosterStatus-v3",
 );
 async function getPlayerRosterStatusImpl(
   name: string,
@@ -1634,10 +1633,11 @@ async function getPlayerRosterStatusImpl(
   const seasons = await getSeasons(); // newest first
   const year = (seasons.find((s) => s.is_active) ?? seasons[0])?.year;
   if (year == null) return null;
-  const [matchups, teams, week] = await Promise.all([
+  const [matchups, teams, week, current] = await Promise.all([
     getMatchups(year),
     getTeams(year),
     getLatestLineupWeek(year),
+    getRosterTeamOf(name, year),
   ]);
   if (week == null) return null;
 
@@ -1704,20 +1704,6 @@ async function getPlayerRosterStatusImpl(
     });
   }
 
-  const last = stints[stints.length - 1] ?? null;
-  // A team with no game this week (out of the playoffs) has no lineup to check,
-  // which says nothing about whether the player was dropped.
-  const lastTeamPlayed =
-    last != null &&
-    matchups.some(
-      (m) =>
-        m.week === week &&
-        [m.home_team_id, m.away_team_id].some(
-          (id) => teamById.get(id)?.espn_id === last.team.espnId,
-        ),
-    );
-  const current =
-    last && (last.toWeek === week || !lastTeamPlayed) ? last.team : null;
   return { year, week, current, stints };
 }
 
@@ -3327,7 +3313,7 @@ export type RosterPlayer = {
   position: string;
   points: number;
   weeks: number;
-  endedOnTeam: boolean; // on the roster in the season's final week
+  endedOnTeam: boolean; // on ESPN's roster now (live season) or at season's end
 };
 
 export type FranchiseRoster = {
@@ -3361,12 +3347,29 @@ async function getFranchiseRosterImpl(
     Matchup,
     "id" | "year" | "week" | "home_team_id" | "away_team_id"
   >;
-  const { data: msRaw } = await supabase
-    .from("matchups")
-    .select("id, year, week, home_team_id, away_team_id")
-    .or(`home_team_id.in.(${idList}),away_team_id.in.(${idList})`);
+  const [{ data: msRaw }, { data: rosterRaw }] = await Promise.all([
+    supabase
+      .from("matchups")
+      .select("id, year, week, home_team_id, away_team_id")
+      .or(`home_team_id.in.(${idList}),away_team_id.in.(${idList})`),
+    // Who is on the team now (or was at the end of a past season), per ESPN.
+    supabase
+      .from("rosters")
+      .select("year, player_name, position")
+      .eq("espn_id", espnId),
+  ]);
   const matchups = (msRaw as RosterMatchupRow[] | null) ?? [];
   if (matchups.length === 0) return { byYear: [], topScorers: [] };
+  const espnRoster = new Map<number, Map<string, string>>(); // year -> name -> pos
+  for (const r of (rosterRaw ?? []) as {
+    year: number;
+    player_name: string;
+    position: string | null;
+  }[]) {
+    let m = espnRoster.get(r.year);
+    if (!m) espnRoster.set(r.year, (m = new Map()));
+    m.set(r.player_name, r.position ?? "");
+  }
 
   const idSet = new Set(teamIds);
   const matchupInfo = new Map<
@@ -3377,8 +3380,6 @@ async function getFranchiseRosterImpl(
     const side = idSet.has(m.home_team_id) ? "home" : "away";
     matchupInfo.set(m.id, { year: m.year, week: m.week, side });
   }
-  // names on the roster in each year's final week (any slot, incl. bench)
-  const finalRoster = new Map<number, Set<string>>();
 
   type SlotQ = {
     matchup_id: number;
@@ -3404,20 +3405,11 @@ async function getFranchiseRosterImpl(
   );
   for (const { data } of mIdResults) if (data) slots.push(...(data as SlotQ[]));
 
-  // Only our team's slots, and the latest week that actually has a lineup per
-  // year (schedule-only future weeks have no player_slots, so they don't count).
+  // Only our team's slots.
   const ourSlots = slots.filter((s) => {
     const info = matchupInfo.get(s.matchup_id);
     return info && s.team_side === info.side;
   });
-  const maxLineupWeek = new Map<number, number>();
-  for (const s of ourSlots) {
-    const info = matchupInfo.get(s.matchup_id)!;
-    maxLineupWeek.set(
-      info.year,
-      Math.max(maxLineupWeek.get(info.year) ?? 0, info.week),
-    );
-  }
 
   // year -> player -> aggregate. `rostered` counts any appearance (incl. bench)
   // so the whole roster shows; `points`/`weeks` count only started games.
@@ -3432,17 +3424,6 @@ async function getFranchiseRosterImpl(
 
   for (const s of ourSlots) {
     const info = matchupInfo.get(s.matchup_id)!;
-
-    // final-week roster membership (any slot)
-    if (info.week === maxLineupWeek.get(info.year)) {
-      let set = finalRoster.get(info.year);
-      if (!set) {
-        set = new Set();
-        finalRoster.set(info.year, set);
-      }
-      set.add(s.player_name);
-    }
-
     let yearMap = byYearMap.get(info.year);
     if (!yearMap) {
       yearMap = new Map();
@@ -3465,6 +3446,20 @@ async function getFranchiseRosterImpl(
       );
     }
   }
+  // Someone on the roster who hasn't been in one of its lineups yet (added
+  // while the team had no game, e.g. a playoff bye) still belongs on it.
+  for (const [year, names] of espnRoster) {
+    const yearMap = byYearMap.get(year);
+    if (!yearMap) continue;
+    for (const [name, pos] of names)
+      if (!yearMap.has(name))
+        yearMap.set(name, {
+          points: 0,
+          weeks: 0,
+          rostered: 0,
+          posCounts: new Map(pos ? [[pos, 1]] : []),
+        });
+  }
 
   const byYear = [...byYearMap.entries()]
     .sort((a, b) => b[0] - a[0])
@@ -3485,7 +3480,7 @@ async function getFranchiseRosterImpl(
             position,
             points: agg.points,
             weeks: agg.weeks,
-            endedOnTeam: finalRoster.get(year)?.has(name) ?? false,
+            endedOnTeam: espnRoster.get(year)?.has(name) ?? false,
           };
         })
         // Show the whole roster (everyone who appeared), scorers first.
