@@ -205,6 +205,20 @@ export const getMatchupProjections = cached(async function getMatchupProjections
   return (data as MatchupProjection[]) ?? [];
 }, "getMatchupProjections");
 
+/** Each NFL team's bye week for a season. */
+export const getProTeamByes = cached(async function getProTeamByes(
+  year: number,
+): Promise<{ proTeam: string; byeWeek: number }[]> {
+  const { data } = await supabase
+    .from("pro_team_byes")
+    .select("pro_team, bye_week")
+    .eq("year", year);
+  return ((data ?? []) as { pro_team: string; bye_week: number }[]).map((b) => ({
+    proTeam: b.pro_team,
+    byeWeek: b.bye_week,
+  }));
+}, "getProTeamByes");
+
 export function buildStandings(teams: Team[], matchups: Matchup[]): Standing[] {
   const acc = new Map<
     number,
