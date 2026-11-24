@@ -7,7 +7,9 @@ import { MY_TEAM_COOKIE } from "@/lib/my-team";
 import { getCurrentFranchises, getSeasons } from "@/lib/queries";
 
 const MODEL = "claude-sonnet-5-5";
-const MAX_OUTPUT_TOKENS = 1500;
+/** Thinking counts against this. A whole-league playoff rundown ran out at
+ *  1500 while still thinking and sent no reply at all. */
+const MAX_OUTPUT_TOKENS = 4000;
 /** Lookups allowed per question; the last round has to answer with what it has. */
 const MAX_ROUNDS = 6;
 const MAX_HISTORY = 12;

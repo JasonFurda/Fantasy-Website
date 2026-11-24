@@ -2,6 +2,7 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { championshipsFor } from "@/lib/league-config";
 import { PLAYER_NICKNAMES, type NicknameStatus } from "@/lib/chat/personality";
+import { getPlayoffOdds } from "@/lib/playoff-odds";
 import {
   buildStandings,
   firstUnfinishedWeek,
@@ -119,6 +120,29 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
     "get_draft_recap",
     "A season's draft board and the best-value picks.",
     { year: YEAR },
+  ),
+  tool(
+    "get_playoff_odds",
+    "The current season's playoff race, from thousands of simulations of the rest of the regular season. Includes the playoff format and tiebreaker, the record the last spot usually takes, and the games that swing the race most. For each team: playoff, bye, division and seed odds; record, points for (the tiebreaker) and its rank; and mathematically, when checked: clinched, eliminated, winsToClinch (wins in its remaining games that guarantee a spot whatever else happens, null if none do) and missesIfWinsAtMost. Also each remaining game with its win chance and the team's odds if it wins or loses, odds by final record, the other games to root for, projected weekly scores from its current roster with lineupNotes (byes and injuries), how hard its remaining schedule is, recent form, all-play record, and projected final points for. Pass espn_id to get every remaining game for one team and only a summary for the rest. Pass assume for a what-if.",
+    {
+      espn_id: {
+        type: "integer",
+        description: "Optional. The franchise to show in full.",
+      },
+      assume: {
+        type: "array",
+        description:
+          "Optional what-if results for unplayed regular-season games. Every number comes back with these results locked in.",
+        items: {
+          type: "object",
+          properties: {
+            week: { type: "integer" },
+            winner_espn_id: { type: "integer" },
+          },
+          required: ["week", "winner_espn_id"],
+        },
+      },
+    },
   ),
 ];
 
@@ -439,6 +463,22 @@ const HANDLERS: Record<string, (input: Input) => Promise<unknown>> = {
 
   async get_draft_recap(input) {
     return getDraftRecap(await resolveYear(input));
+  },
+
+  async get_playoff_odds(input) {
+    const raw = input.assume ?? [];
+    if (!Array.isArray(raw)) throw new ToolInputError("assume must be a list.");
+    const assume = raw.map((a) => {
+      const item = (a ?? {}) as Input;
+      return {
+        week: requireInt(item, "week"),
+        winnerEspnId: requireInt(item, "winner_espn_id"),
+      };
+    });
+    const focus = input.espn_id == null ? null : requireInt(input, "espn_id");
+    const result = await getPlayoffOdds(assume, focus);
+    if (typeof result.error === "string") throw new ToolInputError(result.error);
+    return result;
   },
 };
 

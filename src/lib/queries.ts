@@ -184,6 +184,27 @@ export const getMatchups = cached(async function getMatchups(
   return rows.map((m) => ({ ...m, final: m.week < liveFrom }));
 }, "getMatchups");
 
+export type MatchupProjection = {
+  id: number;
+  home_projected: number | null;
+  away_projected: number | null;
+};
+
+/** One week's team projections. For the week being played these are ESPN's
+ *  live projections, which swap in real points as games finish, so they
+ *  converge on the final score. */
+export const getMatchupProjections = cached(async function getMatchupProjections(
+  year: number,
+  week: number,
+): Promise<MatchupProjection[]> {
+  const { data } = await supabase
+    .from("matchups")
+    .select("id, home_projected, away_projected")
+    .eq("year", year)
+    .eq("week", week);
+  return (data as MatchupProjection[]) ?? [];
+}, "getMatchupProjections");
+
 export function buildStandings(teams: Team[], matchups: Matchup[]): Standing[] {
   const acc = new Map<
     number,

@@ -109,3 +109,27 @@ export function divisionsFor(
 ): { name: string; espnIds: number[] }[] {
   return DIVISIONS_BY_YEAR[year] ?? [];
 }
+
+/**
+ * How teams qualify for the playoffs, from ESPN's league settings
+ * (scheduleSettings). ESPN breaks every standings tie on total points for
+ * (`playoffSeedingRule: TOTAL_POINTS_SCORED`), not head-to-head. Used by the
+ * playoff-odds simulation. EDIT per year.
+ */
+export type PlayoffFormat = {
+  /** How many teams make it. */
+  teams: number;
+  /** Top seeds that skip the first round. */
+  byes: number;
+  /** Division winners are guaranteed a spot and take the top seeds, even with a
+   *  worse record than a wild card. The rest go by record. */
+  divisionWinnersFirst: boolean;
+};
+
+export const PLAYOFF_FORMAT_BY_YEAR: Record<number, PlayoffFormat> = {
+  2026: { teams: 6, byes: 2, divisionWinnersFirst: true },
+};
+
+export function playoffFormat(year: number): PlayoffFormat | null {
+  return PLAYOFF_FORMAT_BY_YEAR[year] ?? null;
+}
