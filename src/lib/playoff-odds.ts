@@ -143,6 +143,7 @@ export async function getPlayoffOdds(
     matchups.map((m) => [m.home_score, m.away_score]),
     liveProj,
     data.teams.map((t) => t.players.map((p) => [p.name, p.value, p.injuryStatus])),
+    data.waiver,
     [...assume].sort((a, b) => a.week - b.week || a.winnerEspnId - b.winnerEspnId),
     focusEspnId,
   ]);

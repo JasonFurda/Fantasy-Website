@@ -3730,49 +3730,70 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 /** How many of the best free agents at a position define its replacement level. */
 const REPLACEMENT_POOL = 3;
 
-/** Replacement level per position: the average points per game of the
- *  REPLACEMENT_POOL best free agents at that position over the season's
- *  finished weeks — what a team could realistically have picked up instead.
- *  Season averages (not one week's best waiver score) so a single fluke game
- *  can't set the bar, and a free agent needs about half the weeks played to
- *  qualify so one-game wonders don't either. */
+/** Finished weeks a free agent must have played in, counting back from the
+ *  latest, to count as a healthy pickup. Three so a bye week doesn't hide one. */
+const RECENT_FA_WEEKS = 3;
+
+/** Replacement level per position: what a team could realistically pick up
+ *  instead. It's the average season points per game (every NFL game he played,
+ *  rostered or not) of the REPLACEMENT_POOL best players at the position who
+ *  are on no fantasy roster now and have played as a free agent in the last
+ *  few finished weeks. Two filters keep the bar honest:
+ *  - He needs about half the weeks played, so one big game can't set it.
+ *  - He has to be playing, so an injured star who got dropped doesn't count.
+ *
+ *  This used to average only the weeks each player spent on waivers. Players
+ *  tend to get picked up right after a big week, so those averages ran high:
+ *  in 2026 week 12 a waiver QB rated 20.7 and a kicker 13.3, better than most
+ *  starters. */
 async function replacementLevels(
   year: number,
   lastFinalWeek: number,
 ): Promise<Record<string, number>> {
   if (lastFinalWeek < 1) return {};
-  // One request per week keeps each response under the 1000-row cap.
-  const weeks = Array.from({ length: lastFinalWeek }, (_, i) => i + 1);
-  const results = await Promise.all(
-    weeks.map((w) =>
+  const minGames = Math.max(1, Math.ceil(lastFinalWeek / 2));
+  const recentWeeks = Array.from(
+    { length: Math.min(RECENT_FA_WEEKS, lastFinalWeek) },
+    (_, i) => lastFinalWeek - i,
+  );
+  const [rosteredRes, seasonRes, ...recent] = await Promise.all([
+    supabase.from("rosters").select("player_name").eq("year", year),
+    supabase
+      .from("player_season")
+      .select("player_name, position, total_points, games")
+      .eq("year", year)
+      .gte("games", minGames),
+    // One request per week keeps each response under the 1000-row cap.
+    ...recentWeeks.map((w) =>
       supabase
         .from("free_agent_week")
-        .select("player_name, position, points")
+        .select("player_name")
         .eq("year", year)
         .eq("week", w),
     ),
+  ]);
+  const rostered = new Set(
+    ((rosteredRes.data ?? []) as { player_name: string }[]).map((r) => r.player_name),
   );
-  const byPlayer = new Map<string, { pos: string; sum: number; games: number }>();
-  for (const { data } of results)
-    for (const r of (data ?? []) as {
-      player_name: string;
-      position: string | null;
-      points: number | null;
-    }[]) {
-      if (!r.position) continue;
-      const p = byPlayer.get(r.player_name) ?? { pos: r.position, sum: 0, games: 0 };
-      p.sum += Number(r.points ?? 0);
-      p.games++;
-      byPlayer.set(r.player_name, p);
-    }
+  // Without roster data every player would look available.
+  if (rostered.size === 0) return {};
+  const playing = new Set(
+    recent.flatMap(({ data }) =>
+      ((data ?? []) as { player_name: string }[]).map((r) => r.player_name),
+    ),
+  );
 
-  const minGames = Math.min(3, Math.ceil(lastFinalWeek / 2));
   const ppgByPos = new Map<string, number[]>();
-  for (const p of byPlayer.values()) {
-    if (p.games < minGames) continue;
-    const arr = ppgByPos.get(p.pos) ?? [];
-    arr.push(p.sum / p.games);
-    ppgByPos.set(p.pos, arr);
+  for (const r of (seasonRes.data ?? []) as {
+    player_name: string;
+    position: string | null;
+    total_points: number | null;
+    games: number;
+  }[]) {
+    if (!r.position || rostered.has(r.player_name) || !playing.has(r.player_name)) continue;
+    const arr = ppgByPos.get(r.position) ?? [];
+    arr.push(Number(r.total_points ?? 0) / r.games);
+    ppgByPos.set(r.position, arr);
   }
   const out: Record<string, number> = {};
   for (const [pos, ppgs] of ppgByPos) {
@@ -3804,7 +3825,7 @@ async function replacementLevels(
  *  side is measured against its own depth, one side's gain isn't the other's
  *  loss. A side's net is what it gained minus what it lost; raw starter points
  *  (zero-sum) are kept alongside for reference. */
-export const getTrades = cached(getTradesImpl, "getTrades-v5");
+export const getTrades = cached(getTradesImpl, "getTrades-v6");
 async function getTradesImpl(year: number): Promise<TradesData> {
   const [{ data }, teams, matchups] = await Promise.all([
     supabase
@@ -4214,7 +4235,7 @@ const PROJECTION_WEIGHT_GAMES = 3;
 
 const LINEUP_ORDER = ["QB", "RB", "WR", "TE", "RB/WR/TE", "D/ST", "K"];
 
-export const getTradeCalcData = cached(getTradeCalcDataImpl, "getTradeCalcData");
+export const getTradeCalcData = cached(getTradeCalcDataImpl, "getTradeCalcData-v2");
 async function getTradeCalcDataImpl(): Promise<TradeCalcData | null> {
   const seasons = await getSeasons();
   const season = seasons.find((s) => s.is_active);
